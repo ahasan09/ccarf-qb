@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCAR-F Question Bank</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --text: #1a1d21;
+    --muted: #697077;
+    --border: #e2e5e9;
+    --accent: #b4532a;
+    --accent-soft: #fdf0e9;
+    --ok: #1a7f4e;
+    --ok-soft: #e6f4ec;
+    --bad: #c0392b;
+    --bad-soft: #fbeae8;
+    --flag: #c98a00;
+    --flag-soft: #fff4d9;
+    --d1: #6b4fa0; --d2: #1f7a8c; --d3: #b4532a; --d4: #1a7f4e; --d5: #8c5a1f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --surface: #1f2228;
+      --text: #e8eaed;
+      --muted: #9aa2ab;
+      --border: #32363e;
+      --accent: #e0754a;
+      --accent-soft: #35261f;
+      --ok: #4cc287;
+      --ok-soft: #1d3328;
+      --bad: #e0756a;
+      --bad-soft: #3a2422;
+      --flag: #e3b341;
+      --flag-soft: #38301a;
+      --d1: #a68ad4; --d2: #5cb8cc; --d3: #e0754a; --d4: #4cc287; --d5: #d1a05c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #app { max-width: 880px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 0 0 10px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 0.9rem; }
+  .hero { margin-bottom: 20px; }
+  .hero p { color: var(--muted); }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid .card { margin: 0; display: flex; flex-direction: column; }
+  .grid .card p { flex: 1; color: var(--muted); font-size: 0.92rem; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  .btn {
+    font: inherit; font-size: 0.95rem;
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; }
+  .btn.small { padding: 5px 10px; font-size: 0.85rem; }
+
+  .resume-card { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    border-color: var(--accent); background: var(--accent-soft); }
+
+  .domain-list { display: flex; flex-direction: column; gap: 8px; }
+  .domain-row {
+    display: flex; gap: 10px; align-items: center; text-align: left;
+    font: inherit; font-size: 0.95rem;
+    padding: 11px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    cursor: pointer;
+  }
+  .domain-row:hover { border-color: var(--accent); }
+  .domain-row .muted { margin-left: auto; text-align: right; }
+  .domain-chip {
+    font-size: 0.75rem; font-weight: 700; color: #fff;
+    padding: 2px 7px; border-radius: 6px; flex: none;
+  }
+  .chip-d1 { background: var(--d1); } .chip-d2 { background: var(--d2); }
+  .chip-d3 { background: var(--d3); } .chip-d4 { background: var(--d4); }
+  .chip-d5 { background: var(--d5); }
+
+  .history { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: 10px; }
+  .history th, .history td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+  .history th { color: var(--muted); font-weight: 600; }
+  .badge {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .badge.pass { background: var(--ok-soft); color: var(--ok); }
+  .badge.fail { background: var(--bad-soft); color: var(--bad); }
+  .badge.big { font-size: 0.9rem; padding: 5px 14px; }
+
+  /* quiz */
+  .quiz-header {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .timer {
+    font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.05rem;
+    padding: 4px 12px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .timer.urgent { color: var(--bad); border-color: var(--bad); }
+  .tally .ok { color: var(--ok); font-weight: 700; }
+  .tally .bad { color: var(--bad); font-weight: 700; }
+
+  .navigator { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
+  .nav-cell {
+    width: 34px; height: 30px; font-size: 0.8rem;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--muted); cursor: pointer;
+  }
+  .nav-cell.answered { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+  .nav-cell.flagged { background: var(--flag-soft); color: var(--flag); border-color: var(--flag); }
+  .nav-cell.current { outline: 2px solid var(--accent); outline-offset: 1px; font-weight: 700; }
+
+  .question-card { padding: 22px; }
+  .q-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .q-text { font-size: 1.08rem; font-weight: 600; margin: 0 0 16px; }
+  .options { display: flex; flex-direction: column; gap: 9px; }
+  .option {
+    font: inherit; font-size: 0.97rem; text-align: left;
+    padding: 12px 14px; border-radius: 9px;
+    border: 1.5px solid var(--border); background: transparent; color: var(--text);
+    cursor: pointer; counter-increment: opt;
+  }
+  .options { counter-reset: opt; }
+  .opt-letter::before { content: counter(opt, upper-alpha) ".  "; font-weight: 700; color: var(--muted); }
+  .option:hover:not(:disabled):not(.readonly) { border-color: var(--accent); }
+  .option.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .option.correct { border-color: var(--ok); background: var(--ok-soft); }
+  .option.wrong { border-color: var(--bad); background: var(--bad-soft); }
+  .option.readonly { cursor: default; }
+  .option:disabled { cursor: default; color: var(--text); opacity: 1; }
+  .tag { font-size: 0.75rem; font-weight: 700; color: var(--muted); margin-left: 6px; }
+
+  .feedback { margin-top: 14px; padding: 12px 14px; border-radius: 9px; font-size: 0.93rem; }
+  .feedback.ok { background: var(--ok-soft); }
+  .feedback.bad { background: var(--bad-soft); }
+
+  .quiz-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; }
+
+  /* results */
+  .score-card { display: flex; gap: 24px; align-items: center; padding: 26px; }
+  .score-card.pass { border-color: var(--ok); }
+  .score-card.fail { border-color: var(--bad); }
+  .score-big { font-size: 3rem; font-weight: 800; line-height: 1; }
+  .score-of { font-size: 1.2rem; color: var(--muted); font-weight: 600; }
+  .domain-score { margin-bottom: 12px; }
+  .domain-score-label { display: flex; gap: 8px; align-items: center; margin-bottom: 5px; font-size: 0.92rem; }
+  .domain-score-label .muted { margin-left: auto; }
+  .bar { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; }
+  .bar-fill.ok { background: var(--ok); }
+  .bar-fill.bad { background: var(--bad); }
+  .actions { margin-top: 4px; }
+
+  .review-card { border-left: 4px solid var(--border); }
+  .review-card.r-ok { border-left-color: var(--ok); }
+  .review-card.r-bad { border-left-color: var(--bad); }
+
+  code { background: var(--border); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="questions/domain1.js"></script>
+<script src="questions/domain2.js"></script>
+<script src="questions/domain3.js"></script>
+<script src="questions/domain4.js"></script>
+<script src="questions/domain5.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
