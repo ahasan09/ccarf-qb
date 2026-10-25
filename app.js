@@ -69,6 +69,23 @@ function updateWeakSet(weak, grade) {
   return Object.keys(set);
 }
 
+function sampleQuiz(bank, domains, count, rng) {
+  var pool = bank.filter(function (q) { return domains.indexOf(q.domain) !== -1; });
+  return shuffle(pool, rng).slice(0, Math.min(count, pool.length));
+}
+
+function masteryByDomain(bank, correctEverIds) {
+  var correct = {};
+  correctEverIds.forEach(function (id) { correct[id] = true; });
+  var result = {};
+  bank.forEach(function (q) {
+    var d = result[q.domain] || (result[q.domain] = { correct: 0, total: 0 });
+    d.total++;
+    if (correct[q.id]) d.correct++;
+  });
+  return result;
+}
+
 function validateBank(bank) {
   var errors = [];
   var seen = {};
@@ -102,6 +119,8 @@ if (typeof module !== "undefined" && module.exports) {
     gradeSession: gradeSession,
     updateWeakSet: updateWeakSet,
     validateBank: validateBank,
+    sampleQuiz: sampleQuiz,
+    masteryByDomain: masteryByDomain,
   };
 }
 
@@ -174,6 +193,21 @@ if (typeof document !== "undefined") {
           ? weak.length + " question" + (weak.length === 1 ? "" : "s") + " you previously missed. Answer correctly to clear them."
           : "Nothing here yet — questions you miss will collect here.") + "</p>" +
         '<button class="btn" data-action="start-weak"' + (weak.length ? "" : " disabled") + ">Drill " + (weak.length || "") + "</button></div>";
+      html += '<div class="card"><h2>Custom quiz</h2><p>Pick domains, length, and timing — e.g. a quick 20-question timed round on your weakest domain.</p>' +
+        '<button class="btn" data-action="custom-builder">Build quiz</button></div>';
+      html += "</div>";
+
+      var correctEver = LS.get("ccarf.correctEver", []);
+      var mastery = masteryByDomain(BANK, correctEver);
+      html += '<div class="card"><h2>Mastery</h2><p class="muted">Share of the bank you have ever answered correctly.</p>';
+      for (var md = 1; md <= 5; md++) {
+        var m = mastery[md] || { correct: 0, total: 0 };
+        var pct = m.total ? Math.round((m.correct / m.total) * 100) : 0;
+        html += '<div class="domain-score"><div class="domain-score-label">' +
+          '<span class="domain-chip chip-d' + md + '">D' + md + "</span><span>" + esc(DOMAIN_NAMES[md]) + "</span>" +
+          '<span class="muted">' + m.correct + "/" + m.total + " · " + pct + "%</span></div>" +
+          '<div class="bar"><div class="bar-fill ' + (pct >= 72 ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div></div>';
+      }
       html += "</div>";
 
       html += '<div class="card"><h2>Practice by domain</h2><div class="domain-list">';
@@ -212,10 +246,10 @@ if (typeof document !== "undefined") {
     }
 
     /* --------------------------------------------------------- sessions */
-    function newSession(mode, questions, timed) {
+    function newSession(mode, questions, durationMs) {
       var now = Date.now();
       return {
-        mode: mode, // 'exam' | 'retry' | 'weak' | 'practice'
+        mode: mode, // 'exam' | 'retry' | 'weak' | 'practice' | 'custom'
         questions: questions.map(function (q) {
           return { id: q.id, order: shuffle([0, 1, 2, 3]) };
         }),
@@ -223,7 +257,7 @@ if (typeof document !== "undefined") {
         flagged: {},
         current: 0,
         startedAt: now,
-        deadline: timed ? now + EXAM_DURATION_MS : null,
+        deadline: durationMs ? now + durationMs : null,
         feedback: null, // practice mode: answered question awaiting "next"
         tally: { correct: 0, wrong: 0 }, // practice running tally
       };
@@ -241,8 +275,41 @@ if (typeof document !== "undefined") {
         alert("Question bank problem: " + e.message);
         return;
       }
-      session = newSession("exam", questions, true);
+      session = newSession("exam", questions, EXAM_DURATION_MS);
       persistSession();
+      renderQuestion();
+      startTimer();
+    }
+
+    function renderCustomBuilder() {
+      var html = '<div class="quiz-header"><div><strong>Custom quiz</strong></div>' +
+        '<button class="btn ghost small" data-action="home">← Home</button></div>';
+      html += '<div class="card"><h2>Domains</h2><div class="domain-list">';
+      for (var d = 1; d <= 5; d++) {
+        var count = BANK.filter(function (q) { return q.domain === d; }).length;
+        html += '<label class="domain-row check-row"><input type="checkbox" class="cb-domain" value="' + d + '" checked>' +
+          '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
+          "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
+          '<span class="muted">' + count + " questions</span></label>";
+      }
+      html += "</div></div>";
+      html += '<div class="card"><div class="row builder-row">' +
+        '<label>Questions <select id="cb-count"><option>10</option><option selected>20</option><option>30</option><option>60</option></select></label>' +
+        '<label class="check-inline"><input type="checkbox" id="cb-timed"> Timed (2 min per question)</label>' +
+        '<button class="btn primary" data-action="start-custom">Start quiz</button>' +
+        "</div></div>";
+      app.innerHTML = html;
+    }
+
+    function startCustom() {
+      var domains = Array.prototype.slice
+        .call(app.querySelectorAll(".cb-domain:checked"))
+        .map(function (el) { return Number(el.value); });
+      if (!domains.length) { alert("Pick at least one domain."); return; }
+      var count = Number(document.getElementById("cb-count").value);
+      var timed = document.getElementById("cb-timed").checked;
+      var questions = sampleQuiz(BANK, domains, count);
+      session = newSession("custom", questions, timed ? questions.length * 2 * 60 * 1000 : null);
       renderQuestion();
       startTimer();
     }
@@ -315,6 +382,7 @@ if (typeof document !== "undefined") {
         case "retry": return "Retry Failed Questions";
         case "weak": return "Weak Questions Drill";
         case "practice": return "Practice — " + DOMAIN_NAMES[session.domain];
+        case "custom": return "Custom Quiz";
       }
     }
 
@@ -337,6 +405,12 @@ if (typeof document !== "undefined") {
         '<button class="btn ghost small" data-action="quit">Exit</button>' +
         "</div></div>";
 
+      var answeredCount = session.questions.filter(function (s) {
+        return session.answers[s.id] !== null;
+      }).length;
+      html += '<div class="progress"><div class="progress-fill" style="width:' +
+        Math.round((answeredCount / total) * 100) + '%"></div></div>';
+
       if (!isPractice) {
         html += '<div class="navigator">';
         session.questions.forEach(function (s, i) {
@@ -351,7 +425,9 @@ if (typeof document !== "undefined") {
 
       html += '<div class="card question-card">' +
         '<div class="q-meta"><span class="domain-chip chip-d' + q.domain + '">D' + q.domain + "</span>" +
-        '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span></div>" +
+        '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>" +
+        (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "") +
+        "</div>" +
         '<p class="q-text">' + esc(q.question) + "</p><div class=\"options\">";
 
       sq.order.forEach(function (optIdx) {
@@ -391,6 +467,8 @@ if (typeof document !== "undefined") {
           '<button class="btn" data-action="next"' + (session.current + 1 >= total ? " disabled" : "") + ">Next →</button>";
       }
       html += "</div></div>";
+      html += '<p class="muted kbd-hint">Keyboard: <kbd>1</kbd>–<kbd>4</kbd> answer · <kbd>←</kbd>/<kbd>→</kbd> navigate' +
+        (isPractice ? "" : " · <kbd>F</kbd> flag") + "</p>";
 
       app.innerHTML = html;
     }
@@ -426,6 +504,12 @@ if (typeof document !== "undefined") {
       };
 
       LS.set("ccarf.weak", updateWeakSet(LS.get("ccarf.weak", []), grade));
+
+      var correctEver = LS.get("ccarf.correctEver", []);
+      var everSet = {};
+      correctEver.forEach(function (id) { everSet[id] = true; });
+      grade.correctIds.forEach(function (id) { everSet[id] = true; });
+      LS.set("ccarf.correctEver", Object.keys(everSet));
 
       if (session.mode === "exam") {
         LS.remove("ccarf.session");
@@ -495,28 +579,39 @@ if (typeof document !== "undefined") {
         case "retry": return "Retry session — keep going until everything is green";
         case "weak": return "Weak questions drill";
         case "practice": return "Practice session complete";
+        case "custom": return "Custom quiz complete";
         default: return "";
       }
     }
 
     var lastFinished = null;
     var reviewWrongOnly = false;
+    var reviewDomain = 0; // 0 = all
 
     function renderReview() {
       var finished = lastFinished;
+      var domainOptions = '<option value="0">All domains</option>';
+      for (var rd = 1; rd <= 5; rd++) {
+        domainOptions += '<option value="' + rd + '"' + (reviewDomain === rd ? " selected" : "") + ">D" + rd + " — " + esc(DOMAIN_NAMES[rd]) + "</option>";
+      }
       var html = '<div class="quiz-header"><div><strong>Review</strong></div><div class="row">' +
+        '<select id="review-domain" class="select">' + domainOptions + "</select>" +
         '<button class="btn small ' + (reviewWrongOnly ? "" : "ghost") + '" data-action="toggle-wrong-only">' +
         (reviewWrongOnly ? "Showing wrong only" : "Show wrong only") + "</button>" +
         '<button class="btn ghost small" data-action="back-results">Back to results</button></div></div>';
 
+      var shown = 0;
       finished.questions.forEach(function (s, i) {
         var q = byId[s.id];
         var given = finished.answers[q.id];
         var right = given === q.answer;
         if (reviewWrongOnly && right) return;
+        if (reviewDomain && q.domain !== reviewDomain) return;
+        shown++;
         html += '<div class="card review-card ' + (right ? "r-ok" : "r-bad") + '">' +
           '<div class="q-meta"><strong>Q' + (i + 1) + "</strong>" +
           '<span class="domain-chip chip-d' + q.domain + '">D' + q.domain + "</span>" +
+          (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "") +
           '<span class="badge ' + (right ? "pass" : "fail") + '">' + (right ? "Correct" : given === null ? "Unanswered" : "Wrong") + "</span></div>" +
           '<p class="q-text">' + esc(q.question) + "</p><div class=\"options\">";
         s.order.forEach(function (optIdx) {
@@ -528,14 +623,74 @@ if (typeof document !== "undefined") {
             (given === optIdx && given !== q.answer ? ' <span class="tag">your answer</span>' : "") +
             "</div>";
         });
-        html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div></div>";
+        html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) +
+          (q.source ? ' <span class="muted">(source: ' + esc(q.source) + ")</span>" : "") +
+          "</div></div>";
       });
 
+      if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';
+
       app.innerHTML = html;
+      var sel = document.getElementById("review-domain");
+      if (sel) sel.addEventListener("change", function () {
+        reviewDomain = Number(sel.value);
+        renderReview();
+      });
       window.scrollTo(0, 0);
     }
 
     /* ------------------------------------------------------------ events */
+    function inQuestionScreen() {
+      return !!(session && session.questions && session.questions[session.current]);
+    }
+
+    function goPrev() {
+      if (session.mode === "practice" || session.current === 0) return;
+      session.current--;
+      session.feedback = null;
+      persistSession();
+      renderQuestion();
+    }
+
+    function goNext() {
+      var sq = session.questions[session.current];
+      if (session.mode === "practice") {
+        if (session.feedback !== sq.id) return; // must answer first
+        if (session.current + 1 >= session.questions.length) return submitSession();
+      } else if (session.current + 1 >= session.questions.length) {
+        return;
+      }
+      session.current++;
+      session.feedback = null;
+      persistSession();
+      renderQuestion();
+    }
+
+    function toggleFlag() {
+      if (session.mode === "practice") return;
+      var id = session.questions[session.current].id;
+      if (session.flagged[id]) delete session.flagged[id];
+      else session.flagged[id] = true;
+      persistSession();
+      renderQuestion();
+    }
+
+    document.addEventListener("keydown", function (ev) {
+      if (!inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      var key = ev.key.toLowerCase();
+      var optPos = -1;
+      if (key.length === 1 && key >= "1" && key <= "4") optPos = Number(key) - 1;
+      else if (key.length === 1 && key >= "a" && key <= "d") optPos = key.charCodeAt(0) - 97;
+      if (optPos >= 0) {
+        var sq = session.questions[session.current];
+        if (session.mode === "practice" && session.feedback === sq.id) return;
+        return selectOption(sq.order[optPos]);
+      }
+      if (ev.key === "ArrowLeft") { ev.preventDefault(); return goPrev(); }
+      if (ev.key === "ArrowRight" || ev.key === "Enter") { ev.preventDefault(); return goNext(); }
+      if (key === "f") return toggleFlag();
+    });
+
     app.addEventListener("click", function (ev) {
       var btn = ev.target.closest("[data-action]");
       if (!btn || btn.disabled) return;
@@ -550,20 +705,14 @@ if (typeof document !== "undefined") {
         case "clear-history":
           if (confirm("Delete all score history?")) { LS.remove("ccarf.history"); renderHome(); }
           return;
+        case "custom-builder": return renderCustomBuilder();
+        case "start-custom": return startCustom();
         case "select": return selectOption(Number(btn.dataset.opt));
-        case "prev":
-          session.current--; session.feedback = null; persistSession(); return renderQuestion();
-        case "next":
-          session.current++; session.feedback = null; persistSession(); return renderQuestion();
+        case "prev": return goPrev();
+        case "next": return goNext();
         case "jump":
           session.current = Number(btn.dataset.index); persistSession(); return renderQuestion();
-        case "toggle-flag": {
-          var id = session.questions[session.current].id;
-          if (session.flagged[id]) delete session.flagged[id];
-          else session.flagged[id] = true;
-          persistSession();
-          return renderQuestion();
-        }
+        case "toggle-flag": return toggleFlag();
         case "submit": {
           if (session.mode === "exam") {
             var unanswered = session.questions.filter(function (s) { return session.answers[s.id] === null; }).length;
@@ -582,7 +731,7 @@ if (typeof document !== "undefined") {
           stopTimer();
           return renderHome();
         case "retry-failed": return startRetry(lastFinished.grade.wrongIds);
-        case "show-review": reviewWrongOnly = false; return renderReview();
+        case "show-review": reviewWrongOnly = false; reviewDomain = 0; return renderReview();
         case "toggle-wrong-only": reviewWrongOnly = !reviewWrongOnly; return renderReview();
         case "back-results": return renderResults(lastFinished);
         case "home": return renderHome();

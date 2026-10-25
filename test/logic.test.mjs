@@ -12,6 +12,8 @@ const {
   gradeSession,
   updateWeakSet,
   validateBank,
+  sampleQuiz,
+  masteryByDomain,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -103,6 +105,23 @@ test("updateWeakSet adds wrong ids and redeems corrected ones", () => {
     correctIds: ["d1-q01"],
   });
   assert.deepEqual([...next].sort(), ["d2-q05", "d3-q09"]);
+});
+
+test("sampleQuiz draws only from chosen domains, without duplicates, clamped to pool size", () => {
+  const quiz = sampleQuiz(FULL_BANK, [2, 5], 20);
+  assert.equal(quiz.length, 20);
+  assert.ok(quiz.every((q) => q.domain === 2 || q.domain === 5));
+  assert.equal(new Set(quiz.map((q) => q.id)).size, 20);
+  const clamped = sampleQuiz(FULL_BANK, [5], 100);
+  assert.equal(clamped.length, 27);
+});
+
+test("masteryByDomain reports correct-ever counts per domain", () => {
+  const correctEver = ["d1-q01", "d1-q02", "d5-q01", "nonexistent"];
+  const m = masteryByDomain(FULL_BANK, correctEver);
+  assert.deepEqual(m[1], { correct: 2, total: 49 });
+  assert.deepEqual(m[5], { correct: 1, total: 27 });
+  assert.deepEqual(m[2], { correct: 0, total: 32 });
 });
 
 test("validateBank passes a well-formed bank", () => {

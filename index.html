@@ -60,7 +60,7 @@
     padding: 18px;
     margin-bottom: 16px;
   }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 16px; }
   .grid .card { margin: 0; display: flex; flex-direction: column; }
   .grid .card p { flex: 1; color: var(--muted); font-size: 0.92rem; }
   @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
@@ -184,6 +184,27 @@
   .review-card.r-bad { border-left-color: var(--bad); }
 
   code { background: var(--border); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+
+  .progress { height: 5px; border-radius: 999px; background: var(--border); overflow: hidden; margin-bottom: 14px; }
+  .progress-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.25s; }
+  .kbd-hint { text-align: center; font-size: 0.8rem; margin-top: 14px; }
+  kbd {
+    font: 0.78rem ui-monospace, monospace;
+    background: var(--surface); border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 5px;
+  }
+  .sub-tag { font-size: 0.78rem; }
+  .select {
+    font: inherit; font-size: 0.88rem; padding: 6px 8px;
+    border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text);
+  }
+  .check-row { cursor: pointer; }
+  .check-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .check-inline { display: flex; gap: 7px; align-items: center; cursor: pointer; }
+  .check-inline input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .builder-row { justify-content: space-between; }
+  .builder-row label { display: flex; gap: 8px; align-items: center; }
 </style>
 </head>
 <body>
@@ -198,6 +219,7 @@
 <script src="questions/domain3-set2.js"></script>
 <script src="questions/domain4-set2.js"></script>
 <script src="questions/domain5-set2.js"></script>
+<script src="questions/imported-shikhorroy.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
