@@ -1,7 +1,7 @@
 # CCAR-F Question Bank
 
 Exam prep for the Claude Certified Architect (Foundations) certification —
-180 original multiple-choice questions across the five exam domains, with
+300 original multiple-choice questions across the five exam domains, with
 realistic timed mock exams, scoring, review, and retry-failed drilling.
 
 ## Use
@@ -27,7 +27,9 @@ Modes:
 ## Development
 
 - `app.js` — quiz engine; pure logic functions are exported for tests
-- `questions/domain1.js` … `domain5.js` — question data (49/32/36/36/27)
+- `questions/domain1.js` … `domain5.js` — original question sets (49/32/36/36/27)
+- `questions/domain1-set2.js` … `domain5-set2.js` — harder expansion sets
+  (32/22/24/24/18), total per domain 81/54/60/60/45
 - `node --test test/logic.test.mjs` — engine tests
 - `node test/validate-bank.mjs` — structural validation of the question bank
 

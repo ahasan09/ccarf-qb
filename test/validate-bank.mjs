@@ -19,7 +19,7 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith(".js")).sort()) {
 }
 
 const bank = ctx.window.QUESTION_BANK || [];
-const expected = { 1: 49, 2: 32, 3: 36, 4: 36, 5: 27 };
+const expected = { 1: 81, 2: 54, 3: 60, 4: 60, 5: 45 };
 const errors = validateBank(bank);
 
 const perDomain = {};

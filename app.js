@@ -72,7 +72,6 @@ function updateWeakSet(weak, grade) {
 function validateBank(bank) {
   var errors = [];
   var seen = {};
-  var expected = { 1: 49, 2: 32, 3: 36, 4: 36, 5: 27 };
   bank.forEach(function (q) {
     var id = q.id || "<missing id>";
     if (seen[id]) errors.push(id + ": duplicate id");
