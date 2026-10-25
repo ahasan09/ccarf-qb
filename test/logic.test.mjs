@@ -15,6 +15,7 @@ const {
   sampleQuiz,
   masteryByDomain,
   masteryBySubdomain,
+  filterBySubKey,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -139,6 +140,18 @@ test("masteryBySubdomain groups tagged questions by subdomain and untagged as ge
     { key: "2.4", title: "MCP integration", correct: 0, total: 1 },
     { key: "general", title: "General (untagged)", correct: 1, total: 1 },
   ]);
+});
+
+test("filterBySubKey selects a domain's subdomain questions, or all with no key", () => {
+  const bank = [
+    { id: "a", domain: 2, subdomain: "2.1 Tool interfaces" },
+    { id: "b", domain: 2, subdomain: "2.4 MCP integration" },
+    { id: "c", domain: 2 },
+    { id: "d", domain: 3, subdomain: "2.1 wrong domain" },
+  ];
+  assert.deepEqual(filterBySubKey(bank, 2, "2.1").map((q) => q.id), ["a"]);
+  assert.deepEqual(filterBySubKey(bank, 2, "general").map((q) => q.id), ["c"]);
+  assert.deepEqual(filterBySubKey(bank, 2, null).map((q) => q.id), ["a", "b", "c"]);
 });
 
 test("validateBank passes a well-formed bank", () => {

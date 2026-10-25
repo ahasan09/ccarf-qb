@@ -322,6 +322,15 @@
   .sub-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .sub-label .muted { margin-left: auto; font-family: var(--mono); font-size: 0.72rem; flex: none; }
   .bar.thin { height: 5px; }
+  .practice-subs { margin-top: 2px; margin-bottom: 10px; gap: 5px; }
+  .sub-row {
+    display: flex; gap: 8px; align-items: baseline; text-align: left;
+    font: inherit; font-size: 0.88rem; color: var(--ink);
+    background: none; border: 0; border-radius: 7px;
+    padding: 7px 9px; cursor: pointer; width: 100%;
+  }
+  .sub-row:hover { background: var(--pen-soft); }
+  .sub-row .muted { margin-left: auto; font-family: var(--mono); font-size: 0.72rem; flex: none; }
   .bar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 999px; transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1); }
   .bar-fill.ok { background: var(--pass); }

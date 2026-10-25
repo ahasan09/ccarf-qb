@@ -87,21 +87,27 @@ function masteryByDomain(bank, correctEverIds) {
   return result;
 }
 
+function subKeyOf(q) {
+  if (!q.subdomain) return { key: "general", title: "General (untagged)" };
+  var s = String(q.subdomain);
+  var sp = s.indexOf(" ");
+  return sp === -1 ? { key: s, title: "" } : { key: s.slice(0, sp), title: s.slice(sp + 1) };
+}
+
+function filterBySubKey(bank, domain, subKey) {
+  return bank.filter(function (q) {
+    return q.domain === domain && (!subKey || subKeyOf(q).key === subKey);
+  });
+}
+
 function masteryBySubdomain(bank, correctEverIds, domain) {
   var correct = {};
   correctEverIds.forEach(function (id) { correct[id] = true; });
   var rows = {};
   bank.forEach(function (q) {
     if (q.domain !== domain) return;
-    var key, title;
-    if (q.subdomain) {
-      var sp = String(q.subdomain).indexOf(" ");
-      key = sp === -1 ? q.subdomain : q.subdomain.slice(0, sp);
-      title = sp === -1 ? "" : q.subdomain.slice(sp + 1);
-    } else {
-      key = "general";
-      title = "General (untagged)";
-    }
+    var sk = subKeyOf(q);
+    var key = sk.key, title = sk.title;
     var row = rows[key] || (rows[key] = { key: key, title: title, correct: 0, total: 0 });
     row.total++;
     if (correct[q.id]) row.correct++;
@@ -152,6 +158,7 @@ if (typeof module !== "undefined" && module.exports) {
     sampleQuiz: sampleQuiz,
     masteryByDomain: masteryByDomain,
     masteryBySubdomain: masteryBySubdomain,
+    filterBySubKey: filterBySubKey,
   };
 }
 
@@ -194,6 +201,7 @@ if (typeof document !== "undefined") {
     var session = null; // active session object
     var pendingEmail = null; // login code sent, awaiting verification
     var expandedMastery = 0; // domain whose subdomain breakdown is open (0 = none)
+    var expandedPractice = 0; // domain whose practice subdomain list is open (0 = none)
 
     /* ------------------------------------------------------------- theme */
     var THEMES = ["auto", "light", "dark"];
@@ -317,13 +325,30 @@ if (typeof document !== "undefined") {
       }
       html += "</div>";
 
-      html += '<div class="card"><h2>Practice by domain</h2><div class="domain-list">';
+      html += '<div class="card"><h2>Practice by domain</h2>' +
+        '<p class="muted">Untimed, instant feedback. Click a domain to pick a subdomain, or practice all of it.</p>' +
+        '<div class="domain-list">';
       for (var d = 1; d <= 5; d++) {
         var count = BANK.filter(function (q) { return q.domain === d; }).length;
-        html += '<button class="domain-row" data-action="practice" data-domain="' + d + '">' +
+        var pOpen = expandedPractice === d;
+        html += '<button class="domain-row" data-action="toggle-practice" data-domain="' + d + '" aria-expanded="' + pOpen + '">' +
           '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
           "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
-          '<span class="muted">' + count + " questions · untimed · instant feedback</span></button>";
+          '<span class="chev">' + (pOpen ? "▾" : "▸") + "</span>" +
+          '<span class="muted">' + count + " questions</span></button>";
+        if (pOpen) {
+          html += '<div class="sub-scores practice-subs">' +
+            '<button class="sub-row" data-action="practice" data-domain="' + d + '">' +
+            "<span><strong>Practice all</strong></span>" +
+            '<span class="muted">' + count + " questions</span></button>";
+          masteryBySubdomain(BANK, correctEver, d).forEach(function (row) {
+            html += '<button class="sub-row" data-action="practice" data-domain="' + d + '" data-sub="' + esc(row.key) + '">' +
+              (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
+              '<span class="sub-title">' + esc(row.title) + "</span>" +
+              '<span class="muted">' + row.correct + "/" + row.total + "</span></button>";
+          });
+          html += "</div>";
+        }
       }
       html += "</div></div>";
 
@@ -479,11 +504,13 @@ if (typeof document !== "undefined") {
       renderQuestion();
     }
 
-    function startPractice(domain) {
+    function startPractice(domain, subKey) {
       if (!okToReplaceSaved()) return;
-      var pool = shuffle(BANK.filter(function (q) { return q.domain === domain; }));
+      var pool = shuffle(filterBySubKey(BANK, domain, subKey || null));
+      if (!pool.length) return;
       session = newSession("practice", pool, false);
       session.domain = domain;
+      session.subKey = subKey || null;
       persistSession();
       renderQuestion();
     }
@@ -535,7 +562,10 @@ if (typeof document !== "undefined") {
         case "exam": return "Mock Exam";
         case "retry": return "Retry Failed Questions";
         case "weak": return "Weak Questions Drill";
-        case "practice": return "Practice — " + DOMAIN_NAMES[session.domain];
+        case "practice":
+          return "Practice — " + (session.subKey && session.subKey !== "general"
+            ? "Subdomain " + session.subKey
+            : DOMAIN_NAMES[session.domain] + (session.subKey === "general" ? " (untagged)" : ""));
         case "custom": return "Custom Quiz";
       }
     }
@@ -866,7 +896,12 @@ if (typeof document !== "undefined") {
       switch (action) {
         case "start-exam": return startExam();
         case "start-weak": return startWeak();
-        case "practice": return startPractice(Number(btn.dataset.domain));
+        case "practice": return startPractice(Number(btn.dataset.domain), btn.dataset.sub || null);
+        case "toggle-practice": {
+          var pd = Number(btn.dataset.domain);
+          expandedPractice = expandedPractice === pd ? 0 : pd;
+          return renderHome();
+        }
         case "resume": return resumeSession();
         case "discard":
           if (!confirm("Discard this in-progress session? This cannot be undone.")) return;
