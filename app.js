@@ -173,9 +173,10 @@ if (typeof document !== "undefined") {
       var saved = LS.get("ccarf.session", null);
 
       var html = "";
-      html += '<header class="hero"><h1>CCAR-F Question Bank</h1>' +
-        "<p>Claude Certified Architect (Foundations) — " + BANK.length +
-        " questions · 60-question mock exams · pass at 720/1000</p></header>";
+      html += '<header class="hero"><h1>CCAR-F Question Bank</h1><div class="rule"></div>' +
+        "<p>Claude Certified Architect (Foundations) exam prep. Mark your answers, grade yourself against the real pass line, and drill what you miss.</p>" +
+        '<div class="facts"><span><b>' + BANK.length + "</b> questions</span><span><b>5</b> domains</span>" +
+        "<span><b>60</b> per exam</span><span><b>120</b> min</span><span><b>720</b> pass line</span></div></header>";
 
       if (saved) {
         html += '<div class="card resume-card"><div><strong>Exam in progress</strong>' +
@@ -241,6 +242,10 @@ if (typeof document !== "undefined") {
           '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
       }
       html += "</div>";
+
+      html += '<footer class="site-footer">Includes 480 questions from ' +
+        '<a href="https://github.com/shikhorroy/ccarf-quiz" rel="noopener">shikhorroy/ccarf-quiz</a>. ' +
+        "Not affiliated with Anthropic or Pearson VUE.</footer>";
 
       app.innerHTML = html;
     }
@@ -536,15 +541,26 @@ if (typeof document !== "undefined") {
       var isExam = finished.mode === "exam";
       var html = "";
 
+      var CIRC = 408; // 2π × r65, matches the CSS dasharray
+      function ring(fraction, good, num, den) {
+        var offset = Math.round(CIRC * (1 - Math.max(0, Math.min(1, fraction))));
+        return '<div class="score-ring ' + (good ? "pass" : "fail") + '" style="--target:' + offset + '">' +
+          '<svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">' +
+          '<circle class="track" cx="75" cy="75" r="65"></circle>' +
+          '<circle class="fill" cx="75" cy="75" r="65"></circle></svg>' +
+          '<div class="center"><div class="num">' + num + '</div><div class="den">' + den + "</div></div></div>";
+      }
+
       if (isExam) {
         var pass = finished.score >= PASS_SCORE;
         html += '<div class="card score-card ' + (pass ? "pass" : "fail") + '">' +
-          '<div class="score-big">' + finished.score + '<span class="score-of">/1000</span></div>' +
+          ring(finished.score / 1000, pass, finished.score, "/ 1000") +
           '<div><span class="badge big ' + (pass ? "pass" : "fail") + '">' + (pass ? "PASS" : "FAIL") + "</span>" +
           '<p class="muted">Passing score 720 · you answered ' + grade.correct + " of " + grade.total + " correctly</p></div></div>";
       } else {
-        html += '<div class="card score-card"><div class="score-big">' + grade.correct +
-          '<span class="score-of">/' + grade.total + "</span></div>" +
+        var frac = grade.total ? grade.correct / grade.total : 0;
+        html += '<div class="card score-card">' +
+          ring(frac, frac >= 0.72, grade.correct, "/ " + grade.total) +
           '<p class="muted">' + sessionResultLabel(finished.mode) + "</p></div>";
       }
 
@@ -739,6 +755,11 @@ if (typeof document !== "undefined") {
     });
 
     /* ------------------------------------------------------------- boot */
+    if ("serviceWorker" in navigator &&
+        (location.protocol === "https:" || location.hostname === "localhost")) {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    }
+
     var bankErrors = validateBank(BANK);
     if (!BANK.length) {
       app.innerHTML = '<div class="card"><h2>No questions loaded</h2><p>Make sure the files in <code>questions/</code> are present.</p></div>';

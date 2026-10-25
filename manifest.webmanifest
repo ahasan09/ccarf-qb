@@ -1,0 +1,13 @@
+{
+  "name": "CCAR-F Question Bank",
+  "short_name": "CCAR-F QB",
+  "description": "Exam prep for the Claude Certified Architect (Foundations) certification.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f4",
+  "theme_color": "#1f4fd8",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
