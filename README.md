@@ -1,7 +1,7 @@
 # CCAR-F Question Bank
 
 Exam prep for the Claude Certified Architect (Foundations) certification —
-780 multiple-choice questions across the five exam domains, with
+837 multiple-choice questions across the five exam domains, with
 realistic timed mock exams, scoring, review, and retry-failed drilling.
 
 ## Use
@@ -73,7 +73,10 @@ Sync is last-writer-wins on the whole progress blob: every change is pushed
 - `questions/domain1-set2.js` … `domain5-set2.js` — harder expansion sets
   (32/22/24/24/18)
 - `questions/extra-set.js` — 480 additional questions (tagged with
-  `subdomain`). Totals per domain: 193/134/156/156/141.
+  `subdomain`)
+- `questions/domain1-gap.js` … `domain5-gap.js` — 57 targeted questions
+  filling subdomain gaps found by the coverage audit (6/6/15/6/24).
+  Totals per domain: 199/140/171/162/165.
 - `node --test test/logic.test.mjs` — engine tests
 - `node test/validate-bank.mjs` — structural validation of the question bank
 
