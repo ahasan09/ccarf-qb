@@ -657,8 +657,11 @@ if (typeof document !== "undefined") {
       }
       html += "</div>";
 
+      var hint = '<span class="muted kbd-hint"><kbd>1</kbd>–<kbd>4</kbd> answer · <kbd>←</kbd>/<kbd>→</kbd> navigate' +
+        (isPractice ? "" : " · <kbd>F</kbd> flag") + "</span>";
       html += '<div class="quiz-footer">' +
-        '<button class="btn" data-action="prev"' + (session.current === 0 || isPractice ? " disabled" : "") + ">← Previous</button>" +
+        (isPractice ? "" : '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>") +
+        hint +
         '<div class="row">';
       if (isPractice) {
         if (showFeedback) {
@@ -674,8 +677,6 @@ if (typeof document !== "undefined") {
           '<button class="btn" data-action="next"' + (session.current + 1 >= total ? " disabled" : "") + ">Next →</button>";
       }
       html += "</div></div>";
-      html += '<p class="muted kbd-hint"><kbd>1</kbd>–<kbd>4</kbd> answer · <kbd>←</kbd>/<kbd>→</kbd> navigate' +
-        (isPractice ? "" : " · <kbd>F</kbd> flag") + "</p>";
 
       app.innerHTML = html;
       var cur = app.querySelector(".nav-cell.current");
