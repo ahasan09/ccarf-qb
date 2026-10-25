@@ -1,10 +1,12 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
   "index.html",
   "app.js",
+  "config.js",
+  "sync.js",
   "icon.svg",
   "manifest.webmanifest",
   "questions/domain1.js",
@@ -17,7 +19,7 @@ const CORE = [
   "questions/domain3-set2.js",
   "questions/domain4-set2.js",
   "questions/domain5-set2.js",
-  "questions/imported-shikhorroy.js",
+  "questions/extra-set.js",
 ];
 
 self.addEventListener("install", (e) => {

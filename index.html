@@ -36,7 +36,7 @@
     --mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --paper: #17191c;
       --card: #1f2227;
       --ink: #e9ebed;
@@ -54,6 +54,24 @@
       --d1: #a68ad4; --d2: #55b9c9; --d3: #e0754a; --d4: #46c184; --d5: #d1a05c;
       --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.25);
     }
+  }
+  :root[data-theme="dark"] {
+    --paper: #17191c;
+    --card: #1f2227;
+    --ink: #e9ebed;
+    --graphite: #9aa2ab;
+    --line: #2e3238;
+    --line-strong: #44494f;
+    --pen: #7b9bf2;
+    --pen-soft: #22304f;
+    --pass: #46c184;
+    --pass-soft: #1c3328;
+    --fail: #e57866;
+    --fail-soft: #3a2521;
+    --flag: #e0b24a;
+    --flag-soft: #363017;
+    --d1: #a68ad4; --d2: #55b9c9; --d3: #e0754a; --d4: #46c184; --d5: #d1a05c;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.25);
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -279,6 +297,17 @@
   .builder-row { justify-content: space-between; }
   .builder-row label { display: flex; gap: 8px; align-items: center; }
 
+  .topbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .input {
+    font-family: var(--body); font-size: 0.92rem;
+    padding: 9px 12px; border-radius: 9px;
+    border: 1.5px solid var(--line-strong);
+    background: var(--card); color: var(--ink);
+    min-width: 0; flex: 1 1 180px;
+  }
+  .input:focus-visible { outline: 2.5px solid var(--pen); outline-offset: 1px; }
+  .auth-note { font-size: 0.82rem; }
+
   .site-footer { margin-top: 34px; text-align: center; font-size: 0.78rem; color: var(--graphite); }
   .site-footer a { color: var(--graphite); }
 
@@ -310,7 +339,9 @@
 <script src="questions/domain3-set2.js"></script>
 <script src="questions/domain4-set2.js"></script>
 <script src="questions/domain5-set2.js"></script>
-<script src="questions/imported-shikhorroy.js"></script>
+<script src="questions/extra-set.js"></script>
+<script src="config.js"></script>
 <script src="app.js"></script>
+<script type="module" src="sync.js"></script>
 </body>
 </html>

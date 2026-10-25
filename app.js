@@ -131,6 +131,14 @@ if (typeof document !== "undefined") {
     var byId = {};
     BANK.forEach(function (q) { byId[q.id] = q; });
 
+    var SYNC_KEYS = ["ccarf.history", "ccarf.weak", "ccarf.correctEver", "ccarf.session"];
+
+    function noteChange(key) {
+      if (SYNC_KEYS.indexOf(key) === -1) return;
+      try { localStorage.setItem("ccarf.syncUpdatedAt", String(Date.now())); } catch (e) {}
+      try { window.dispatchEvent(new CustomEvent("ccarf:changed")); } catch (e) {}
+    }
+
     var LS = {
       get: function (key, fallback) {
         try {
@@ -142,15 +150,38 @@ if (typeof document !== "undefined") {
       },
       set: function (key, value) {
         try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+        noteChange(key);
       },
       remove: function (key) {
         try { localStorage.removeItem(key); } catch (e) {}
+        noteChange(key);
       },
     };
 
     var app = document.getElementById("app");
     var timerHandle = null;
     var session = null; // active session object
+    var pendingEmail = null; // login code sent, awaiting verification
+
+    /* ------------------------------------------------------------- theme */
+    var THEMES = ["auto", "light", "dark"];
+    var THEME_LABELS = { auto: "◐ Theme: Auto", light: "☀ Theme: Light", dark: "● Theme: Dark" };
+
+    function currentTheme() {
+      var t = LS.get("ccarf.theme", "auto");
+      return THEMES.indexOf(t) === -1 ? "auto" : t;
+    }
+
+    function applyTheme() {
+      var t = currentTheme();
+      if (t === "auto") document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", t);
+    }
+
+    function cycleTheme() {
+      LS.set("ccarf.theme", THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]);
+      applyTheme();
+    }
 
     function esc(s) {
       return String(s)
@@ -173,6 +204,8 @@ if (typeof document !== "undefined") {
       var saved = LS.get("ccarf.session", null);
 
       var html = "";
+      html += '<div class="topbar"><button class="btn ghost small" data-action="cycle-theme">' +
+        THEME_LABELS[currentTheme()] + "</button></div>";
       html += '<header class="hero"><h1>CCAR-F Question Bank</h1><div class="rule"></div>' +
         "<p>Claude Certified Architect (Foundations) exam prep. Mark your answers, grade yourself against the real pass line, and drill what you miss.</p>" +
         '<div class="facts"><span><b>' + BANK.length + "</b> questions</span><span><b>5</b> domains</span>" +
@@ -221,6 +254,8 @@ if (typeof document !== "undefined") {
       }
       html += "</div></div>";
 
+      html += accountCard();
+
       html += '<div class="card"><h2>Score history</h2>';
       if (!history.length) {
         html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
@@ -247,6 +282,31 @@ if (typeof document !== "undefined") {
         "Not affiliated with Anthropic or Pearson VUE.</footer>";
 
       app.innerHTML = html;
+    }
+
+    function accountCard() {
+      var S = window.CCARF_SYNC;
+      var html = '<div class="card"><h2>Account &amp; sync</h2>';
+      if (!S || !S.enabled) {
+        html += '<p class="muted auth-note">Progress is stored in this browser. To sign in and sync across devices, ' +
+          "enable sync in <code>config.js</code> (see the README).</p>";
+      } else if (S.user()) {
+        var st = S.status();
+        html += "<p>Signed in as <strong>" + esc(S.user().email || "account") + "</strong> " +
+          '<span class="muted">· ' + (st === "synced" ? "progress synced" : st === "syncing" ? "syncing…" : st === "error" ? "sync error — will retry on next change" : "sync ready") + "</span></p>" +
+          '<div class="row"><button class="btn small" data-action="sync-now">Sync now</button>' +
+          '<button class="btn ghost small" data-action="auth-signout">Sign out</button></div>';
+      } else {
+        html += '<p class="muted auth-note">Sign in with your e-mail to back up progress and resume from any device.</p>' +
+          '<div class="row"><input class="input" id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(pendingEmail || "") + '">' +
+          '<button class="btn primary" data-action="auth-send">' + (pendingEmail ? "Resend code" : "Send login code") + "</button></div>";
+        if (pendingEmail) {
+          html += '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">' +
+            '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>' +
+            '<p class="muted auth-note">Check your inbox — enter the code here, or just click the link in the e-mail.</p>';
+        }
+      }
+      return html + "</div>";
     }
 
     /* --------------------------------------------------------- sessions */
@@ -690,6 +750,8 @@ if (typeof document !== "undefined") {
 
     document.addEventListener("keydown", function (ev) {
       if (!inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      var tag = ev.target && ev.target.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       var key = ev.key.toLowerCase();
       var optPos = -1;
       if (key.length === 1 && key >= "1" && key <= "4") optPos = Number(key) - 1;
@@ -748,10 +810,50 @@ if (typeof document !== "undefined") {
         case "toggle-wrong-only": reviewWrongOnly = !reviewWrongOnly; return renderReview();
         case "back-results": return renderResults(lastFinished);
         case "home": return renderHome();
+        case "cycle-theme": cycleTheme(); return renderHome();
+        case "auth-send": {
+          var emailEl = document.getElementById("auth-email");
+          var email = emailEl && emailEl.value.trim();
+          if (!email || email.indexOf("@") === -1) { alert("Enter a valid e-mail address."); return; }
+          btn.disabled = true;
+          window.CCARF_SYNC.sendCode(email).then(function () {
+            pendingEmail = email;
+            renderHome();
+          }).catch(function (err) {
+            btn.disabled = false;
+            alert("Could not send the code: " + (err && err.message ? err.message : err));
+          });
+          return;
+        }
+        case "auth-verify": {
+          var codeEl = document.getElementById("auth-code");
+          var code = codeEl && codeEl.value.trim();
+          if (!code) { alert("Enter the code from the e-mail."); return; }
+          btn.disabled = true;
+          window.CCARF_SYNC.verify(pendingEmail, code).then(function () {
+            pendingEmail = null; // auth event re-renders home
+          }).catch(function (err) {
+            btn.disabled = false;
+            alert("Sign-in failed: " + (err && err.message ? err.message : err));
+          });
+          return;
+        }
+        case "auth-signout":
+          window.CCARF_SYNC.signOut();
+          return;
+        case "sync-now":
+          window.CCARF_SYNC.syncNow();
+          return;
       }
     });
 
+    window.addEventListener("ccarf:auth", function () {
+      if (!session) renderHome();
+    });
+
     /* ------------------------------------------------------------- boot */
+    applyTheme();
+
     if ("serviceWorker" in navigator &&
         (location.protocol === "https:" || location.hostname === "localhost")) {
       navigator.serviceWorker.register("sw.js").catch(function () {});

@@ -30,13 +30,49 @@ Modes:
 Keyboard shortcuts during a session: `1`–`4` (or `A`–`D`) answer, `←`/`→`
 navigate, `F` flag, `Enter` next.
 
+Theme: use the toggle on the home screen (Auto / Light / Dark).
+
+## Progress sync setup (optional)
+
+By default progress lives in the browser's localStorage. To sign in and sync
+across devices:
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the project's **SQL editor**, run:
+
+   ```sql
+   create table public.progress (
+     user_id uuid primary key references auth.users(id) on delete cascade,
+     data jsonb not null,
+     updated_at timestamptz not null default now()
+   );
+   alter table public.progress enable row level security;
+   create policy "own row select" on public.progress
+     for select using (auth.uid() = user_id);
+   create policy "own row insert" on public.progress
+     for insert with check (auth.uid() = user_id);
+   create policy "own row update" on public.progress
+     for update using (auth.uid() = user_id);
+   ```
+
+3. In **Authentication → Email Templates → Magic Link**, add the one-time
+   code to the template so the 6-digit code login works, e.g.
+   `<p>Your login code: {{ .Token }}</p>` (the magic link also works as is).
+4. In **Authentication → URL Configuration**, set the Site URL to where the
+   app is hosted (e.g. `https://<you>.github.io/ccarf-qb/`).
+5. Copy the **Project URL** and **anon public key** from Project Settings →
+   API into `config.js`, uncomment the block, and deploy.
+
+Sync is last-writer-wins on the whole progress blob: every change is pushed
+(debounced) while signed in, and on load the newer of local/remote wins.
+
 ## Development
 
 - `app.js` — quiz engine; pure logic functions are exported for tests
 - `questions/domain1.js` … `domain5.js` — original question sets (49/32/36/36/27)
 - `questions/domain1-set2.js` … `domain5-set2.js` — harder expansion sets
   (32/22/24/24/18)
-- `questions/imported-shikhorroy.js` — 480 additional questions (tagged with
+- `questions/extra-set.js` — 480 additional questions (tagged with
   `subdomain`). Totals per domain: 193/134/156/156/141.
 - `node --test test/logic.test.mjs` — engine tests
 - `node test/validate-bank.mjs` — structural validation of the question bank
