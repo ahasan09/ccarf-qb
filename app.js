@@ -243,8 +243,7 @@ if (typeof document !== "undefined") {
       }
       html += "</div>";
 
-      html += '<footer class="site-footer">Includes 480 questions from ' +
-        '<a href="https://github.com/shikhorroy/ccarf-quiz" rel="noopener">shikhorroy/ccarf-quiz</a>. ' +
+      html += '<footer class="site-footer">Practice material for personal study. ' +
         "Not affiliated with Anthropic or Pearson VUE.</footer>";
 
       app.innerHTML = html;
@@ -639,9 +638,7 @@ if (typeof document !== "undefined") {
             (given === optIdx && given !== q.answer ? ' <span class="tag">your answer</span>' : "") +
             "</div>";
         });
-        html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) +
-          (q.source ? ' <span class="muted">(source: ' + esc(q.source) + ")</span>" : "") +
-          "</div></div>";
+        html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div></div>";
       });
 
       if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';

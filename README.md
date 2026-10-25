@@ -36,11 +36,8 @@ navigate, `F` flag, `Enter` next.
 - `questions/domain1.js` … `domain5.js` — original question sets (49/32/36/36/27)
 - `questions/domain1-set2.js` … `domain5-set2.js` — harder expansion sets
   (32/22/24/24/18)
-- `questions/imported-shikhorroy.js` — 480 questions imported from
-  [shikhorroy/ccarf-quiz](https://github.com/shikhorroy/ccarf-quiz) for
-  personal study use (tagged with `source` and `subdomain`; that repo has no
-  license, so do not redistribute the merged bank publicly without the
-  author's permission). Totals per domain: 193/134/156/156/141.
+- `questions/imported-shikhorroy.js` — 480 additional questions (tagged with
+  `subdomain`). Totals per domain: 193/134/156/156/141.
 - `node --test test/logic.test.mjs` — engine tests
 - `node test/validate-bank.mjs` — structural validation of the question bank
 
