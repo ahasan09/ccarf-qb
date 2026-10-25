@@ -306,8 +306,8 @@ if (typeof document !== "undefined") {
         html += '<div class="domain-score">' +
           '<button class="domain-score-label expandable" data-action="toggle-mastery" data-domain="' + md + '" aria-expanded="' + open + '">' +
           '<span class="domain-chip chip-d' + md + '">D' + md + "</span><span>" + esc(DOMAIN_NAMES[md]) + "</span>" +
-          '<span class="chev">' + (open ? "▾" : "▸") + "</span>" +
-          '<span class="muted">' + m.correct + "/" + m.total + " · " + pct + "%</span></button>" +
+          '<span class="muted">' + m.correct + "/" + m.total + " · " + pct + "%</span>" +
+          chev(open) + "</button>" +
           '<div class="bar"><div class="bar-fill ' + (pct >= 72 ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div>';
         if (open) {
           html += '<div class="sub-scores">';
@@ -334,8 +334,8 @@ if (typeof document !== "undefined") {
         html += '<button class="domain-row" data-action="toggle-practice" data-domain="' + d + '" aria-expanded="' + pOpen + '">' +
           '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
           "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
-          '<span class="chev">' + (pOpen ? "▾" : "▸") + "</span>" +
-          '<span class="muted">' + count + " questions</span></button>";
+          '<span class="muted">' + count + " questions</span>" +
+          chev(pOpen) + "</button>";
         if (pOpen) {
           html += '<div class="sub-scores practice-subs">' +
             '<button class="sub-row" data-action="practice" data-domain="' + d + '">' +
@@ -380,6 +380,13 @@ if (typeof document !== "undefined") {
         "Not affiliated with Anthropic or Pearson VUE.</footer>";
 
       app.innerHTML = html;
+    }
+
+    function chev(open) {
+      return '<span class="chev' + (open ? " open" : "") + '">' +
+        '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
+        '<path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+        "</svg></span>";
     }
 
     function accountCard() {
