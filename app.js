@@ -212,7 +212,8 @@ if (typeof document !== "undefined") {
         "<span><b>60</b> per exam</span><span><b>120</b> min</span><span><b>720</b> pass line</span></div></header>";
 
       if (saved) {
-        html += '<div class="card resume-card"><div><strong>Exam in progress</strong>' +
+        html += '<div class="card resume-card"><div><strong>' +
+          (MODE_NAMES[saved.mode] || "Session") + " in progress</strong>" +
           "<p>" + Object.keys(saved.answers).filter(function (k) { return saved.answers[k] !== null; }).length +
           "/" + saved.questions.length + " answered</p></div>" +
           '<div class="row"><button class="btn primary" data-action="resume">Resume</button>' +
@@ -328,8 +329,13 @@ if (typeof document !== "undefined") {
     }
 
     function persistSession() {
-      if (session && session.mode === "exam") LS.set("ccarf.session", session);
+      if (session) LS.set("ccarf.session", session);
     }
+
+    var MODE_NAMES = {
+      exam: "Mock exam", retry: "Retry failed", weak: "Weak drill",
+      practice: "Practice", custom: "Custom quiz",
+    };
 
     function startExam() {
       var questions;
@@ -374,6 +380,7 @@ if (typeof document !== "undefined") {
       var timed = document.getElementById("cb-timed").checked;
       var questions = sampleQuiz(BANK, domains, count);
       session = newSession("custom", questions, timed ? questions.length * 2 * 60 * 1000 : null);
+      persistSession();
       renderQuestion();
       startTimer();
     }
@@ -381,6 +388,7 @@ if (typeof document !== "undefined") {
     function startRetry(wrongIds) {
       var questions = shuffle(wrongIds.map(function (id) { return byId[id]; }).filter(Boolean));
       session = newSession("retry", questions, false);
+      persistSession();
       renderQuestion();
     }
 
@@ -388,6 +396,7 @@ if (typeof document !== "undefined") {
       var weak = LS.get("ccarf.weak", []).map(function (id) { return byId[id]; }).filter(Boolean);
       if (!weak.length) return;
       session = newSession("weak", shuffle(weak), false);
+      persistSession();
       renderQuestion();
     }
 
@@ -395,10 +404,11 @@ if (typeof document !== "undefined") {
       var pool = shuffle(BANK.filter(function (q) { return q.domain === domain; }));
       session = newSession("practice", pool, false);
       session.domain = domain;
+      persistSession();
       renderQuestion();
     }
 
-    function resumeExam() {
+    function resumeSession() {
       var saved = LS.get("ccarf.session", null);
       if (!saved) return renderHome();
       session = saved;
@@ -549,8 +559,8 @@ if (typeof document !== "undefined") {
         // weak-set bookkeeping happens at session end
       } else {
         session.answers[sq.id] = session.answers[sq.id] === optIdx ? null : optIdx;
-        persistSession();
       }
+      persistSession();
       renderQuestion();
     }
 
@@ -567,6 +577,7 @@ if (typeof document !== "undefined") {
         grade: grade,
       };
 
+      LS.remove("ccarf.session");
       LS.set("ccarf.weak", updateWeakSet(LS.get("ccarf.weak", []), grade));
 
       var correctEver = LS.get("ccarf.correctEver", []);
@@ -576,7 +587,6 @@ if (typeof document !== "undefined") {
       LS.set("ccarf.correctEver", Object.keys(everSet));
 
       if (session.mode === "exam") {
-        LS.remove("ccarf.session");
         var score = scaledScore(grade.correct, grade.total);
         var history = LS.get("ccarf.history", []);
         history.push({
@@ -775,8 +785,11 @@ if (typeof document !== "undefined") {
         case "start-exam": return startExam();
         case "start-weak": return startWeak();
         case "practice": return startPractice(Number(btn.dataset.domain));
-        case "resume": return resumeExam();
-        case "discard": LS.remove("ccarf.session"); return renderHome();
+        case "resume": return resumeSession();
+        case "discard":
+          if (!confirm("Discard this in-progress session? This cannot be undone.")) return;
+          LS.remove("ccarf.session");
+          return renderHome();
         case "clear-history":
           if (confirm("Delete all score history?")) { LS.remove("ccarf.history"); renderHome(); }
           return;
@@ -799,10 +812,8 @@ if (typeof document !== "undefined") {
           return submitSession();
         }
         case "quit":
-          if (session.mode === "exam") {
-            if (!confirm("Exit the exam? Your progress is saved — you can resume from the home screen.")) return;
-            persistSession();
-          } else if (!confirm("Exit this session? Progress will be lost.")) return;
+          if (!confirm("Exit? Your progress is saved — resume from the home screen.")) return;
+          persistSession();
           stopTimer();
           return renderHome();
         case "retry-failed": return startRetry(lastFinished.grade.wrongIds);
