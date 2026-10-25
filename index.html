@@ -91,11 +91,11 @@
   .muted { color: var(--graphite); font-size: 0.9rem; }
   .mono { font-family: var(--mono); }
 
-  /* topbar + brand */
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; gap: 10px; }
-  .brand { display: flex; gap: 10px; align-items: center; font-family: var(--display); font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; }
-  .brand svg { display: block; }
-  .topbar .controls { display: flex; gap: 8px; align-items: center; }
+  /* title row */
+  .title-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 4px 0 2px; flex-wrap: wrap; }
+  .title-row h1 { display: flex; align-items: center; gap: 13px; margin: 0; }
+  .title-row h1 svg { display: block; flex: none; }
+  .controls { display: flex; gap: 8px; align-items: center; }
   .btn.icon { width: 38px; height: 38px; padding: 0; border-radius: 50%; font-size: 1rem; line-height: 1; }
   .signed-chip { font-family: var(--mono); font-size: 0.72rem; color: var(--graphite);
     border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
@@ -105,7 +105,7 @@
   /* hero */
   .hero { display: flex; gap: 28px; align-items: stretch; justify-content: space-between; margin: 6px 0 26px; flex-wrap: wrap; }
   .hero .intro { flex: 1 1 320px; max-width: 54ch; }
-  .hero .rule { height: 3px; background: var(--pen); width: 56px; border-radius: 2px; margin: 14px 0 12px; }
+  .hero .rule { height: 3px; background: var(--pen); width: 56px; border-radius: 2px; margin: 10px 0 12px; }
   .hero p { color: var(--graphite); }
   .hero .facts { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-family: var(--mono); font-size: 0.8rem; color: var(--graphite); }
   .hero .facts b { color: var(--ink); font-weight: 700; }

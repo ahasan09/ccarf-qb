@@ -213,16 +213,16 @@ if (typeof document !== "undefined") {
       }
 
       var html = "";
-      html += '<div class="topbar">' +
-        '<span class="brand"><svg width="26" height="26" viewBox="0 0 128 128" aria-hidden="true">' +
+      html += '<div class="title-row">' +
+        '<h1><svg width="34" height="34" viewBox="0 0 128 128" aria-hidden="true">' +
         '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
         '<circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/>' +
-        '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F</span>' +
+        '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Question Bank</h1>' +
         '<span class="controls">' + acctChip +
         '<button class="btn icon" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="Switch theme">' +
         THEME_ICONS[currentTheme()] + "</button></span></div>";
 
-      html += '<header class="hero"><div class="intro"><h1>Question Bank</h1><div class="rule"></div>' +
+      html += '<header class="hero"><div class="intro"><div class="rule"></div>' +
         "<p>Claude Certified Architect (Foundations) exam prep. Mark your answers, grade yourself against the real pass line, and drill what you miss.</p>" +
         '<div class="facts"><span><b>' + BANK.length + "</b> questions</span><span><b>5</b> domains</span>" +
         "<span><b>30</b> subdomains</span></div></div>" +
