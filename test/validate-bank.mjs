@@ -7,7 +7,7 @@ import vm from "node:vm";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { validateBank, EXAM_DRAW_COUNTS } = require("../app.js");
+const { validateBank, EXAM_DRAW_COUNTS, EXPECTED_BANK_SIZE } = require("../app.js");
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = join(root, "questions");
@@ -30,6 +30,9 @@ for (const [d, want] of Object.entries(expected)) {
   if ((perDomain[d] || 0) < EXAM_DRAW_COUNTS[d])
     errors.push(`domain ${d}: fewer questions than the exam draw needs (${EXAM_DRAW_COUNTS[d]})`);
 }
+
+if (bank.length !== EXPECTED_BANK_SIZE)
+  errors.push(`app.js EXPECTED_BANK_SIZE is ${EXPECTED_BANK_SIZE} but bank has ${bank.length} — update the constant`);
 
 console.log(`Bank: ${bank.length} questions`, perDomain);
 if (errors.length) {

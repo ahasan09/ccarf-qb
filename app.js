@@ -4,6 +4,7 @@
 "use strict";
 
 var EXAM_DRAW_COUNTS = { 1: 16, 2: 11, 3: 12, 4: 12, 5: 9 };
+var EXPECTED_BANK_SIZE = 837; // kept honest by test/validate-bank.mjs
 var PASS_SCORE = 720;
 var EXAM_DURATION_MS = 120 * 60 * 1000;
 var DOMAIN_NAMES = {
@@ -110,6 +111,7 @@ function validateBank(bank) {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     EXAM_DRAW_COUNTS: EXAM_DRAW_COUNTS,
+    EXPECTED_BANK_SIZE: EXPECTED_BANK_SIZE,
     PASS_SCORE: PASS_SCORE,
     EXAM_DURATION_MS: EXAM_DURATION_MS,
     DOMAIN_NAMES: DOMAIN_NAMES,
@@ -213,6 +215,11 @@ if (typeof document !== "undefined") {
       }
 
       var html = "";
+      if (BANK.length !== EXPECTED_BANK_SIZE) {
+        html += '<div class="card load-warning">⚠ Only ' + BANK.length + " of " + EXPECTED_BANK_SIZE +
+          " questions loaded — part of the bank failed to download. " +
+          '<a href="javascript:location.reload(true)">Refresh</a> before starting a session.</div>';
+      }
       html += '<div class="title-row">' +
         '<h1><svg width="34" height="34" viewBox="0 0 128 128" aria-hidden="true">' +
         '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
