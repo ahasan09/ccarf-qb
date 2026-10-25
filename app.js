@@ -165,7 +165,8 @@ if (typeof document !== "undefined") {
 
     /* ------------------------------------------------------------- theme */
     var THEMES = ["auto", "light", "dark"];
-    var THEME_LABELS = { auto: "◐ Theme: Auto", light: "☀ Theme: Light", dark: "● Theme: Dark" };
+    var THEME_ICONS = { auto: "◐", light: "☀", dark: "●" };
+    var THEME_TITLES = { auto: "Theme: Auto (click for Light)", light: "Theme: Light (click for Dark)", dark: "Theme: Dark (click for Auto)" };
 
     function currentTheme() {
       var t = LS.get("ccarf.theme", "auto");
@@ -203,13 +204,33 @@ if (typeof document !== "undefined") {
       var history = LS.get("ccarf.history", []);
       var saved = LS.get("ccarf.session", null);
 
+      var S = window.CCARF_SYNC;
+      var acctChip = "";
+      if (S && S.enabled) {
+        acctChip = S.user()
+          ? '<span class="signed-chip" title="Progress syncs to this account"><span class="dot">●</span> ' + esc(S.user().email || "signed in") + "</span>"
+          : '<a class="btn ghost small" href="#acct">Sign in</a>';
+      }
+
       var html = "";
-      html += '<div class="topbar"><button class="btn ghost small" data-action="cycle-theme">' +
-        THEME_LABELS[currentTheme()] + "</button></div>";
-      html += '<header class="hero"><h1>CCAR-F Question Bank</h1><div class="rule"></div>' +
+      html += '<div class="topbar">' +
+        '<span class="brand"><svg width="26" height="26" viewBox="0 0 128 128" aria-hidden="true">' +
+        '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
+        '<circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/>' +
+        '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F</span>' +
+        '<span class="controls">' + acctChip +
+        '<button class="btn icon" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="Switch theme">' +
+        THEME_ICONS[currentTheme()] + "</button></span></div>";
+
+      html += '<header class="hero"><div class="intro"><h1>Question Bank</h1><div class="rule"></div>' +
         "<p>Claude Certified Architect (Foundations) exam prep. Mark your answers, grade yourself against the real pass line, and drill what you miss.</p>" +
         '<div class="facts"><span><b>' + BANK.length + "</b> questions</span><span><b>5</b> domains</span>" +
-        "<span><b>60</b> per exam</span><span><b>120</b> min</span><span><b>720</b> pass line</span></div></header>";
+        "<span><b>30</b> subdomains</span></div></div>" +
+        '<div class="hero-cta">' +
+        '<button class="btn primary" data-action="start-exam">Start mock exam</button>' +
+        (saved ? '<button class="btn" data-action="resume">Resume session</button>' : "") +
+        '<span class="sub">60 questions · 120 min · pass 720/1000</span>' +
+        "</div></header>";
 
       if (saved) {
         html += '<div class="card resume-card"><div><strong>' +
@@ -221,8 +242,6 @@ if (typeof document !== "undefined") {
       }
 
       html += '<div class="grid">';
-      html += '<div class="card"><h2>Mock exam</h2><p>60 questions, 120-minute timer, real domain weights, scaled score out of 1000.</p>' +
-        '<button class="btn primary" data-action="start-exam">Start exam</button></div>';
       html += '<div class="card"><h2>Drill weak questions</h2><p>' +
         (weak.length
           ? weak.length + " question" + (weak.length === 1 ? "" : "s") + " you previously missed. Answer correctly to clear them."
@@ -287,7 +306,7 @@ if (typeof document !== "undefined") {
 
     function accountCard() {
       var S = window.CCARF_SYNC;
-      var html = '<div class="card"><h2>Account &amp; sync</h2>';
+      var html = '<div class="card" id="acct"><h2>Account &amp; sync</h2>';
       if (!S || !S.enabled) {
         html += '<p class="muted auth-note">Progress is stored in this browser. To sign in and sync across devices, ' +
           "enable sync in <code>config.js</code> (see the README).</p>";
@@ -337,7 +356,13 @@ if (typeof document !== "undefined") {
       practice: "Practice", custom: "Custom quiz",
     };
 
+    function okToReplaceSaved() {
+      return !LS.get("ccarf.session", null) ||
+        confirm("You have a session in progress. Starting a new one will discard it. Continue?");
+    }
+
     function startExam() {
+      if (!okToReplaceSaved()) return;
       var questions;
       try {
         questions = drawExam(BANK, EXAM_DRAW_COUNTS);
@@ -378,6 +403,7 @@ if (typeof document !== "undefined") {
       if (!domains.length) { alert("Pick at least one domain."); return; }
       var count = Number(document.getElementById("cb-count").value);
       var timed = document.getElementById("cb-timed").checked;
+      if (!okToReplaceSaved()) return;
       var questions = sampleQuiz(BANK, domains, count);
       session = newSession("custom", questions, timed ? questions.length * 2 * 60 * 1000 : null);
       persistSession();
@@ -394,13 +420,14 @@ if (typeof document !== "undefined") {
 
     function startWeak() {
       var weak = LS.get("ccarf.weak", []).map(function (id) { return byId[id]; }).filter(Boolean);
-      if (!weak.length) return;
+      if (!weak.length || !okToReplaceSaved()) return;
       session = newSession("weak", shuffle(weak), false);
       persistSession();
       renderQuestion();
     }
 
     function startPractice(domain) {
+      if (!okToReplaceSaved()) return;
       var pool = shuffle(BANK.filter(function (q) { return q.domain === domain; }));
       session = newSession("practice", pool, false);
       session.domain = domain;
@@ -474,9 +501,9 @@ if (typeof document !== "undefined") {
         '<div class="row">' +
         (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
         (isPractice
-          ? '<span class="tally"><span class="ok">' + session.tally.correct + ' ✓</span> <span class="bad">' + session.tally.wrong + " ✗</span></span>"
+          ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
           : '<button class="btn ghost small" data-action="toggle-flag">' + (session.flagged[q.id] ? "🚩 Flagged" : "Flag for review") + "</button>") +
-        '<button class="btn ghost small" data-action="quit">Exit</button>' +
+        '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
         "</div></div>";
 
       var answeredCount = session.questions.filter(function (s) {
@@ -541,10 +568,12 @@ if (typeof document !== "undefined") {
           '<button class="btn" data-action="next"' + (session.current + 1 >= total ? " disabled" : "") + ">Next →</button>";
       }
       html += "</div></div>";
-      html += '<p class="muted kbd-hint">Keyboard: <kbd>1</kbd>–<kbd>4</kbd> answer · <kbd>←</kbd>/<kbd>→</kbd> navigate' +
+      html += '<p class="muted kbd-hint"><kbd>1</kbd>–<kbd>4</kbd> answer · <kbd>←</kbd>/<kbd>→</kbd> navigate' +
         (isPractice ? "" : " · <kbd>F</kbd> flag") + "</p>";
 
       app.innerHTML = html;
+      var cur = app.querySelector(".nav-cell.current");
+      if (cur && cur.scrollIntoView) cur.scrollIntoView({ inline: "center", block: "nearest" });
     }
 
     function selectOption(optIdx) {
