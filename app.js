@@ -87,6 +87,34 @@ function masteryByDomain(bank, correctEverIds) {
   return result;
 }
 
+function masteryBySubdomain(bank, correctEverIds, domain) {
+  var correct = {};
+  correctEverIds.forEach(function (id) { correct[id] = true; });
+  var rows = {};
+  bank.forEach(function (q) {
+    if (q.domain !== domain) return;
+    var key, title;
+    if (q.subdomain) {
+      var sp = String(q.subdomain).indexOf(" ");
+      key = sp === -1 ? q.subdomain : q.subdomain.slice(0, sp);
+      title = sp === -1 ? "" : q.subdomain.slice(sp + 1);
+    } else {
+      key = "general";
+      title = "General (untagged)";
+    }
+    var row = rows[key] || (rows[key] = { key: key, title: title, correct: 0, total: 0 });
+    row.total++;
+    if (correct[q.id]) row.correct++;
+  });
+  return Object.keys(rows)
+    .sort(function (a, b) {
+      if (a === "general") return 1;
+      if (b === "general") return -1;
+      return a < b ? -1 : 1;
+    })
+    .map(function (k) { return rows[k]; });
+}
+
 function validateBank(bank) {
   var errors = [];
   var seen = {};
@@ -123,6 +151,7 @@ if (typeof module !== "undefined" && module.exports) {
     validateBank: validateBank,
     sampleQuiz: sampleQuiz,
     masteryByDomain: masteryByDomain,
+    masteryBySubdomain: masteryBySubdomain,
   };
 }
 
@@ -164,6 +193,7 @@ if (typeof document !== "undefined") {
     var timerHandle = null;
     var session = null; // active session object
     var pendingEmail = null; // login code sent, awaiting verification
+    var expandedMastery = 0; // domain whose subdomain breakdown is open (0 = none)
 
     /* ------------------------------------------------------------- theme */
     var THEMES = ["auto", "light", "dark"];
@@ -260,14 +290,30 @@ if (typeof document !== "undefined") {
 
       var correctEver = LS.get("ccarf.correctEver", []);
       var mastery = masteryByDomain(BANK, correctEver);
-      html += '<div class="card"><h2>Mastery</h2><p class="muted">Share of the bank you have ever answered correctly.</p>';
+      html += '<div class="card"><h2>Mastery</h2><p class="muted">Share of the bank you have ever answered correctly. Click a domain for its subdomains.</p>';
       for (var md = 1; md <= 5; md++) {
         var m = mastery[md] || { correct: 0, total: 0 };
         var pct = m.total ? Math.round((m.correct / m.total) * 100) : 0;
-        html += '<div class="domain-score"><div class="domain-score-label">' +
+        var open = expandedMastery === md;
+        html += '<div class="domain-score">' +
+          '<button class="domain-score-label expandable" data-action="toggle-mastery" data-domain="' + md + '" aria-expanded="' + open + '">' +
           '<span class="domain-chip chip-d' + md + '">D' + md + "</span><span>" + esc(DOMAIN_NAMES[md]) + "</span>" +
-          '<span class="muted">' + m.correct + "/" + m.total + " · " + pct + "%</span></div>" +
-          '<div class="bar"><div class="bar-fill ' + (pct >= 72 ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div></div>';
+          '<span class="chev">' + (open ? "▾" : "▸") + "</span>" +
+          '<span class="muted">' + m.correct + "/" + m.total + " · " + pct + "%</span></button>" +
+          '<div class="bar"><div class="bar-fill ' + (pct >= 72 ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div>';
+        if (open) {
+          html += '<div class="sub-scores">';
+          masteryBySubdomain(BANK, correctEver, md).forEach(function (row) {
+            var spct = row.total ? Math.round((row.correct / row.total) * 100) : 0;
+            html += '<div class="sub-score"><div class="sub-label">' +
+              (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
+              '<span class="sub-title">' + esc(row.title) + "</span>" +
+              '<span class="muted">' + row.correct + "/" + row.total + "</span></div>" +
+              '<div class="bar thin"><div class="bar-fill ' + (spct >= 72 ? "ok" : "bad") + '" style="width:' + spct + '%"></div></div></div>';
+          });
+          html += "</div>";
+        }
+        html += "</div>";
       }
       html += "</div>";
 
@@ -858,6 +904,11 @@ if (typeof document !== "undefined") {
         case "back-results": return renderResults(lastFinished);
         case "home": return renderHome();
         case "cycle-theme": cycleTheme(); return renderHome();
+        case "toggle-mastery": {
+          var dm = Number(btn.dataset.domain);
+          expandedMastery = expandedMastery === dm ? 0 : dm;
+          return renderHome();
+        }
         case "auth-send": {
           var emailEl = document.getElementById("auth-email");
           var email = emailEl && emailEl.value.trim();

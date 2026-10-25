@@ -14,6 +14,7 @@ const {
   validateBank,
   sampleQuiz,
   masteryByDomain,
+  masteryBySubdomain,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -122,6 +123,22 @@ test("masteryByDomain reports correct-ever counts per domain", () => {
   assert.deepEqual(m[1], { correct: 2, total: 49 });
   assert.deepEqual(m[5], { correct: 1, total: 27 });
   assert.deepEqual(m[2], { correct: 0, total: 32 });
+});
+
+test("masteryBySubdomain groups tagged questions by subdomain and untagged as general", () => {
+  const bank = [
+    { id: "a", domain: 2, subdomain: "2.1 Tool interfaces" },
+    { id: "b", domain: 2, subdomain: "2.1 Tool interfaces" },
+    { id: "c", domain: 2, subdomain: "2.4 MCP integration" },
+    { id: "d", domain: 2 },
+    { id: "e", domain: 3, subdomain: "3.1 CLAUDE.md" },
+  ];
+  const rows = masteryBySubdomain(bank, ["a", "d"], 2);
+  assert.deepEqual(rows, [
+    { key: "2.1", title: "Tool interfaces", correct: 1, total: 2 },
+    { key: "2.4", title: "MCP integration", correct: 0, total: 1 },
+    { key: "general", title: "General (untagged)", correct: 1, total: 1 },
+  ]);
 });
 
 test("validateBank passes a well-formed bank", () => {

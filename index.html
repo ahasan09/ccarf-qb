@@ -306,6 +306,22 @@
   .domain-score { margin-bottom: 13px; }
   .domain-score-label { display: flex; gap: 9px; align-items: center; margin-bottom: 6px; font-size: 0.92rem; }
   .domain-score-label .muted { margin-left: auto; font-family: var(--mono); font-size: 0.78rem; }
+  button.domain-score-label.expandable {
+    font: inherit; color: inherit; background: none; border: 0; padding: 4px 2px;
+    width: 100%; cursor: pointer; text-align: left; border-radius: 7px;
+  }
+  button.domain-score-label.expandable:hover { background: var(--pen-soft); }
+  .chev { color: var(--graphite); font-size: 0.7rem; }
+  .sub-scores {
+    margin: 11px 0 6px 11px; padding-left: 15px;
+    border-left: 2px solid var(--line);
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .sub-score .sub-label { display: flex; gap: 8px; align-items: baseline; font-size: 0.85rem; margin-bottom: 4px; }
+  .sub-code { font-family: var(--mono); font-weight: 700; font-size: 0.72rem; color: var(--graphite); flex: none; }
+  .sub-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .sub-label .muted { margin-left: auto; font-family: var(--mono); font-size: 0.72rem; flex: none; }
+  .bar.thin { height: 5px; }
   .bar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 999px; transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1); }
   .bar-fill.ok { background: var(--pass); }
