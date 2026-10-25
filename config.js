@@ -8,8 +8,7 @@
  * With CCARF_CONFIG = null the app works fully, storing progress in this
  * browser only.
  */
-window.CCARF_CONFIG = null;
-// window.CCARF_CONFIG = {
-//   supabaseUrl: "https://YOUR-PROJECT-ref.supabase.co",
-//   supabaseAnonKey: "YOUR-ANON-PUBLIC-KEY",
-// };
+window.CCARF_CONFIG = {
+  supabaseUrl: "https://nwceurthutlovstthseh.supabase.co",
+  supabaseAnonKey: "sb_publishable_76I4KuIZn-Ou2Ocsfj8rew_IOh6-q_Z",
+};
