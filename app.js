@@ -202,6 +202,7 @@ if (typeof document !== "undefined") {
     var pendingEmail = null; // login code sent, awaiting verification
     var expandedMastery = 0; // domain whose subdomain breakdown is open (0 = none)
     var expandedPractice = 0; // domain whose practice subdomain list is open (0 = none)
+    var customState = { domains: { 1: true, 2: true, 3: true, 4: true, 5: true }, count: "20", timed: false };
 
     /* ------------------------------------------------------------- theme */
     var THEMES = ["auto", "light", "dark"];
@@ -461,36 +462,51 @@ if (typeof document !== "undefined") {
       startTimer();
     }
 
+    function customPool() {
+      return BANK.filter(function (q) { return customState.domains[q.domain]; }).length;
+    }
+
     function renderCustomBuilder() {
+      var pool = customPool();
       var html = '<div class="quiz-header"><div><strong>Custom quiz</strong></div>' +
         '<button class="btn ghost small" data-action="home">← Home</button></div>';
+
       html += '<div class="card"><h2>Domains</h2><div class="domain-list">';
       for (var d = 1; d <= 5; d++) {
         var count = BANK.filter(function (q) { return q.domain === d; }).length;
-        html += '<label class="domain-row check-row"><input type="checkbox" class="cb-domain" value="' + d + '" checked>' +
+        html += '<label class="domain-row check-row"><input type="checkbox" class="cb-domain" data-action="cq-domain" data-domain="' + d + '"' +
+          (customState.domains[d] ? " checked" : "") + ">" +
           '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
           "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
           '<span class="muted">' + count + " questions</span></label>";
       }
       html += "</div></div>";
-      html += '<div class="card"><div class="row builder-row">' +
-        '<label>Questions <select id="cb-count"><option>10</option><option selected>20</option><option>30</option><option>60</option></select></label>' +
-        '<label class="check-inline"><input type="checkbox" id="cb-timed"> Timed (2 min per question)</label>' +
-        '<button class="btn primary" data-action="start-custom">Start quiz</button>' +
+
+      html += '<div class="card"><h2>Length</h2><div class="seg" role="group" aria-label="Number of questions">';
+      ["10", "20", "30", "60", "all"].forEach(function (c) {
+        var label = c === "all" ? "All (" + pool + ")" : c;
+        html += '<button class="' + (customState.count === c ? "active" : "") + '" data-action="cq-count" data-count="' + c + '">' + label + "</button>";
+      });
+      html += "</div>";
+      var n = customState.count === "all" ? pool : Math.min(Number(customState.count), pool);
+      html += '<p class="muted builder-summary">' + n + " question" + (n === 1 ? "" : "s") +
+        " from your selected domains" + (customState.timed ? " · timed: " + n * 2 + " min" : " · untimed") + "</p>";
+      html += '<div class="row builder-row">' +
+        '<label class="check-inline"><input type="checkbox" data-action="cq-timed"' + (customState.timed ? " checked" : "") + "> Timed (2 min per question)</label>" +
+        '<button class="btn primary" data-action="start-custom"' + (pool ? "" : " disabled") + ">Start quiz</button>" +
         "</div></div>";
       app.innerHTML = html;
     }
 
     function startCustom() {
-      var domains = Array.prototype.slice
-        .call(app.querySelectorAll(".cb-domain:checked"))
-        .map(function (el) { return Number(el.value); });
+      var domains = [];
+      for (var d = 1; d <= 5; d++) if (customState.domains[d]) domains.push(d);
       if (!domains.length) { alert("Pick at least one domain."); return; }
-      var count = Number(document.getElementById("cb-count").value);
-      var timed = document.getElementById("cb-timed").checked;
       if (!okToReplaceSaved()) return;
+      var count = customState.count === "all" ? Infinity : Number(customState.count);
       var questions = sampleQuiz(BANK, domains, count);
-      session = newSession("custom", questions, timed ? questions.length * 2 * 60 * 1000 : null);
+      if (!questions.length) return;
+      session = newSession("custom", questions, customState.timed ? questions.length * 2 * 60 * 1000 : null);
       persistSession();
       renderQuestion();
       startTimer();
@@ -918,6 +934,15 @@ if (typeof document !== "undefined") {
           if (confirm("Delete all score history?")) { LS.remove("ccarf.history"); renderHome(); }
           return;
         case "custom-builder": return renderCustomBuilder();
+        case "cq-domain":
+          customState.domains[Number(btn.dataset.domain)] = btn.checked;
+          return renderCustomBuilder();
+        case "cq-count":
+          customState.count = btn.dataset.count;
+          return renderCustomBuilder();
+        case "cq-timed":
+          customState.timed = btn.checked;
+          return renderCustomBuilder();
         case "start-custom": return startCustom();
         case "select": return selectOption(Number(btn.dataset.opt));
         case "prev": return goPrev();

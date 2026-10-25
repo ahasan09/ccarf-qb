@@ -356,6 +356,19 @@
     border-radius: 9px; border: 1.5px solid var(--line-strong);
     background: var(--card); color: var(--ink);
   }
+  .seg { display: inline-flex; border: 1.5px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+  .seg button {
+    font-family: var(--mono); font-size: 0.86rem; font-weight: 700;
+    padding: 9px 16px; background: var(--card); color: var(--graphite);
+    border: 0; border-right: 1.5px solid var(--line); cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover:not(.active) { color: var(--pen); }
+  .seg button.active { background: var(--pen); color: #fff; }
+  .seg button:focus-visible { outline: 2.5px solid var(--pen); outline-offset: -2px; }
+  .builder-summary { margin: 12px 0 14px; }
+
   .check-row { cursor: pointer; }
   .check-row input, .check-inline input { accent-color: var(--pen); width: 17px; height: 17px; }
   .check-inline { display: flex; gap: 8px; align-items: center; cursor: pointer; }
