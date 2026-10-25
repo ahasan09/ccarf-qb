@@ -1,5 +1,5 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
@@ -40,13 +40,16 @@ self.addEventListener("activate", (e) => {
 });
 
 /* Network-first for same-origin app files (so deploys show up), falling back
- * to cache offline. Cache-first for fonts and other cross-origin assets. */
+ * to cache offline. cache:"no-cache" bypasses the browser's HTTP cache and
+ * revalidates with the server (ETag 304 when unchanged), so a normal reload
+ * picks up new deploys instead of waiting out GitHub Pages' max-age=600.
+ * Cache-first for fonts and other cross-origin assets. */
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const sameOrigin = new URL(e.request.url).origin === location.origin;
   if (sameOrigin) {
     e.respondWith(
-      fetch(e.request)
+      fetch(e.request, { cache: "no-cache" })
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
