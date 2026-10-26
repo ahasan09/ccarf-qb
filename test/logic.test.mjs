@@ -16,6 +16,7 @@ const {
   masteryByDomain,
   masteryBySubdomain,
   filterBySubKey,
+  mergeProgress,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -152,6 +153,55 @@ test("filterBySubKey selects a domain's subdomain questions, or all with no key"
   assert.deepEqual(filterBySubKey(bank, 2, "2.1").map((q) => q.id), ["a"]);
   assert.deepEqual(filterBySubKey(bank, 2, "general").map((q) => q.id), ["c"]);
   assert.deepEqual(filterBySubKey(bank, 2, null).map((q) => q.id), ["a", "b", "c"]);
+});
+
+test("mergeProgress unions the weak and correct-ever sets from both devices", () => {
+  const a = { "ccarf.weak": ["q1", "q2"], "ccarf.correctEver": ["q5"] };
+  const b = { "ccarf.weak": ["q2", "q3"], "ccarf.correctEver": ["q5", "q6"] };
+  const m = mergeProgress(a, b);
+  assert.deepEqual(m["ccarf.weak"].sort(), ["q1", "q2", "q3"]);
+  assert.deepEqual(m["ccarf.correctEver"].sort(), ["q5", "q6"]);
+});
+
+test("mergeProgress keeps every exam attempt, deduped by date, newest last", () => {
+  const a = { "ccarf.history": [{ date: "2026-10-20T10:00:00.000Z", score: 700 }] };
+  const b = {
+    "ccarf.history": [
+      { date: "2026-10-25T10:00:00.000Z", score: 800 },
+      { date: "2026-10-20T10:00:00.000Z", score: 700 },
+    ],
+  };
+  const m = mergeProgress(a, b);
+  assert.equal(m["ccarf.history"].length, 2);
+  assert.deepEqual(m["ccarf.history"].map((h) => h.score), [700, 800]);
+});
+
+test("mergeProgress is symmetric and idempotent", () => {
+  const a = { "ccarf.weak": ["q1"], "ccarf.history": [{ date: "2026-10-20T10:00:00.000Z" }] };
+  const b = { "ccarf.weak": ["q2"], "ccarf.history": [{ date: "2026-10-21T10:00:00.000Z" }] };
+  const ab = mergeProgress(a, b);
+  const ba = mergeProgress(b, a);
+  assert.deepEqual(ab, ba);
+  assert.deepEqual(mergeProgress(ab, ab), ab);
+});
+
+test("mergeProgress keeps the most recently started in-progress session", () => {
+  const older = { mode: "practice", startedAt: 1000 };
+  const newer = { mode: "exam", startedAt: 2000 };
+  assert.deepEqual(
+    mergeProgress({ "ccarf.session": older }, { "ccarf.session": newer })["ccarf.session"],
+    newer
+  );
+  assert.deepEqual(mergeProgress({ "ccarf.session": older }, {})["ccarf.session"], older);
+  assert.deepEqual(mergeProgress({}, { "ccarf.session": newer })["ccarf.session"], newer);
+});
+
+test("mergeProgress tolerates empty, missing, and malformed sides", () => {
+  assert.deepEqual(mergeProgress({}, {}), {});
+  const only = { "ccarf.weak": ["q1"] };
+  assert.deepEqual(mergeProgress(only, {}), only);
+  assert.deepEqual(mergeProgress(null, only), only);
+  assert.deepEqual(mergeProgress({ "ccarf.weak": "junk" }, only)["ccarf.weak"], ["q1"]);
 });
 
 test("validateBank passes a well-formed bank", () => {

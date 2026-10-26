@@ -121,6 +121,48 @@ function masteryBySubdomain(bank, correctEverIds, domain) {
     .map(function (k) { return rows[k]; });
 }
 
+/* Merge two devices' progress blobs. Convergent (symmetric + idempotent) so
+ * repeated syncs from any number of devices settle on the same result instead
+ * of one device's copy winning and erasing the other's work.
+ *
+ * Weak ids are unioned rather than cleared by the other side's correctEver: a
+ * stale "you missed this" costs one extra drill question, while wrongly
+ * dropping one hides a real gap. It self-clears next time it is answered
+ * correctly on this device. */
+function mergeProgress(a, b) {
+  a = a && typeof a === "object" ? a : {};
+  b = b && typeof b === "object" ? b : {};
+  var merged = {};
+
+  function arr(side, key) { return Array.isArray(side[key]) ? side[key] : []; }
+
+  ["ccarf.weak", "ccarf.correctEver"].forEach(function (key) {
+    if (!(key in a) && !(key in b)) return;
+    var set = {};
+    arr(a, key).concat(arr(b, key)).forEach(function (id) { set[id] = true; });
+    merged[key] = Object.keys(set).sort();
+  });
+
+  if ("ccarf.history" in a || "ccarf.history" in b) {
+    var byDate = {};
+    arr(a, "ccarf.history").concat(arr(b, "ccarf.history")).forEach(function (h) {
+      if (h && h.date) byDate[h.date] = h;
+    });
+    merged["ccarf.history"] = Object.keys(byDate)
+      .sort()
+      .map(function (d) { return byDate[d]; });
+  }
+
+  var sa = a["ccarf.session"], sb = b["ccarf.session"];
+  if (sa || sb) {
+    if (!sa) merged["ccarf.session"] = sb;
+    else if (!sb) merged["ccarf.session"] = sa;
+    else merged["ccarf.session"] = (sb.startedAt || 0) > (sa.startedAt || 0) ? sb : sa;
+  }
+
+  return merged;
+}
+
 function validateBank(bank) {
   var errors = [];
   var seen = {};
@@ -159,7 +201,13 @@ if (typeof module !== "undefined" && module.exports) {
     masteryByDomain: masteryByDomain,
     masteryBySubdomain: masteryBySubdomain,
     filterBySubKey: filterBySubKey,
+    mergeProgress: mergeProgress,
   };
+}
+
+/* sync.js (a module, so it runs after this script) merges with this */
+if (typeof window !== "undefined") {
+  window.mergeProgress = mergeProgress;
 }
 
 /* ---------------------------------------------------------------- DOM app */
@@ -383,6 +431,16 @@ if (typeof document !== "undefined") {
       app.innerHTML = html;
     }
 
+    function timeAgo(ms) {
+      var secs = Math.max(0, Math.round((Date.now() - ms) / 1000));
+      if (secs < 60) return "just now";
+      var mins = Math.round(secs / 60);
+      if (mins < 60) return mins + " minute" + (mins === 1 ? "" : "s") + " ago";
+      var hours = Math.round(mins / 60);
+      if (hours < 24) return hours + " hour" + (hours === 1 ? "" : "s") + " ago";
+      return new Date(ms).toLocaleString();
+    }
+
     function chev(open) {
       return '<span class="chev' + (open ? " open" : "") + '">' +
         '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
@@ -398,9 +456,21 @@ if (typeof document !== "undefined") {
           "enable sync in <code>config.js</code> (see the README).</p>";
       } else if (S.user()) {
         var st = S.status();
+        var stLabel = st === "synced" ? "progress synced"
+          : st === "syncing" ? "syncing…"
+          : st === "error" ? "sync failed" : "sync ready";
         html += "<p>Signed in as <strong>" + esc(S.user().email || "account") + "</strong> " +
-          '<span class="muted">· ' + (st === "synced" ? "progress synced" : st === "syncing" ? "syncing…" : st === "error" ? "sync error — will retry on next change" : "sync ready") + "</span></p>" +
-          '<div class="row"><button class="btn small" data-action="sync-now">Sync now</button>' +
+          '<span class="muted">· ' + stLabel + "</span></p>";
+        if (st === "error" && S.error && S.error()) {
+          html += '<p class="muted auth-note">' + esc(S.error()) + "</p>";
+        }
+        var syncedAt = S.syncedAt ? S.syncedAt() : 0;
+        if (syncedAt) {
+          html += '<p class="muted auth-note">Last synced ' + esc(timeAgo(syncedAt)) +
+            ". Progress from your other devices is merged, never overwritten.</p>";
+        }
+        html += '<div class="row"><button class="btn small" data-action="sync-now"' +
+          (st === "syncing" ? " disabled" : "") + ">" + (st === "syncing" ? "Syncing…" : "Sync now") + "</button>" +
           '<button class="btn ghost small" data-action="auth-signout">Sign out</button></div>';
       } else {
         html += '<p class="muted auth-note">Sign in with your e-mail to back up progress and resume from any device.</p>' +

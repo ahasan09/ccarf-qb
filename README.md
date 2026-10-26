@@ -63,8 +63,16 @@ across devices:
 5. Copy the **Project URL** and **anon public key** from Project Settings →
    API into `config.js`, uncomment the block, and deploy.
 
-Sync is last-writer-wins on the whole progress blob: every change is pushed
-(debounced) while signed in, and on load the newer of local/remote wins.
+Sync merges rather than overwrites. Every sync (on sign-in, on window focus,
+and debounced after each change) fetches the stored progress, merges it with
+this device's copy, applies the result locally, and writes it back. The merge
+is convergent — symmetric and idempotent — so a device that was offline
+contributes its work on its next sync instead of erasing newer progress or
+being erased by it:
+
+- exam history: union of all attempts, deduped by timestamp
+- weak and correct-ever sets: unions
+- in-progress session: the most recently started one
 
 ## Development
 
