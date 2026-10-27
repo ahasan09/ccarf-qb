@@ -174,7 +174,8 @@
   .chip-d3 { background: var(--d3); } .chip-d4 { background: var(--d4); }
   .chip-d5 { background: var(--d5); }
 
-  .history { width: 100%; border-collapse: collapse; font-size: 0.86rem; margin-bottom: 10px; }
+  .table-scroll { overflow-x: auto; margin-bottom: 10px; }
+  .history { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 0.86rem; white-space: nowrap; }
   .history th, .history td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
   .history th { color: var(--graphite); font-weight: 700; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; }
   .history td { font-family: var(--mono); font-size: 0.82rem; }
@@ -220,7 +221,7 @@
 
   .navigator {
     display: flex; flex-wrap: nowrap; gap: 5px; margin-bottom: 14px;
-    overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin;
+    overflow-x: auto; padding: 4px 4px 8px; scrollbar-width: thin;
   }
   .nav-cell {
     flex: none;
@@ -271,7 +272,7 @@
   .feedback.ok { background: var(--pass-soft); }
   .feedback.bad { background: var(--fail-soft); }
 
-  .quiz-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; max-width: 760px; }
+  .quiz-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; max-width: 760px; }
   .kbd-hint { flex: 1; text-align: center; font-size: 0.74rem; white-space: nowrap; }
   @media (max-width: 680px), (pointer: coarse) { .kbd-hint { display: none; } }
   kbd {
@@ -400,7 +401,7 @@
     .question-card { padding: 18px; }
     .score-card { gap: 18px; padding: 20px; }
     .quiz-header { margin: 0 -12px 12px; padding: 10px 12px; }
-    .history { display: block; overflow-x: auto; }
+    .history { font-size: 0.82rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }

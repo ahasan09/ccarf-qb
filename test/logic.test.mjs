@@ -17,6 +17,12 @@ const {
   masteryBySubdomain,
   filterBySubKey,
   mergeProgress,
+  emptyProgress,
+  normalizeProgress,
+  progressFromStored,
+  applyMutations,
+  compactMutations,
+  Mutations,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -156,52 +162,121 @@ test("filterBySubKey selects a domain's subdomain questions, or all with no key"
 });
 
 test("mergeProgress unions the weak and correct-ever sets from both devices", () => {
-  const a = { "ccarf.weak": ["q1", "q2"], "ccarf.correctEver": ["q5"] };
-  const b = { "ccarf.weak": ["q2", "q3"], "ccarf.correctEver": ["q5", "q6"] };
+  const a = { weak: ["q1", "q2"], correctEver: ["q5"] };
+  const b = { weak: ["q2", "q3"], correctEver: ["q5", "q6"] };
   const m = mergeProgress(a, b);
-  assert.deepEqual(m["ccarf.weak"].sort(), ["q1", "q2", "q3"]);
-  assert.deepEqual(m["ccarf.correctEver"].sort(), ["q5", "q6"]);
+  assert.deepEqual(m.weak, ["q1", "q2", "q3"]);
+  assert.deepEqual(m.correctEver, ["q5", "q6"]);
 });
 
 test("mergeProgress keeps every exam attempt, deduped by date, newest last", () => {
-  const a = { "ccarf.history": [{ date: "2026-10-20T10:00:00.000Z", score: 700 }] };
+  const a = { history: [{ date: "2026-10-20T10:00:00.000Z", score: 700 }] };
   const b = {
-    "ccarf.history": [
+    history: [
       { date: "2026-10-25T10:00:00.000Z", score: 800 },
       { date: "2026-10-20T10:00:00.000Z", score: 700 },
     ],
   };
   const m = mergeProgress(a, b);
-  assert.equal(m["ccarf.history"].length, 2);
-  assert.deepEqual(m["ccarf.history"].map((h) => h.score), [700, 800]);
+  assert.deepEqual(m.history.map((h) => h.score), [700, 800]);
 });
 
 test("mergeProgress is symmetric and idempotent", () => {
-  const a = { "ccarf.weak": ["q1"], "ccarf.history": [{ date: "2026-10-20T10:00:00.000Z" }] };
-  const b = { "ccarf.weak": ["q2"], "ccarf.history": [{ date: "2026-10-21T10:00:00.000Z" }] };
+  const a = { weak: ["q1"], history: [{ date: "2026-10-20T10:00:00.000Z" }] };
+  const b = { weak: ["q2"], history: [{ date: "2026-10-21T10:00:00.000Z" }] };
   const ab = mergeProgress(a, b);
-  const ba = mergeProgress(b, a);
-  assert.deepEqual(ab, ba);
+  assert.deepEqual(ab, mergeProgress(b, a));
   assert.deepEqual(mergeProgress(ab, ab), ab);
 });
 
 test("mergeProgress keeps the most recently started in-progress session", () => {
-  const older = { mode: "practice", startedAt: 1000 };
-  const newer = { mode: "exam", startedAt: 2000 };
-  assert.deepEqual(
-    mergeProgress({ "ccarf.session": older }, { "ccarf.session": newer })["ccarf.session"],
-    newer
-  );
-  assert.deepEqual(mergeProgress({ "ccarf.session": older }, {})["ccarf.session"], older);
-  assert.deepEqual(mergeProgress({}, { "ccarf.session": newer })["ccarf.session"], newer);
+  const older = { mode: "practice", startedAt: 1000, questions: [] };
+  const newer = { mode: "exam", startedAt: 2000, questions: [] };
+  assert.deepEqual(mergeProgress({ session: older }, { session: newer }).session, newer);
+  assert.deepEqual(mergeProgress({ session: older }, {}).session, older);
+  assert.deepEqual(mergeProgress({}, { session: newer }).session, newer);
 });
 
-test("mergeProgress tolerates empty, missing, and malformed sides", () => {
-  assert.deepEqual(mergeProgress({}, {}), {});
-  const only = { "ccarf.weak": ["q1"] };
-  assert.deepEqual(mergeProgress(only, {}), only);
-  assert.deepEqual(mergeProgress(null, only), only);
-  assert.deepEqual(mergeProgress({ "ccarf.weak": "junk" }, only)["ccarf.weak"], ["q1"]);
+test("mergeProgress tolerates empty, missing and malformed sides", () => {
+  assert.deepEqual(mergeProgress({}, {}), emptyProgress());
+  assert.deepEqual(mergeProgress(null, { weak: ["q1"] }).weak, ["q1"]);
+  assert.deepEqual(mergeProgress({ weak: "junk" }, { weak: ["q1"] }).weak, ["q1"]);
+});
+
+test("progressFromStored reads rows written in the old per-key format", () => {
+  const legacy = {
+    "ccarf.history": [{ date: "2026-10-20T10:00:00.000Z", score: 740 }],
+    "ccarf.weak": ["q1"],
+    "ccarf.correctEver": ["q2"],
+    "ccarf.session": null,
+  };
+  const s = progressFromStored(legacy);
+  assert.equal(s.history.length, 1, "existing exam history must survive the format change");
+  assert.deepEqual(s.weak, ["q1"]);
+  assert.deepEqual(s.correctEver, ["q2"]);
+  assert.deepEqual(progressFromStored({ weak: ["q9"] }).weak, ["q9"], "current format passes through");
+});
+
+test("finishing a session clears it and redeems the weak questions answered correctly", () => {
+  const before = {
+    history: [],
+    weak: ["q1", "q2"],
+    correctEver: [],
+    session: { mode: "weak", questions: [{ id: "q1" }], startedAt: 1 },
+  };
+  const grade = { correct: 1, total: 2, wrongIds: ["q2"], correctIds: ["q1"], perDomain: {} };
+  const after = applyMutations(before, [Mutations.finishSession(grade, null)]);
+  assert.equal(after.session, null);
+  assert.deepEqual(after.weak, ["q2"]);
+  assert.deepEqual(after.correctEver, ["q1"]);
+});
+
+test("replaying a finish on stale server state still removes the session and weak id", () => {
+  // The exact reported bug: the server copy still holds the session and the
+  // weak id this device just cleared. Replay must win over the stale copy.
+  const serverState = {
+    history: [],
+    weak: ["q1", "q2"],
+    correctEver: [],
+    session: { mode: "weak", questions: [{ id: "q1" }], startedAt: 1 },
+  };
+  const grade = { correct: 1, total: 2, wrongIds: ["q2"], correctIds: ["q1"], perDomain: {} };
+  const replayed = applyMutations(serverState, [Mutations.finishSession(grade, null)]);
+  assert.equal(replayed.session, null, "finished session must not be resurrected");
+  assert.ok(!replayed.weak.includes("q1"), "redeemed weak question must stay cleared");
+});
+
+test("replaying a finish twice does not duplicate the history entry", () => {
+  const entry = { date: "2026-10-28T09:00:00.000Z", score: 800 };
+  const grade = { correct: 48, total: 60, wrongIds: [], correctIds: ["q1"], perDomain: {} };
+  const once = applyMutations(emptyProgress(), [Mutations.finishSession(grade, entry)]);
+  const twice = applyMutations(once, [Mutations.finishSession(grade, entry)]);
+  assert.equal(twice.history.length, 1);
+});
+
+test("history stays ordered oldest-first when attempts arrive out of order", () => {
+  const late = { date: "2026-10-28T09:00:00.000Z" };
+  const early = { date: "2026-10-01T09:00:00.000Z" };
+  const grade = { correct: 0, total: 1, wrongIds: [], correctIds: [], perDomain: {} };
+  let s = applyMutations(emptyProgress(), [Mutations.finishSession(grade, late)]);
+  s = applyMutations(s, [Mutations.finishSession(grade, early)]);
+  assert.deepEqual(s.history.map((h) => h.date), [early.date, late.date]);
+});
+
+test("compactMutations keeps only the latest write per key, preserving order", () => {
+  const a = Mutations.setSession({ questions: [], startedAt: 1 });
+  const grade = { correct: 0, total: 0, wrongIds: [], correctIds: [], perDomain: {} };
+  const f = Mutations.finishSession(grade, null);
+  const b = Mutations.setSession({ questions: [], startedAt: 2 });
+  const out = compactMutations([a, f, b]);
+  assert.deepEqual(out, [f, b]);
+});
+
+test("normalizeProgress repairs missing, wrong-typed and corrupt fields", () => {
+  assert.deepEqual(normalizeProgress(null), emptyProgress());
+  assert.deepEqual(normalizeProgress({ weak: "nope", history: null }), emptyProgress());
+  assert.equal(normalizeProgress({ session: { mode: "exam" } }).session, null, "session needs questions");
+  assert.deepEqual(normalizeProgress({ history: [{ date: "d" }, {}] }).history, [{ date: "d" }]);
 });
 
 test("validateBank passes a well-formed bank", () => {

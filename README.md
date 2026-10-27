@@ -63,16 +63,19 @@ across devices:
 5. Copy the **Project URL** and **anon public key** from Project Settings →
    API into `config.js`, uncomment the block, and deploy.
 
-Sync merges rather than overwrites. Every sync (on sign-in, on window focus,
-and debounced after each change) fetches the stored progress, merges it with
-this device's copy, applies the result locally, and writes it back. The merge
-is convergent — symmetric and idempotent — so a device that was offline
-contributes its work on its next sync instead of erasing newer progress or
-being erased by it:
+While signed in, the server row is the source of truth. Every sync reads the
+row, replays whatever this device has not written yet on top, and writes the
+result back with a compare-and-swap on `updated_at`; a write that loses the
+race re-reads and replays instead of overwriting. Changes are recorded as
+mutations rather than whole-blob writes, so removals (a finished session, a
+redeemed weak question) are never resurrected by a later sync.
 
-- exam history: union of all attempts, deduped by timestamp
-- weak and correct-ever sets: unions
-- in-progress session: the most recently started one
+Syncs run on sign-in, on page load, when the window regains focus or
+visibility, when another tab writes, when connectivity returns, debounced
+after each change (and at least every 15 seconds during continuous activity),
+and once more before the page is hidden or closed. `localStorage` holds only a
+cache so the app keeps working offline and before the first fetch; signing out
+clears it, and progress cached for one account is never folded into another.
 
 ## Development
 
@@ -85,7 +88,8 @@ being erased by it:
 - `questions/domain1-gap.js` … `domain5-gap.js` — 57 targeted questions
   filling subdomain gaps found by the coverage audit (6/6/15/6/24).
   Totals per domain: 199/140/171/162/165.
-- `node --test test/logic.test.mjs` — engine tests
+- `node --test test/logic.test.mjs test/sync.test.mjs test/ui.test.mjs` — engine,
+  cross-device sync, and screen-flow tests
 - `node test/validate-bank.mjs` — structural validation of the question bank
 
 Design spec: `docs/superpowers/specs/2026-10-23-ccarf-question-bank-design.md`

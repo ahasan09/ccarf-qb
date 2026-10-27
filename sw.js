@@ -1,5 +1,5 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v5";
+const VERSION = "v6";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
@@ -47,26 +47,37 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const sameOrigin = new URL(e.request.url).origin === location.origin;
+  /* Only successful responses are cached: a 404 or a captive-portal page
+   * served during a deploy must not replace a good cached file. */
+  const store = (request, res) => {
+    if (res && res.ok && res.type === "basic") {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(request, copy));
+    }
+    return res;
+  };
+
+  const offlineFallback = (request) =>
+    caches.match(request, { ignoreSearch: true }).then((hit) => {
+      if (hit) return hit;
+      if (request.mode === "navigate") return caches.match("index.html");
+      return Response.error();
+    });
+
   if (sameOrigin) {
     e.respondWith(
       fetch(e.request, { cache: "no-cache" })
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-          return res;
-        })
-        .catch(() => caches.match(e.request, { ignoreSearch: true }))
+        .then((res) => (res && res.ok ? store(e.request, res) : offlineFallback(e.request).then((hit) => hit || res)))
+        .catch(() => offlineFallback(e.request))
     );
   } else {
     e.respondWith(
       caches.match(e.request).then(
         (hit) =>
           hit ||
-          fetch(e.request).then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, copy));
-            return res;
-          })
+          fetch(e.request)
+            .then((res) => store(e.request, res))
+            .catch(() => Response.error())
       )
     );
   }

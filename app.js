@@ -121,48 +121,6 @@ function masteryBySubdomain(bank, correctEverIds, domain) {
     .map(function (k) { return rows[k]; });
 }
 
-/* Merge two devices' progress blobs. Convergent (symmetric + idempotent) so
- * repeated syncs from any number of devices settle on the same result instead
- * of one device's copy winning and erasing the other's work.
- *
- * Weak ids are unioned rather than cleared by the other side's correctEver: a
- * stale "you missed this" costs one extra drill question, while wrongly
- * dropping one hides a real gap. It self-clears next time it is answered
- * correctly on this device. */
-function mergeProgress(a, b) {
-  a = a && typeof a === "object" ? a : {};
-  b = b && typeof b === "object" ? b : {};
-  var merged = {};
-
-  function arr(side, key) { return Array.isArray(side[key]) ? side[key] : []; }
-
-  ["ccarf.weak", "ccarf.correctEver"].forEach(function (key) {
-    if (!(key in a) && !(key in b)) return;
-    var set = {};
-    arr(a, key).concat(arr(b, key)).forEach(function (id) { set[id] = true; });
-    merged[key] = Object.keys(set).sort();
-  });
-
-  if ("ccarf.history" in a || "ccarf.history" in b) {
-    var byDate = {};
-    arr(a, "ccarf.history").concat(arr(b, "ccarf.history")).forEach(function (h) {
-      if (h && h.date) byDate[h.date] = h;
-    });
-    merged["ccarf.history"] = Object.keys(byDate)
-      .sort()
-      .map(function (d) { return byDate[d]; });
-  }
-
-  var sa = a["ccarf.session"], sb = b["ccarf.session"];
-  if (sa || sb) {
-    if (!sa) merged["ccarf.session"] = sb;
-    else if (!sb) merged["ccarf.session"] = sa;
-    else merged["ccarf.session"] = (sb.startedAt || 0) > (sa.startedAt || 0) ? sb : sa;
-  }
-
-  return merged;
-}
-
 function validateBank(bank) {
   var errors = [];
   var seen = {};
@@ -183,9 +141,244 @@ function validateBank(bank) {
   return errors;
 }
 
+/* --------------------------------------------------------- progress state */
+/* One object holds all synced progress. Changes are expressed as named
+ * mutations rather than whole-blob writes so that removals (a finished
+ * session, a redeemed weak question) survive a sync: on a write conflict the
+ * pending mutations are replayed on top of the freshest server state instead
+ * of a merge guessing what was deleted. */
+
+function emptyProgress() {
+  return { history: [], weak: [], correctEver: [], session: null };
+}
+
+function normalizeProgress(raw) {
+  var s = emptyProgress();
+  if (!raw || typeof raw !== "object") return s;
+  if (Array.isArray(raw.history)) {
+    s.history = raw.history.filter(function (h) { return h && h.date; });
+  }
+  if (Array.isArray(raw.weak)) s.weak = raw.weak.filter(function (id) { return typeof id === "string"; });
+  if (Array.isArray(raw.correctEver)) {
+    s.correctEver = raw.correctEver.filter(function (id) { return typeof id === "string"; });
+  }
+  if (raw.session && typeof raw.session === "object" && Array.isArray(raw.session.questions)) {
+    s.session = raw.session;
+  }
+  return s;
+}
+
+function cloneProgress(state) {
+  return JSON.parse(JSON.stringify(normalizeProgress(state)));
+}
+
+/* Rows written before the state refactor used one key per field, prefixed
+ * "ccarf.". Read those as the current shape so existing progress survives. */
+function progressFromStored(raw) {
+  if (raw && typeof raw === "object" &&
+      ("ccarf.history" in raw || "ccarf.weak" in raw ||
+       "ccarf.correctEver" in raw || "ccarf.session" in raw)) {
+    return normalizeProgress({
+      history: raw["ccarf.history"],
+      weak: raw["ccarf.weak"],
+      correctEver: raw["ccarf.correctEver"],
+      session: raw["ccarf.session"],
+    });
+  }
+  return normalizeProgress(raw);
+}
+
+/* Combine two independent copies. Used once per device, when progress made
+ * before it ever synced meets the server copy; after that, replayed mutations
+ * carry changes (including deletions) and no merging is involved. */
+function mergeProgress(a, b) {
+  a = normalizeProgress(a);
+  b = normalizeProgress(b);
+  var byDate = {};
+  a.history.concat(b.history).forEach(function (h) { byDate[h.date] = h; });
+  return {
+    history: Object.keys(byDate).sort().map(function (d) { return byDate[d]; }),
+    weak: unionIds(a.weak, b.weak),
+    correctEver: unionIds(a.correctEver, b.correctEver),
+    session: !a.session ? b.session
+      : !b.session ? a.session
+      : (b.session.startedAt || 0) > (a.session.startedAt || 0) ? b.session : a.session,
+  };
+}
+
+function unionIds(existing, added) {
+  var set = {};
+  (existing || []).forEach(function (id) { set[id] = true; });
+  (added || []).forEach(function (id) { set[id] = true; });
+  return Object.keys(set).sort();
+}
+
+/* Each mutation is { key, apply }. `key` marks mutations that supersede an
+ * earlier pending one (only the latest session write needs to be sent);
+ * keyless mutations accumulate. Every apply() is idempotent so replaying a
+ * mutation whose write actually landed cannot double-count. */
+var Mutations = {
+  setSession: function (session) {
+    return { key: "session", apply: function (s) { s.session = session ? JSON.parse(JSON.stringify(session)) : null; } };
+  },
+  clearSession: function () {
+    return { key: "session", apply: function (s) { s.session = null; } };
+  },
+  finishSession: function (grade, entry) {
+    return {
+      key: null,
+      apply: function (s) {
+        s.session = null;
+        s.weak = updateWeakSet(s.weak, grade).sort();
+        s.correctEver = unionIds(s.correctEver, grade.correctIds);
+        if (entry && !s.history.some(function (h) { return h.date === entry.date; })) {
+          s.history = s.history.concat([entry]).sort(function (a, b) {
+            return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+          });
+        }
+      },
+    };
+  },
+  clearHistory: function () {
+    return { key: "clearHistory", apply: function (s) { s.history = []; } };
+  },
+  /* Credit a single answer as soon as it is graded, so leaving a long
+   * practice run part-way still keeps what was earned. */
+  recordAnswer: function (questionId, wasCorrect) {
+    return {
+      key: null,
+      apply: function (s) {
+        if (wasCorrect) {
+          s.correctEver = unionIds(s.correctEver, [questionId]);
+          s.weak = s.weak.filter(function (id) { return id !== questionId; });
+        } else {
+          s.weak = unionIds(s.weak, [questionId]);
+        }
+      },
+    };
+  },
+};
+
+function applyMutations(state, mutations) {
+  var next = cloneProgress(state);
+  (mutations || []).forEach(function (m) { m.apply(next); });
+  return next;
+}
+
+/* Keep only the newest mutation per key; keyless ones all survive. */
+function compactMutations(mutations) {
+  var seenKeys = {};
+  var out = [];
+  for (var i = mutations.length - 1; i >= 0; i--) {
+    var m = mutations[i];
+    if (m.key) {
+      if (seenKeys[m.key]) continue;
+      seenKeys[m.key] = true;
+    }
+    out.unshift(m);
+  }
+  return out;
+}
+
+/* Holds the progress state, records changes as mutations, and tracks what has
+ * not reached the server yet. Storage and notification are injected so this is
+ * testable without a browser. */
+function createStore(io) {
+  io = io || {};
+  var save = io.save || function () {};
+  var emit = io.emit || function () {};
+  var readFlag = io.readFlag || function () { return false; };
+  var writeFlag = io.writeFlag || function () {};
+
+  return {
+    state: normalizeProgress(io.initial),
+    pending: [],
+    mutate: function (mutation) {
+      this.pending = compactMutations(this.pending.concat([mutation]));
+      this.state = applyMutations(this.state, [mutation]);
+      save(this.state);
+      writeFlag(true);
+      emit();
+    },
+    /* Server state wins, with anything not yet written replayed on top. */
+    adopt: function (serverState) {
+      this.state = applyMutations(normalizeProgress(serverState), this.pending);
+      save(this.state);
+      return this.state;
+    },
+    markSynced: function () {
+      this.pending = [];
+      writeFlag(false);
+    },
+    hasUnsyncedWork: function () {
+      return this.pending.length > 0 || readFlag() === true;
+    },
+    reset: function () {
+      this.state = emptyProgress();
+      this.pending = [];
+      save(this.state);
+      writeFlag(false);
+    },
+    snapshot: function () { return this.state; },
+  };
+}
+
+/* read → replay → compare-and-swap write. A write that loses the race
+ * re-reads and replays rather than overwriting the winner. */
+function createSyncEngine(io) {
+  var store = io.store;
+  var stamp = null;
+
+  return {
+    seenStamp: function () { return stamp; },
+    forget: function () { stamp = null; },
+    sync: function () {
+      var attempt = 0;
+
+      function round() {
+        return io.readRow().then(function (row) {
+          stamp = row ? row.stamp : null;
+
+          var base = row ? progressFromStored(row.data) : null;
+          /* Work done before this device ever synced (offline, or signed
+           * out) is folded in once; after that the replayed mutations carry
+           * every change, deletions included. */
+          if (row && store.hasUnsyncedWork() && !store.pending.length) {
+            base = mergeProgress(store.snapshot(), base);
+          }
+
+          var next = store.adopt(base);
+          var needsWrite = !row || store.pending.length > 0 || store.hasUnsyncedWork();
+          if (!needsWrite) return { written: false, state: next };
+
+          return io.writeRow(next, stamp).then(function (res) {
+            if (res && res.ok) {
+              stamp = res.stamp;
+              store.markSynced();
+              return { written: true, state: next };
+            }
+            if (++attempt >= 4) throw new Error("Could not settle with the server after several tries.");
+            return round();
+          });
+        });
+      }
+
+      return round();
+    },
+  };
+}
+
 /* Node test export guard */
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
+    createStore: createStore,
+    createSyncEngine: createSyncEngine,
+    emptyProgress: emptyProgress,
+    normalizeProgress: normalizeProgress,
+    progressFromStored: progressFromStored,
+    applyMutations: applyMutations,
+    compactMutations: compactMutations,
+    Mutations: Mutations,
     EXAM_DRAW_COUNTS: EXAM_DRAW_COUNTS,
     EXPECTED_BANK_SIZE: EXPECTED_BANK_SIZE,
     PASS_SCORE: PASS_SCORE,
@@ -205,9 +398,15 @@ if (typeof module !== "undefined" && module.exports) {
   };
 }
 
-/* sync.js (a module, so it runs after this script) merges with this */
+/* sync.js is a module, so it runs after this script and can rely on these */
 if (typeof window !== "undefined") {
-  window.mergeProgress = mergeProgress;
+  window.CCARF_PROGRESS = {
+    empty: emptyProgress,
+    normalize: normalizeProgress,
+    fromStored: progressFromStored,
+    merge: mergeProgress,
+  };
+  window.createSyncEngine = createSyncEngine;
 }
 
 /* ---------------------------------------------------------------- DOM app */
@@ -216,14 +415,6 @@ if (typeof document !== "undefined") {
     var BANK = window.QUESTION_BANK || [];
     var byId = {};
     BANK.forEach(function (q) { byId[q.id] = q; });
-
-    var SYNC_KEYS = ["ccarf.history", "ccarf.weak", "ccarf.correctEver", "ccarf.session"];
-
-    function noteChange(key) {
-      if (SYNC_KEYS.indexOf(key) === -1) return;
-      try { localStorage.setItem("ccarf.syncUpdatedAt", String(Date.now())); } catch (e) {}
-      try { window.dispatchEvent(new CustomEvent("ccarf:changed")); } catch (e) {}
-    }
 
     var LS = {
       get: function (key, fallback) {
@@ -236,15 +427,46 @@ if (typeof document !== "undefined") {
       },
       set: function (key, value) {
         try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
-        noteChange(key);
       },
       remove: function (key) {
         try { localStorage.removeItem(key); } catch (e) {}
-        noteChange(key);
       },
     };
 
+    /* The signed-in server row is the source of truth; localStorage is only a
+     * cache so the app still works offline and before the first fetch. */
+    var CACHE_KEY = "ccarf.progress";
+    var LEGACY_KEYS = ["ccarf.history", "ccarf.weak", "ccarf.correctEver", "ccarf.session"];
+
+    function readCache() {
+      var cached = LS.get(CACHE_KEY, null);
+      if (cached) return normalizeProgress(cached);
+      // one-time migration from the old per-key layout
+      var legacy = {
+        history: LS.get("ccarf.history", []),
+        weak: LS.get("ccarf.weak", []),
+        correctEver: LS.get("ccarf.correctEver", []),
+        session: LS.get("ccarf.session", null),
+      };
+      LEGACY_KEYS.forEach(function (k) { LS.remove(k); });
+      LS.remove("ccarf.syncUpdatedAt");
+      return normalizeProgress(legacy);
+    }
+
+    var Store = createStore({
+      initial: readCache(),
+      save: function (state) { LS.set(CACHE_KEY, state); },
+      emit: function () {
+        try { window.dispatchEvent(new CustomEvent("ccarf:changed")); } catch (e) {}
+      },
+      readFlag: function () { return LS.get("ccarf.unsynced", false) === true; },
+      writeFlag: function (dirty) { LS.set("ccarf.unsynced", dirty); },
+    });
+
+    window.CCARF_STORE = Store;
+
     var app = document.getElementById("app");
+    var view = "home"; // home | quiz | results | review | custom
     var timerHandle = null;
     var session = null; // active session object
     var pendingEmail = null; // login code sent, awaiting verification
@@ -289,9 +511,11 @@ if (typeof document !== "undefined") {
     function renderHome() {
       stopTimer();
       session = null;
-      var weak = LS.get("ccarf.weak", []);
-      var history = LS.get("ccarf.history", []);
-      var saved = LS.get("ccarf.session", null);
+      view = "home";
+      var progress = Store.snapshot();
+      var weak = progress.weak;
+      var history = progress.history;
+      var saved = isUsableSession(progress.session) ? progress.session : null;
 
       var S = window.CCARF_SYNC;
       var acctChip = "";
@@ -303,9 +527,9 @@ if (typeof document !== "undefined") {
 
       var html = "";
       if (BANK.length !== EXPECTED_BANK_SIZE) {
-        html += '<div class="card load-warning">⚠ Only ' + BANK.length + " of " + EXPECTED_BANK_SIZE +
-          " questions loaded — part of the bank failed to download. " +
-          '<a href="javascript:location.reload(true)">Refresh</a> before starting a session.</div>';
+        html += '<div class="card load-warning" role="alert">⚠ Only ' + BANK.length + " of " +
+          EXPECTED_BANK_SIZE + " questions loaded — part of the bank failed to download. " +
+          '<button class="btn small" data-action="hard-reload">Reload the bank</button></div>';
       }
       html += '<div class="title-row">' +
         '<h1><svg width="34" height="34" viewBox="0 0 128 128" aria-hidden="true">' +
@@ -328,9 +552,9 @@ if (typeof document !== "undefined") {
 
       if (saved) {
         html += '<div class="card resume-card"><div><strong>' +
-          (MODE_NAMES[saved.mode] || "Session") + " in progress</strong>" +
-          "<p>" + Object.keys(saved.answers).filter(function (k) { return saved.answers[k] !== null; }).length +
-          "/" + saved.questions.length + " answered</p></div>" +
+          (Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
+          " in progress</strong>" +
+          "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered</p></div>" +
           '<div class="row"><button class="btn primary" data-action="resume">Resume</button>' +
           '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
       }
@@ -345,7 +569,7 @@ if (typeof document !== "undefined") {
         '<button class="btn" data-action="custom-builder">Build quiz</button></div>';
       html += "</div>";
 
-      var correctEver = LS.get("ccarf.correctEver", []);
+      var correctEver = progress.correctEver;
       var mastery = masteryByDomain(BANK, correctEver);
       html += '<div class="card"><h2>Mastery</h2><p class="muted">Share of the bank you have ever answered correctly. Click a domain for its subdomains.</p>';
       for (var md = 1; md <= 5; md++) {
@@ -391,7 +615,8 @@ if (typeof document !== "undefined") {
             "<span><strong>Practice all</strong></span>" +
             '<span class="muted">' + count + " questions</span></button>";
           masteryBySubdomain(BANK, correctEver, d).forEach(function (row) {
-            html += '<button class="sub-row" data-action="practice" data-domain="' + d + '" data-sub="' + esc(row.key) + '">' +
+            html += '<button class="sub-row" data-action="practice" data-domain="' + d + '" data-sub="' + esc(row.key) +
+              '" title="' + esc(row.title || row.key) + '">' +
               (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
               '<span class="sub-title">' + esc(row.title) + "</span>" +
               '<span class="muted">' + row.correct + "/" + row.total + "</span></button>";
@@ -407,7 +632,7 @@ if (typeof document !== "undefined") {
       if (!history.length) {
         html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
       } else {
-        html += '<table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
+        html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
           "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th></tr></thead><tbody>";
         history.slice().reverse().forEach(function (h) {
           var cells = "";
@@ -420,7 +645,7 @@ if (typeof document !== "undefined") {
             '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
             "<td>" + h.correct + "/" + h.total + "</td>" + cells + "</tr>";
         });
-        html += "</tbody></table>" +
+        html += "</tbody></table></div>" +
           '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
       }
       html += "</div>";
@@ -429,6 +654,18 @@ if (typeof document !== "undefined") {
         "Not affiliated with Anthropic or Pearson VUE.</footer>";
 
       app.innerHTML = html;
+    }
+
+    function answeredCount(sess) {
+      var answers = (sess && sess.answers) || {};
+      return Object.keys(answers).filter(function (k) { return answers[k] !== null; }).length;
+    }
+
+    /* A stored session is only offered for resume if it still lines up with
+     * the loaded bank — otherwise the question screen would crash on it. */
+    function isUsableSession(sess) {
+      return !!(sess && Array.isArray(sess.questions) &&
+        sess.questions.some(function (s) { return s && byId[s.id]; }));
     }
 
     function timeAgo(ms) {
@@ -454,11 +691,16 @@ if (typeof document !== "undefined") {
       if (!S || !S.enabled) {
         html += '<p class="muted auth-note">Progress is stored in this browser. To sign in and sync across devices, ' +
           "enable sync in <code>config.js</code> (see the README).</p>";
+      } else if (S.unavailable) {
+        html += '<p class="muted auth-note">' + esc(S.error()) + "</p>";
       } else if (S.user()) {
         var st = S.status();
-        var stLabel = st === "synced" ? "progress synced"
-          : st === "syncing" ? "syncing…"
-          : st === "error" ? "sync failed" : "sync ready";
+        var waiting = S.pendingCount ? S.pendingCount() : 0;
+        var stLabel = st === "syncing" ? "syncing…"
+          : st === "offline" ? "offline — changes will sync when you reconnect"
+          : st === "error" ? "sync failed"
+          : waiting ? waiting + " change" + (waiting === 1 ? "" : "s") + " waiting to sync"
+          : st === "synced" ? "progress synced" : "sync ready";
         html += "<p>Signed in as <strong>" + esc(S.user().email || "account") + "</strong> " +
           '<span class="muted">· ' + stLabel + "</span></p>";
         if (st === "error" && S.error && S.error()) {
@@ -491,7 +733,10 @@ if (typeof document !== "undefined") {
       return {
         mode: mode, // 'exam' | 'retry' | 'weak' | 'practice' | 'custom'
         questions: questions.map(function (q) {
-          return { id: q.id, order: shuffle([0, 1, 2, 3]) };
+          return {
+            id: q.id,
+            order: shuffle(q.options.map(function (_, i) { return i; })),
+          };
         }),
         answers: questions.reduce(function (acc, q) { acc[q.id] = null; return acc; }, {}),
         flagged: {},
@@ -504,7 +749,7 @@ if (typeof document !== "undefined") {
     }
 
     function persistSession() {
-      if (session) LS.set("ccarf.session", session);
+      if (session) Store.mutate(Mutations.setSession(session));
     }
 
     var MODE_NAMES = {
@@ -513,7 +758,7 @@ if (typeof document !== "undefined") {
     };
 
     function okToReplaceSaved() {
-      return !LS.get("ccarf.session", null) ||
+      return !Store.snapshot().session ||
         confirm("You have a session in progress. Starting a new one will discard it. Continue?");
     }
 
@@ -537,6 +782,7 @@ if (typeof document !== "undefined") {
     }
 
     function renderCustomBuilder() {
+      view = "custom";
       var pool = customPool();
       var html = '<div class="quiz-header"><div><strong>Custom quiz</strong></div>' +
         '<button class="btn ghost small" data-action="home">← Home</button></div>';
@@ -584,13 +830,18 @@ if (typeof document !== "undefined") {
 
     function startRetry(wrongIds) {
       var questions = shuffle(wrongIds.map(function (id) { return byId[id]; }).filter(Boolean));
+      if (!questions.length) {
+        alert("Those questions are no longer in the loaded bank.");
+        return renderHome();
+      }
+      if (!okToReplaceSaved()) return;
       session = newSession("retry", questions, false);
       persistSession();
       renderQuestion();
     }
 
     function startWeak() {
-      var weak = LS.get("ccarf.weak", []).map(function (id) { return byId[id]; }).filter(Boolean);
+      var weak = Store.snapshot().weak.map(function (id) { return byId[id]; }).filter(Boolean);
       if (!weak.length || !okToReplaceSaved()) return;
       session = newSession("weak", shuffle(weak), false);
       persistSession();
@@ -609,8 +860,23 @@ if (typeof document !== "undefined") {
     }
 
     function resumeSession() {
-      var saved = LS.get("ccarf.session", null);
+      var saved = Store.snapshot().session;
       if (!saved) return renderHome();
+
+      /* Drop anything the current bank no longer has, so a stale session
+       * cannot crash the question screen. */
+      var usable = (saved.questions || []).filter(function (s) { return byId[s.id]; });
+      if (!usable.length) {
+        Store.mutate(Mutations.clearSession());
+        alert("That session referred to questions this version no longer has, so it was discarded.");
+        return renderHome();
+      }
+      saved.questions = usable;
+      saved.current = Math.min(Math.max(0, saved.current || 0), usable.length - 1);
+      if (!saved.answers) saved.answers = {};
+      if (!saved.flagged) saved.flagged = {};
+      if (!saved.tally) saved.tally = { correct: 0, wrong: 0 };
+
       session = saved;
       if (session.deadline && Date.now() >= session.deadline) {
         submitSession();
@@ -664,6 +930,7 @@ if (typeof document !== "undefined") {
     }
 
     function renderQuestion() {
+      view = "quiz";
       var sq = session.questions[session.current];
       var q = byId[sq.id];
       var total = session.questions.length;
@@ -695,17 +962,20 @@ if (typeof document !== "undefined") {
           if (session.answers[s.id] !== null) cls += " answered";
           if (session.flagged[s.id]) cls += " flagged";
           if (i === session.current) cls += " current";
-          html += '<button class="' + cls + '" data-action="jump" data-index="' + i + '">' + (i + 1) + "</button>";
+          var navState = (session.answers[s.id] !== null ? "answered" : "not answered") +
+            (session.flagged[s.id] ? ", flagged" : "");
+          html += '<button class="' + cls + '" data-action="jump" data-index="' + i +
+            '" aria-label="Question ' + (i + 1) + ", " + navState + '">' + (i + 1) + "</button>";
         });
         html += "</div>";
       }
 
       html += '<div class="card question-card">' +
-        '<div class="q-meta"><span class="domain-chip chip-d' + q.domain + '">D' + q.domain + "</span>" +
+        '<div class="q-meta"><span class="domain-chip chip-d' + esc(q.domain) + '">D' + esc(q.domain) + "</span>" +
         '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>" +
         (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "") +
         "</div>" +
-        '<p class="q-text">' + esc(q.question) + "</p><div class=\"options\">";
+        '<p class="q-text">' + esc(q.question) + '</p><div class="options" role="radiogroup">';
 
       sq.order.forEach(function (optIdx) {
         var cls = "option";
@@ -715,14 +985,15 @@ if (typeof document !== "undefined") {
           if (optIdx === q.answer) cls += " correct";
           else if (answered === optIdx) cls += " wrong";
         }
-        html += '<button class="' + cls + '" data-action="select" data-opt="' + optIdx + '"' + disabled + ">" +
+        html += '<button class="' + cls + '" role="radio" aria-checked="' + (answered === optIdx) +
+          '" data-action="select" data-opt="' + optIdx + '"' + disabled + ">" +
           '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>";
       });
       html += "</div>";
 
       if (showFeedback) {
         var right = answered === q.answer;
-        html += '<div class="feedback ' + (right ? "ok" : "bad") + '">' +
+        html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status">' +
           "<strong>" + (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
       }
       html += "</div>";
@@ -749,6 +1020,7 @@ if (typeof document !== "undefined") {
       html += "</div></div>";
 
       app.innerHTML = html;
+      window.scrollTo(0, 0);
       var cur = app.querySelector(".nav-cell.current");
       if (cur && cur.scrollIntoView) cur.scrollIntoView({ inline: "center", block: "nearest" });
     }
@@ -760,9 +1032,10 @@ if (typeof document !== "undefined") {
         session.answers[sq.id] = optIdx;
         session.feedback = sq.id;
         var q = byId[sq.id];
-        if (optIdx === q.answer) session.tally.correct++;
+        var right = optIdx === q.answer;
+        if (right) session.tally.correct++;
         else session.tally.wrong++;
-        // weak-set bookkeeping happens at session end
+        Store.mutate(Mutations.recordAnswer(q.id, right));
       } else {
         session.answers[sq.id] = session.answers[sq.id] === optIdx ? null : optIdx;
       }
@@ -773,7 +1046,10 @@ if (typeof document !== "undefined") {
     /* ----------------------------------------------------------- results */
     function submitSession() {
       stopTimer();
-      var questions = session.questions.map(function (s) { return byId[s.id]; });
+      if (!session) return;
+      var questions = session.questions
+        .map(function (s) { return byId[s.id]; })
+        .filter(Boolean);
       var grade = gradeSession(questions, session.answers);
       var finished = {
         mode: session.mode,
@@ -783,35 +1059,31 @@ if (typeof document !== "undefined") {
         grade: grade,
       };
 
-      LS.remove("ccarf.session");
-      LS.set("ccarf.weak", updateWeakSet(LS.get("ccarf.weak", []), grade));
-
-      var correctEver = LS.get("ccarf.correctEver", []);
-      var everSet = {};
-      correctEver.forEach(function (id) { everSet[id] = true; });
-      grade.correctIds.forEach(function (id) { everSet[id] = true; });
-      LS.set("ccarf.correctEver", Object.keys(everSet));
-
+      var entry = null;
       if (session.mode === "exam") {
         var score = scaledScore(grade.correct, grade.total);
-        var history = LS.get("ccarf.history", []);
-        history.push({
+        entry = {
           date: new Date().toISOString(),
           score: score,
           pass: score >= PASS_SCORE,
           correct: grade.correct,
           total: grade.total,
           perDomain: grade.perDomain,
-        });
-        LS.set("ccarf.history", history);
+        };
         finished.score = score;
       }
+
+      /* One mutation clears the session, redeems the weak questions answered
+       * correctly, and records the attempt — so a later sync cannot bring
+       * any of it back. */
+      Store.mutate(Mutations.finishSession(grade, entry));
 
       session = null;
       renderResults(finished);
     }
 
     function renderResults(finished) {
+      view = "results";
       var grade = finished.grade;
       var isExam = finished.mode === "exam";
       var html = "";
@@ -861,7 +1133,6 @@ if (typeof document !== "undefined") {
         '<button class="btn ghost" data-action="home">Home</button></div>';
 
       app.innerHTML = html;
-      app.dataset.state = "";
       lastFinished = finished;
     }
 
@@ -880,6 +1151,7 @@ if (typeof document !== "undefined") {
     var reviewDomain = 0; // 0 = all
 
     function renderReview() {
+      view = "review";
       var finished = lastFinished;
       var domainOptions = '<option value="0">All domains</option>';
       for (var rd = 1; rd <= 5; rd++) {
@@ -909,7 +1181,7 @@ if (typeof document !== "undefined") {
           var cls = "option readonly";
           if (optIdx === q.answer) cls += " correct";
           if (given === optIdx && given !== q.answer) cls += " wrong";
-          html += '<div class="' + cls + '">' + esc(q.options[optIdx]) +
+          html += '<div class="' + cls + '"><span class="opt-letter"></span>' + esc(q.options[optIdx]) +
             (optIdx === q.answer ? ' <span class="tag">correct answer</span>' : "") +
             (given === optIdx && given !== q.answer ? ' <span class="tag">your answer</span>' : "") +
             "</div>";
@@ -978,7 +1250,13 @@ if (typeof document !== "undefined") {
         return selectOption(sq.order[optPos]);
       }
       if (ev.key === "ArrowLeft") { ev.preventDefault(); return goPrev(); }
-      if (ev.key === "ArrowRight" || ev.key === "Enter") { ev.preventDefault(); return goNext(); }
+      if (ev.key === "Enter") {
+        // let the focused control handle its own activation
+        if (ev.target && ev.target.closest && ev.target.closest("button, a, input, select")) return;
+        ev.preventDefault();
+        return goNext();
+      }
+      if (ev.key === "ArrowRight") { ev.preventDefault(); return goNext(); }
       if (key === "f") return toggleFlag();
     });
 
@@ -999,10 +1277,13 @@ if (typeof document !== "undefined") {
         case "resume": return resumeSession();
         case "discard":
           if (!confirm("Discard this in-progress session? This cannot be undone.")) return;
-          LS.remove("ccarf.session");
+          Store.mutate(Mutations.clearSession());
           return renderHome();
         case "clear-history":
-          if (confirm("Delete all score history?")) { LS.remove("ccarf.history"); renderHome(); }
+          if (confirm("Delete all score history?")) {
+            Store.mutate(Mutations.clearHistory());
+            renderHome();
+          }
           return;
         case "custom-builder": return renderCustomBuilder();
         case "cq-domain":
@@ -1042,6 +1323,15 @@ if (typeof document !== "undefined") {
         case "back-results": return renderResults(lastFinished);
         case "home": return renderHome();
         case "cycle-theme": cycleTheme(); return renderHome();
+        case "hard-reload":
+          if (window.caches && caches.keys) {
+            caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            }).then(function () { location.reload(); }, function () { location.reload(); });
+          } else {
+            location.reload();
+          }
+          return;
         case "toggle-mastery": {
           var dm = Number(btn.dataset.domain);
           expandedMastery = expandedMastery === dm ? 0 : dm;
@@ -1075,6 +1365,7 @@ if (typeof document !== "undefined") {
           return;
         }
         case "auth-signout":
+          if (!confirm("Sign out? Progress stays on the server and this device's copy is cleared.")) return;
           window.CCARF_SYNC.signOut();
           return;
         case "sync-now":
@@ -1083,8 +1374,20 @@ if (typeof document !== "undefined") {
       }
     });
 
+    /* Sync and auth updates refresh the home screen only. Re-rendering while
+     * a quiz, result or review is on screen would throw the user out of it. */
     window.addEventListener("ccarf:auth", function () {
-      if (!session) renderHome();
+      if (!session && view === "home") renderHome();
+    });
+
+    /* Signing out must not leave one account's progress on screen for the
+     * next person to sign in on this device. */
+    window.addEventListener("ccarf:signout", function () {
+      stopTimer();
+      session = null;
+      Store.reset();
+      LS.remove("ccarf.syncedAt");
+      renderHome();
     });
 
     /* ------------------------------------------------------------- boot */
