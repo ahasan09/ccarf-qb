@@ -206,3 +206,35 @@ test("answers recorded during practice survive a sync that arrives mid-session",
   assert.deepEqual(server.row.data.correctEver, ["q1"]);
   assert.deepEqual(server.row.data.weak, ["q2"]);
 });
+
+test("progress that has never reached the server is uploaded, not replaced by an empty row", async () => {
+  // The data-loss case: this device holds real progress that was never
+  // written (e.g. just migrated from an older storage layout) while the
+  // server row exists but is empty.
+  const server = makeServer();
+  server.seed({ history: [], weak: [], correctEver: [], session: null });
+
+  let dirty = true; // marked unsynced by the migration
+  const store = createStore({
+    initial: {
+      history: [{ date: "2026-10-27T10:00:00.000Z", score: 780, pass: true }],
+      weak: ["q3"],
+      correctEver: ["q1", "q2"],
+      session: { mode: "practice", startedAt: 5, questions: [{ id: "q9" }] },
+    },
+    readFlag: () => dirty,
+    writeFlag: (v) => { dirty = v; },
+  });
+  const engine = createSyncEngine({
+    store,
+    readRow: () => server.readRow(),
+    writeRow: (s, stamp) => server.writeRow(s, stamp),
+  });
+
+  await engine.sync();
+
+  assert.deepEqual(server.row.data.correctEver, ["q1", "q2"], "finished work must reach the server");
+  assert.equal(server.row.data.history.length, 1, "exam history must reach the server");
+  assert.ok(server.row.data.session, "an in-progress session must reach the server");
+  assert.equal(store.snapshot().correctEver.length, 2, "and must not vanish locally");
+});

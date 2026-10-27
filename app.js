@@ -242,6 +242,19 @@ var Mutations = {
   clearHistory: function () {
     return { key: "clearHistory", apply: function (s) { s.history = []; } };
   },
+  /* Fold a rescued copy of progress back in. */
+  restore: function (backup) {
+    return {
+      key: null,
+      apply: function (s) {
+        var merged = mergeProgress(s, backup);
+        s.history = merged.history;
+        s.weak = merged.weak;
+        s.correctEver = merged.correctEver;
+        if (!s.session && merged.session) s.session = merged.session;
+      },
+    };
+  },
   /* Credit a single answer as soon as it is graded, so leaving a long
    * practice run part-way still keeps what was earned. */
   recordAnswer: function (questionId, wasCorrect) {
@@ -436,21 +449,40 @@ if (typeof document !== "undefined") {
     /* The signed-in server row is the source of truth; localStorage is only a
      * cache so the app still works offline and before the first fetch. */
     var CACHE_KEY = "ccarf.progress";
+    var BACKUP_KEY = "ccarf.backup";
     var LEGACY_KEYS = ["ccarf.history", "ccarf.weak", "ccarf.correctEver", "ccarf.session"];
+
+    function progressSize(state) {
+      var s = normalizeProgress(state);
+      return s.history.length + s.weak.length + s.correctEver.length + (s.session ? 1 : 0);
+    }
 
     function readCache() {
       var cached = LS.get(CACHE_KEY, null);
-      if (cached) return normalizeProgress(cached);
-      // one-time migration from the old per-key layout
-      var legacy = {
+
+      var legacy = normalizeProgress({
         history: LS.get("ccarf.history", []),
         weak: LS.get("ccarf.weak", []),
         correctEver: LS.get("ccarf.correctEver", []),
         session: LS.get("ccarf.session", null),
-      };
-      LEGACY_KEYS.forEach(function (k) { LS.remove(k); });
-      LS.remove("ccarf.syncUpdatedAt");
-      return normalizeProgress(legacy);
+      });
+
+      if (progressSize(legacy)) {
+        /* Migrated work has never been written to the server. It must be
+         * flagged as unsynced, or the next sync would treat the server copy
+         * as authoritative and discard it. */
+        LS.set("ccarf.unsynced", true);
+        if (progressSize(LS.get(BACKUP_KEY, null)) < progressSize(legacy)) {
+          LS.set(BACKUP_KEY, legacy);
+        }
+        LEGACY_KEYS.forEach(function (k) { LS.remove(k); });
+        LS.remove("ccarf.syncUpdatedAt");
+        var merged = cached ? mergeProgress(cached, legacy) : legacy;
+        LS.set(CACHE_KEY, merged);
+        return merged;
+      }
+
+      return cached ? normalizeProgress(cached) : emptyProgress();
     }
 
     var Store = createStore({
@@ -724,6 +756,14 @@ if (typeof document !== "undefined") {
             '<p class="muted auth-note">Check your inbox — enter the code here, or just click the link in the e-mail.</p>';
         }
       }
+      var backup = LS.get(BACKUP_KEY, null);
+      var extra = progressSize(backup) - progressSize(Store.snapshot());
+      if (extra > 0) {
+        html += '<p class="muted auth-note">This device has a backup copy with ' + extra +
+          " more item" + (extra === 1 ? "" : "s") + " than your current progress.</p>" +
+          '<div class="row"><button class="btn" data-action="restore-backup">Restore backup</button></div>';
+      }
+
       return html + "</div>";
     }
 
@@ -1368,6 +1408,14 @@ if (typeof document !== "undefined") {
           if (!confirm("Sign out? Progress stays on the server and this device's copy is cleared.")) return;
           window.CCARF_SYNC.signOut();
           return;
+        case "restore-backup": {
+          var backup = LS.get(BACKUP_KEY, null);
+          if (!progressSize(backup)) return;
+          if (!confirm("Merge this device's backup into your progress? Nothing is removed.")) return;
+          Store.mutate(Mutations.restore(backup));
+          if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
+          return renderHome();
+        }
         case "sync-now":
           window.CCARF_SYNC.syncNow();
           return;
