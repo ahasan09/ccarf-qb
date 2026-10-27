@@ -741,7 +741,7 @@ if (typeof document !== "undefined") {
         var syncedAt = S.syncedAt ? S.syncedAt() : 0;
         if (syncedAt) {
           html += '<p class="muted auth-note">Last synced ' + esc(timeAgo(syncedAt)) +
-            ". Progress from your other devices is merged, never overwritten.</p>";
+            ". Your progress is kept on the server, so any signed-in device shows the latest.</p>";
         }
         html += '<div class="row"><button class="btn small" data-action="sync-now"' +
           (st === "syncing" ? " disabled" : "") + ">" + (st === "syncing" ? "Syncing…" : "Sync now") + "</button>" +
