@@ -583,11 +583,17 @@ if (typeof document !== "undefined") {
         "</div></header>";
 
       if (saved) {
+        var savedDone = answeredCount(saved) >= saved.questions.length;
         html += '<div class="card resume-card"><div><strong>' +
           (Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
-          " in progress</strong>" +
-          "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered</p></div>" +
-          '<div class="row"><button class="btn primary" data-action="resume">Resume</button>' +
+          (savedDone ? " ready to grade" : " in progress") + "</strong>" +
+          "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
+          (savedDone ? " — finish to see your score" : "") + "</p></div>" +
+          '<div class="row">' +
+          (savedDone
+            ? '<button class="btn primary" data-action="finish-saved">Finish &amp; see results</button>' +
+              '<button class="btn" data-action="resume">Review answers</button>'
+            : '<button class="btn primary" data-action="resume">Resume</button>') +
           '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
       }
 
@@ -899,9 +905,9 @@ if (typeof document !== "undefined") {
       renderQuestion();
     }
 
-    function resumeSession() {
+    function loadSavedSession() {
       var saved = Store.snapshot().session;
-      if (!saved) return renderHome();
+      if (!saved) return false;
 
       /* Drop anything the current bank no longer has, so a stale session
        * cannot crash the question screen. */
@@ -909,7 +915,7 @@ if (typeof document !== "undefined") {
       if (!usable.length) {
         Store.mutate(Mutations.clearSession());
         alert("That session referred to questions this version no longer has, so it was discarded.");
-        return renderHome();
+        return false;
       }
       saved.questions = usable;
       saved.current = Math.min(Math.max(0, saved.current || 0), usable.length - 1);
@@ -918,12 +924,24 @@ if (typeof document !== "undefined") {
       if (!saved.tally) saved.tally = { correct: 0, wrong: 0 };
 
       session = saved;
+      return true;
+    }
+
+    function resumeSession() {
+      if (!loadSavedSession()) return renderHome();
       if (session.deadline && Date.now() >= session.deadline) {
         submitSession();
         return;
       }
       renderQuestion();
       startTimer();
+    }
+
+    /* Grade a saved session straight from the home screen, for the case where
+     * every question was answered but the session was left unsubmitted. */
+    function finishSavedSession() {
+      if (!loadSavedSession()) return renderHome();
+      submitSession();
     }
 
     /* ------------------------------------------------------------ timer */
@@ -989,11 +1007,9 @@ if (typeof document !== "undefined") {
         '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
         "</div></div>";
 
-      var answeredCount = session.questions.filter(function (s) {
-        return session.answers[s.id] !== null;
-      }).length;
+      var answered = answeredCount(session);
       html += '<div class="progress"><div class="progress-fill" style="width:' +
-        Math.round((answeredCount / total) * 100) + '%"></div></div>';
+        Math.round((answered / total) * 100) + '%"></div></div>';
 
       if (!isPractice) {
         html += '<div class="navigator">';
@@ -1008,6 +1024,12 @@ if (typeof document !== "undefined") {
             '" aria-label="Question ' + (i + 1) + ", " + navState + '">' + (i + 1) + "</button>";
         });
         html += "</div>";
+      }
+
+      if (!isPractice && answered >= total) {
+        html += '<div class="card all-answered" role="status">All ' + total +
+          " answered — finish to grade this " +
+          (session.mode === "exam" ? "exam" : "round") + ".</div>";
       }
 
       html += '<div class="card question-card">' +
@@ -1053,8 +1075,10 @@ if (typeof document !== "undefined") {
           html += '<span class="muted">Pick an answer to see the explanation</span>';
         }
       } else {
-        html += '<button class="btn primary" data-action="submit">Submit ' +
-          (session.mode === "exam" ? "exam" : "answers") + "</button>" +
+        var allAnswered = answered >= total;
+        html += '<button class="btn primary" data-action="submit">' +
+          (allAnswered ? "Finish &amp; see results"
+            : session.mode === "exam" ? "Submit exam" : "Submit answers") + "</button>" +
           '<button class="btn" data-action="next"' + (session.current + 1 >= total ? " disabled" : "") + ">Next →</button>";
       }
       html += "</div></div>";
@@ -1315,6 +1339,7 @@ if (typeof document !== "undefined") {
           return renderHome();
         }
         case "resume": return resumeSession();
+        case "finish-saved": return finishSavedSession();
         case "discard":
           if (!confirm("Discard this in-progress session? This cannot be undone.")) return;
           Store.mutate(Mutations.clearSession());

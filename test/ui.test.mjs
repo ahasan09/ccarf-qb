@@ -215,3 +215,42 @@ test("mastery and the home screen reflect progress without a reload", () => {
   app.click("toggle-mastery", { domain: "1" });
   assert.ok(app.html().includes("1/20"), "the domain bar counts the answered question");
 });
+
+test("a fully answered drill can be graded straight from the home screen", () => {
+  const app = launch();
+  app.click("practice", { domain: "1", sub: "1.1" });
+  app.click("select", { opt: "1" }); // a miss, so there is something to retry
+  app.click("quit");
+
+  // stand in for a retry round: answer every question, then leave without submitting
+  const n = app.store().snapshot().weak.length;
+  assert.ok(n > 0, "there should be something to drill");
+  app.click("start-weak");
+  for (let i = 0; i < n; i++) {
+    app.click("select", { opt: "0" });
+    if (i < n - 1) app.click("next");
+  }
+  app.click("quit");
+
+  assert.ok(app.html().includes("ready to grade"), "home must offer to grade, not just resume");
+  assert.ok(app.html().includes('data-action="finish-saved"'));
+
+  app.click("finish-saved");
+  assert.ok(app.html().includes("score-ring"), "grading shows the results screen");
+
+  app.click("home");
+  assert.ok(!app.html().includes("ready to grade"), "the session is cleared once graded");
+  assert.equal(app.store().snapshot().session, null);
+});
+
+test("answering the last question prompts you to finish rather than looking done", () => {
+  const app = launch();
+  app.click("practice", { domain: "2", sub: "2.1" });
+  app.click("select", { opt: "1" });
+  app.click("quit");
+
+  app.click("start-weak");
+  app.click("select", { opt: "0" });
+  assert.ok(app.html().includes("answered — finish to grade"), "an explicit prompt appears");
+  assert.ok(app.html().includes("Finish &amp; see results"), "the button says what it does");
+});
