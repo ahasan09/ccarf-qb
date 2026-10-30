@@ -1007,9 +1007,9 @@ if (typeof document !== "undefined") {
         '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
         "</div></div>";
 
-      var answered = answeredCount(session);
+      var answeredSoFar = answeredCount(session);
       html += '<div class="progress"><div class="progress-fill" style="width:' +
-        Math.round((answered / total) * 100) + '%"></div></div>';
+        Math.round((answeredSoFar / total) * 100) + '%"></div></div>';
 
       if (!isPractice) {
         html += '<div class="navigator">';
@@ -1026,7 +1026,7 @@ if (typeof document !== "undefined") {
         html += "</div>";
       }
 
-      if (!isPractice && answered >= total) {
+      if (!isPractice && answeredSoFar >= total) {
         html += '<div class="card all-answered" role="status">All ' + total +
           " answered — finish to grade this " +
           (session.mode === "exam" ? "exam" : "round") + ".</div>";
@@ -1075,7 +1075,7 @@ if (typeof document !== "undefined") {
           html += '<span class="muted">Pick an answer to see the explanation</span>';
         }
       } else {
-        var allAnswered = answered >= total;
+        var allAnswered = answeredSoFar >= total;
         html += '<button class="btn primary" data-action="submit">' +
           (allAnswered ? "Finish &amp; see results"
             : session.mode === "exam" ? "Submit exam" : "Submit answers") + "</button>" +

@@ -254,3 +254,54 @@ test("answering the last question prompts you to finish rather than looking done
   assert.ok(app.html().includes("answered — finish to grade"), "an explicit prompt appears");
   assert.ok(app.html().includes("Finish &amp; see results"), "the button says what it does");
 });
+
+/* Pull out the option buttons as [{opt, selected, letterPosition}]. */
+function renderedOptions(html) {
+  const out = [];
+  const re = /<button class="(option[^"]*)" role="radio" aria-checked="(true|false)" data-action="select" data-opt="(\d+)"/g;
+  let m;
+  while ((m = re.exec(html))) {
+    out.push({ classes: m[1], checked: m[2] === "true", opt: Number(m[3]) });
+  }
+  return out;
+}
+
+test("no option looks selected before you answer", () => {
+  const app = launch();
+  app.click("start-exam");
+  const opts = renderedOptions(app.html());
+  assert.equal(opts.length, 4, "four options render");
+  assert.deepEqual(
+    opts.filter((o) => o.classes.includes("selected")).map((o) => o.opt),
+    [],
+    "nothing may appear pre-selected"
+  );
+  assert.deepEqual(opts.filter((o) => o.checked).map((o) => o.opt), []);
+});
+
+test("the option you click is the one that highlights", () => {
+  const app = launch();
+  app.click("start-exam");
+
+  for (const pick of [2, 0, 3, 1]) {
+    app.click("select", { opt: String(pick) });
+    const opts = renderedOptions(app.html());
+    const selected = opts.filter((o) => o.classes.includes("selected")).map((o) => o.opt);
+    assert.deepEqual(selected, [pick], `clicking option ${pick} must highlight option ${pick}`);
+    assert.deepEqual(opts.filter((o) => o.checked).map((o) => o.opt), [pick], "aria-checked must agree");
+  }
+});
+
+test("the selection stays put as other questions get answered", () => {
+  const app = launch();
+  app.click("start-exam");
+  app.click("select", { opt: "3" });
+  app.click("next");
+  app.click("select", { opt: "3" });
+  app.click("prev");
+
+  const selected = renderedOptions(app.html())
+    .filter((o) => o.classes.includes("selected"))
+    .map((o) => o.opt);
+  assert.deepEqual(selected, [3], "going back shows the original answer, not a count-derived one");
+});
