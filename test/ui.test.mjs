@@ -470,3 +470,57 @@ test("reviewing a past attempt does not disturb current progress", () => {
   app.click("home");
   assert.equal(JSON.stringify(app.store().snapshot()), before, "nothing changed");
 });
+
+test("a question can be saved and later studied from the home screen", () => {
+  const app = launch();
+  app.click("start-exam");
+  assert.ok(app.html().includes("☆ Save"), "a save control is offered");
+
+  app.click("toggle-saved");
+  assert.ok(app.html().includes("★ Saved"), "the control reflects the saved state");
+  assert.equal(app.store().snapshot().saved.length, 1);
+
+  app.click("quit");
+  assert.ok(app.html().includes("1 question kept for later"));
+  app.click("start-saved");
+  assert.ok(app.html().includes("Saved questions"), "the drill opens");
+  assert.ok(app.html().includes('data-action="select"'));
+});
+
+test("saving the same question twice removes it", () => {
+  const app = launch();
+  app.click("start-exam");
+  app.click("toggle-saved");
+  app.click("toggle-saved");
+  assert.equal(app.store().snapshot().saved.length, 0);
+  assert.ok(app.html().includes("☆ Save"));
+});
+
+test("the custom builder can narrow a domain to chosen subdomains", () => {
+  const app = launch();
+  app.click("custom-builder");
+  assert.ok(app.html().includes('data-action="cq-open-subs"'), "subdomains can be opened");
+
+  // keep only domain 2, then open it
+  for (const d of [1, 3, 4, 5]) app.click("cq-domain", { domain: String(d) }, { checked: false });
+  app.click("cq-open-subs", { domain: "2" });
+  assert.ok(app.html().includes('data-action="cq-sub"'), "subdomain checkboxes render");
+  assert.ok(app.html().includes("All (20)"), "whole domain while nothing is ticked");
+
+  // the stub bank tags every question of a domain as <d>.1
+  app.click("cq-sub", { key: "2|2.1" }, { checked: true });
+  assert.ok(app.html().includes("Only the ticked subdomains are included."));
+
+  app.click("cq-count", { count: "all" });
+  app.click("start-custom");
+  assert.ok(app.html().includes("Custom Quiz"), "the quiz starts from the filtered pool");
+  assert.ok(app.html().includes("of 20"), "drawn only from the chosen subdomain");
+});
+
+test("deselecting everything refuses to start rather than drawing nothing", () => {
+  const app = launch();
+  app.click("custom-builder");
+  for (const d of [1, 2, 3, 4, 5]) app.click("cq-domain", { domain: String(d) }, { checked: false });
+  app.click("start-custom");
+  assert.ok(!app.html().includes("Custom Quiz"), "no empty session is created");
+});

@@ -25,6 +25,7 @@ const {
   Mutations,
   correctIndices,
   toggleChoice,
+  selectCustomQuestions,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -372,4 +373,54 @@ test("mergeProgress unions the attempted set too", () => {
 
 test("normalizeProgress defaults attempted for records written before it existed", () => {
   assert.deepEqual(normalizeProgress({ correctEver: ["q1"] }).attempted, []);
+});
+
+/* ---- saved questions ---------------------------------------------------- */
+
+test("saving a question adds it, saving again removes it", () => {
+  let s = applyMutations(emptyProgress(), [Mutations.toggleSaved("q1")]);
+  assert.deepEqual(s.saved, ["q1"]);
+  s = applyMutations(s, [Mutations.toggleSaved("q2")]);
+  assert.deepEqual(s.saved, ["q1", "q2"]);
+  s = applyMutations(s, [Mutations.toggleSaved("q1")]);
+  assert.deepEqual(s.saved, ["q2"], "toggling off removes it");
+});
+
+test("saved questions survive a merge and a normalize", () => {
+  assert.deepEqual(mergeProgress({ saved: ["a"] }, { saved: ["b", "a"] }).saved, ["a", "b"]);
+  assert.deepEqual(normalizeProgress({ correctEver: [] }).saved, [], "defaults for older records");
+});
+
+/* ---- custom quiz selection --------------------------------------------- */
+
+const SUB_BANK = [
+  { id: "a", domain: 2, subdomain: "2.1 Interfaces" },
+  { id: "b", domain: 2, subdomain: "2.4 MCP" },
+  { id: "c", domain: 2 },
+  { id: "d", domain: 3, subdomain: "3.1 CLAUDE.md" },
+];
+
+test("a domain with no subdomain filter contributes all of its questions", () => {
+  const picked = selectCustomQuestions(SUB_BANK, { domains: { 2: true }, subs: {} });
+  assert.deepEqual(picked.map((q) => q.id), ["a", "b", "c"]);
+});
+
+test("choosing subdomains narrows that domain but leaves others whole", () => {
+  const picked = selectCustomQuestions(SUB_BANK, {
+    domains: { 2: true, 3: true },
+    subs: { "2|2.4": true },
+  });
+  assert.deepEqual(picked.map((q) => q.id), ["b", "d"], "D2 narrowed to 2.4, D3 untouched");
+});
+
+test("the untagged group can be selected on its own", () => {
+  const picked = selectCustomQuestions(SUB_BANK, {
+    domains: { 2: true },
+    subs: { "2|general": true },
+  });
+  assert.deepEqual(picked.map((q) => q.id), ["c"]);
+});
+
+test("deselecting every domain selects nothing", () => {
+  assert.deepEqual(selectCustomQuestions(SUB_BANK, { domains: {}, subs: {} }), []);
 });

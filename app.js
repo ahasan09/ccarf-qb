@@ -105,6 +105,26 @@ function updateWeakSet(weak, grade) {
   return Object.keys(set);
 }
 
+/* Pick the questions a custom quiz may draw from. A domain with no subdomain
+ * boxes ticked contributes all of its questions; ticking any narrows that
+ * domain to the ticked ones and leaves other domains alone. */
+function selectCustomQuestions(bank, state) {
+  var domains = (state && state.domains) || {};
+  var subs = (state && state.subs) || {};
+  var chosenByDomain = {};
+  Object.keys(subs).forEach(function (key) {
+    if (!subs[key]) return;
+    var parts = key.split("|");
+    (chosenByDomain[parts[0]] || (chosenByDomain[parts[0]] = {}))[parts[1]] = true;
+  });
+  return bank.filter(function (q) {
+    if (!domains[q.domain]) return false;
+    var picked = chosenByDomain[q.domain];
+    if (!picked) return true;
+    return picked[subKeyOf(q).key] === true;
+  });
+}
+
 function sampleQuiz(bank, domains, count, rng) {
   var pool = bank.filter(function (q) { return domains.indexOf(q.domain) !== -1; });
   return shuffle(pool, rng).slice(0, Math.min(count, pool.length));
@@ -192,7 +212,7 @@ function validateBank(bank) {
  * of a merge guessing what was deleted. */
 
 function emptyProgress() {
-  return { history: [], weak: [], correctEver: [], attempted: [], session: null };
+  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null };
 }
 
 function normalizeProgress(raw) {
@@ -207,6 +227,9 @@ function normalizeProgress(raw) {
   }
   if (Array.isArray(raw.attempted)) {
     s.attempted = raw.attempted.filter(function (id) { return typeof id === "string"; });
+  }
+  if (Array.isArray(raw.saved)) {
+    s.saved = raw.saved.filter(function (id) { return typeof id === "string"; });
   }
   if (raw.session && typeof raw.session === "object" && Array.isArray(raw.session.questions)) {
     s.session = raw.session;
@@ -229,6 +252,7 @@ function progressFromStored(raw) {
       weak: raw["ccarf.weak"],
       correctEver: raw["ccarf.correctEver"],
       attempted: raw["ccarf.attempted"],
+      saved: raw["ccarf.saved"],
       session: raw["ccarf.session"],
     });
   }
@@ -248,6 +272,7 @@ function mergeProgress(a, b) {
     weak: unionIds(a.weak, b.weak),
     correctEver: unionIds(a.correctEver, b.correctEver),
     attempted: unionIds(a.attempted, b.attempted),
+    saved: unionIds(a.saved, b.saved),
     session: !a.session ? b.session
       : !b.session ? a.session
       : (b.session.startedAt || 0) > (a.session.startedAt || 0) ? b.session : a.session,
@@ -294,6 +319,16 @@ var Mutations = {
   clearHistory: function () {
     return { key: "clearHistory", apply: function (s) { s.history = []; } };
   },
+  /* Bookmark a question to come back to, or clear the bookmark. */
+  toggleSaved: function (questionId) {
+    return {
+      key: null,
+      apply: function (s) {
+        if (s.saved.indexOf(questionId) === -1) s.saved = unionIds(s.saved, [questionId]);
+        else s.saved = s.saved.filter(function (id) { return id !== questionId; });
+      },
+    };
+  },
   /* Fold a rescued copy of progress back in. */
   restore: function (backup) {
     return {
@@ -303,6 +338,8 @@ var Mutations = {
         s.history = merged.history;
         s.weak = merged.weak;
         s.correctEver = merged.correctEver;
+        s.attempted = merged.attempted;
+        s.saved = merged.saved;
         if (!s.session && merged.session) s.session = merged.session;
       },
     };
@@ -466,6 +503,7 @@ if (typeof module !== "undefined" && module.exports) {
     updateWeakSet: updateWeakSet,
     validateBank: validateBank,
     sampleQuiz: sampleQuiz,
+    selectCustomQuestions: selectCustomQuestions,
     masteryByDomain: masteryByDomain,
     masteryBySubdomain: masteryBySubdomain,
     filterBySubKey: filterBySubKey,
@@ -493,6 +531,9 @@ if (typeof document !== "undefined") {
     var EXAMS = window.MOCK_EXAMS || [];
     var examById = {};
     EXAMS.forEach(function (e) { examById[e.id] = e; });
+
+    var bankIds = {};
+    BANK.forEach(function (q) { bankIds[q.id] = true; });
 
     var byId = {};
     BANK.forEach(function (q) { byId[q.id] = q; });
@@ -575,7 +616,13 @@ if (typeof document !== "undefined") {
     var pendingEmail = null; // login code sent, awaiting verification
     var expandedMastery = 0; // domain whose subdomain breakdown is open (0 = none)
     var expandedPractice = 0; // domain whose practice subdomain list is open (0 = none)
-    var customState = { domains: { 1: true, 2: true, 3: true, 4: true, 5: true }, count: "20", timed: false };
+    var customState = {
+      domains: { 1: true, 2: true, 3: true, 4: true, 5: true },
+      subs: {},        // "<domain>|<subKey>" -> true
+      openDomain: 0,   // which domain's subdomain list is expanded
+      count: "20",
+      timed: false,
+    };
 
     /* ------------------------------------------------------------- theme */
     var THEMES = ["auto", "light", "dark"];
@@ -675,6 +722,16 @@ if (typeof document !== "undefined") {
           ? weak.length + " question" + (weak.length === 1 ? "" : "s") + " you previously missed. Answer correctly to clear them."
           : "Nothing here yet — questions you miss will collect here.") + "</p>" +
         '<button class="btn" data-action="start-weak"' + (weak.length ? "" : " disabled") + ">Drill " + (weak.length || "") + "</button></div>";
+      var savedIds = progress.saved.filter(function (id) { return byId[id]; });
+      html += '<div class="card"><h2>Saved questions</h2><p>' +
+        (savedIds.length
+          ? savedIds.length + " question" + (savedIds.length === 1 ? "" : "s") + " kept for later. Star any question while answering to add it here."
+          : "Nothing saved yet — use ☆ Save on any question to keep it for later.") + "</p>" +
+        '<div class="row"><button class="btn" data-action="start-saved"' + (savedIds.length ? "" : " disabled") +
+        ">Study saved</button>" +
+        (savedIds.length ? '<button class="btn ghost small" data-action="clear-saved">Clear all</button>' : "") +
+        "</div></div>";
+
       html += '<div class="card"><h2>Custom quiz</h2><p>Pick domains, length, and timing — e.g. a quick 20-question timed round on your weakest domain.</p>' +
         '<button class="btn" data-action="custom-builder">Build quiz</button></div>';
       html += "</div>";
@@ -982,23 +1039,51 @@ if (typeof document !== "undefined") {
     }
 
     function customPool() {
-      return BANK.filter(function (q) { return customState.domains[q.domain]; }).length;
+      return selectCustomQuestions(BANK, customState).length;
     }
 
     function renderCustomBuilder() {
       view = "custom";
+      var progressForBuilder = Store.snapshot();
       var pool = customPool();
       var html = '<div class="quiz-header"><div><strong>Custom quiz</strong></div>' +
         '<button class="btn ghost small" data-action="home">← Home</button></div>';
 
-      html += '<div class="card"><h2>Domains</h2><div class="domain-list">';
+      html += '<div class="card"><h2>Domains</h2>' +
+        '<p class="muted">Tick a domain to include it. Open one to narrow it to particular subdomains.</p>' +
+        '<div class="domain-list">';
       for (var d = 1; d <= 5; d++) {
         var count = BANK.filter(function (q) { return q.domain === d; }).length;
-        html += '<label class="domain-row check-row"><input type="checkbox" class="cb-domain" data-action="cq-domain" data-domain="' + d + '"' +
-          (customState.domains[d] ? " checked" : "") + ">" +
+        var on = !!customState.domains[d];
+        var subsOpen = customState.openDomain === d;
+        var chosenSubs = Object.keys(customState.subs).filter(function (k) {
+          return customState.subs[k] && k.indexOf(d + "|") === 0;
+        }).length;
+
+        html += '<div class="builder-domain">' +
+          '<label class="domain-row check-row"><input type="checkbox" class="cb-domain" data-action="cq-domain" data-domain="' + d + '"' +
+          (on ? " checked" : "") + ">" +
           '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
           "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
-          '<span class="muted">' + count + " questions</span></label>";
+          '<span class="muted">' + (chosenSubs ? chosenSubs + " subdomains" : count + " questions") + "</span>" +
+          '<button class="btn ghost small" data-action="cq-open-subs" data-domain="' + d + '"' +
+          (on ? "" : " disabled") + ">" + (subsOpen ? "Hide" : "Subdomains") + "</button></label>";
+
+        if (on && subsOpen) {
+          html += '<div class="sub-scores practice-subs">';
+          masteryBySubdomain(BANK, progressForBuilder.correctEver, d, progressForBuilder.attempted).forEach(function (row) {
+            var key = d + "|" + row.key;
+            html += '<label class="sub-row check-row"><input type="checkbox" data-action="cq-sub" data-key="' + esc(key) + '"' +
+              (customState.subs[key] ? " checked" : "") + ">" +
+              (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
+              '<span class="sub-title">' + esc(row.title) + "</span>" +
+              '<span class="muted">' + row.total + "</span></label>";
+          });
+          html += '<p class="muted auth-note">' +
+            (chosenSubs ? "Only the ticked subdomains are included." : "None ticked — the whole domain is included.") +
+            "</p></div>";
+        }
+        html += "</div>";
       }
       html += "</div></div>";
 
@@ -1019,13 +1104,11 @@ if (typeof document !== "undefined") {
     }
 
     function startCustom() {
-      var domains = [];
-      for (var d = 1; d <= 5; d++) if (customState.domains[d]) domains.push(d);
-      if (!domains.length) { alert("Pick at least one domain."); return; }
+      var pool = selectCustomQuestions(BANK, customState);
+      if (!pool.length) { alert("Nothing matches those filters — pick at least one domain."); return; }
       if (!okToReplaceSaved()) return;
-      var count = customState.count === "all" ? Infinity : Number(customState.count);
-      var questions = sampleQuiz(BANK, domains, count);
-      if (!questions.length) return;
+      var count = customState.count === "all" ? pool.length : Number(customState.count);
+      var questions = shuffle(pool).slice(0, Math.min(count, pool.length));
       session = newSession("custom", questions, customState.timed ? questions.length * 2 * 60 * 1000 : null);
       persistSession();
       renderQuestion();
@@ -1040,6 +1123,19 @@ if (typeof document !== "undefined") {
       }
       if (!okToReplaceSaved()) return;
       session = newSession("retry", questions, false);
+      persistSession();
+      renderQuestion();
+    }
+
+    function startSaved() {
+      var saved = Store.snapshot().saved
+        .map(function (id) { return byId[id]; })
+        .filter(Boolean);
+      if (!saved.length || !okToReplaceSaved()) return;
+      session = newSession("practice", shuffle(saved), null);
+      session.savedDrill = true;
+      /* The list can mix bank and imported questions, so only bank ones are
+       * credited; that is handled per answer. */
       persistSession();
       renderQuestion();
     }
@@ -1138,6 +1234,7 @@ if (typeof document !== "undefined") {
         case "retry": return "Retry Failed Questions";
         case "weak": return "Weak Questions Drill";
         case "practice":
+          if (session.savedDrill) return "Saved questions";
           if (session.examName) return "Practice — " + session.examName;
           return "Practice — " + (session.subKey && session.subKey !== "general"
             ? "Subdomain " + session.subKey
@@ -1167,6 +1264,8 @@ if (typeof document !== "undefined") {
         (isPractice
           ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
           : '<button class="btn ghost small" data-action="toggle-flag">' + (session.flagged[q.id] ? "🚩 Flagged" : "Flag for review") + "</button>") +
+        '<button class="btn ghost small" data-action="toggle-saved" title="Keep this question to study later">' +
+        (Store.snapshot().saved.indexOf(q.id) !== -1 ? "★ Saved" : "☆ Save") + "</button>" +
         '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
         "</div></div>";
 
@@ -1266,7 +1365,7 @@ if (typeof document !== "undefined") {
         var right = sameChoice(session.answers[sq.id], correctIndices(q));
         if (right) session.tally.correct++;
         else session.tally.wrong++;
-        if (!session.separate) Store.mutate(Mutations.recordAnswer(q.id, right));
+        if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right));
       } else if (isMultiAnswer(byId[sq.id])) {
         session.answers[sq.id] = toggleChoice(session.answers[sq.id], optIdx);
       } else {
@@ -1559,6 +1658,12 @@ if (typeof document !== "undefined") {
           if (!confirm("Discard this in-progress session? This cannot be undone.")) return;
           Store.mutate(Mutations.clearSession());
           return renderHome();
+        case "clear-saved":
+          if (!confirm("Remove every saved question?")) return;
+          Store.snapshot().saved.slice().forEach(function (id) {
+            Store.mutate(Mutations.toggleSaved(id));
+          });
+          return renderHome();
         case "clear-history":
           if (confirm("Delete all score history?")) {
             Store.mutate(Mutations.clearHistory());
@@ -1569,6 +1674,15 @@ if (typeof document !== "undefined") {
         case "cq-domain":
           customState.domains[Number(btn.dataset.domain)] = btn.checked;
           return renderCustomBuilder();
+        case "cq-sub":
+          customState.subs[btn.dataset.key] = btn.checked;
+          if (!btn.checked) delete customState.subs[btn.dataset.key];
+          return renderCustomBuilder();
+        case "cq-open-subs": {
+          var od = Number(btn.dataset.domain);
+          customState.openDomain = customState.openDomain === od ? 0 : od;
+          return renderCustomBuilder();
+        }
         case "cq-count":
           customState.count = btn.dataset.count;
           return renderCustomBuilder();
@@ -1582,6 +1696,12 @@ if (typeof document !== "undefined") {
         case "jump":
           session.current = Number(btn.dataset.index); persistSession(); return renderQuestion();
         case "toggle-flag": return toggleFlag();
+        case "toggle-saved": {
+          if (!session) return;
+          Store.mutate(Mutations.toggleSaved(session.questions[session.current].id));
+          return renderQuestion();
+        }
+        case "start-saved": return startSaved();
         case "submit": {
           if (session.mode === "exam") {
             var unanswered = session.questions.filter(function (s) { return session.answers[s.id] === null; }).length;

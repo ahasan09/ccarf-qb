@@ -22,7 +22,10 @@ Modes:
   into a persistent set; answer it correctly anywhere to clear it.
 - **Practice by domain** — untimed, instant feedback and explanation after
   each answer.
-- **Custom quiz** — pick domains, length (10/20/30/60), timed or untimed.
+- **Custom quiz** — pick domains (and optionally narrow any of them to chosen
+  subdomains), length (10/20/30/60/all), timed or untimed.
+- **Saved questions** — star any question while answering to keep it; study the
+  saved list from the home screen.
 - **Imported mock exams** — eight complete exams loaded from `exams/`, listed
   separately on the home screen. Each offers **Practice** (untimed, explanation
   after every answer) and **Take mock** (120-minute timer, scored attempt).
