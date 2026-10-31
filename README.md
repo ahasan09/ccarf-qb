@@ -13,9 +13,12 @@ browser's localStorage.
 Modes:
 
 - **Mock exam** — 60 questions drawn by real domain weights (D1 16, D2 11,
-  D3 12, D4 12, D5 9), 120-minute timer, flag-for-review, navigator grid.
+  D3 12, D4 12, D5 9) from the 577 questions mapped to an exam-guide
+  subdomain, 120-minute timer, flag-for-review, navigator grid.
   Scored out of 1000; pass at 720 (44+ correct), with per-domain breakdown
   and full answer review with explanations. Exit mid-exam and resume later.
+- **Supplementary mock exam** — the same format drawn from the 300 questions
+  not mapped to a subdomain, so the main mock stays exam-guide aligned.
 - **Retry failed** — after any session, re-quiz only the questions you got
   wrong, repeatable until none remain.
 - **Drill weak questions** — every question you have ever missed collects

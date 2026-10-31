@@ -108,6 +108,13 @@ function updateWeakSet(weak, grade) {
 /* Pick the questions a custom quiz may draw from. A domain with no subdomain
  * boxes ticked contributes all of its questions; ticking any narrows that
  * domain to the ticked ones and leaves other domains alone. */
+/* The exam guide lists 30 subdomains. Questions mapped to one are the closest
+ * match to the real exam; the rest are kept as a separate pool so a mock exam
+ * is drawn from exam-guide-aligned material only. */
+function filterByTagging(bank, wantTagged) {
+  return bank.filter(function (q) { return !!q.subdomain === wantTagged; });
+}
+
 function selectCustomQuestions(bank, state) {
   var domains = (state && state.domains) || {};
   var subs = (state && state.subs) || {};
@@ -515,6 +522,7 @@ if (typeof module !== "undefined" && module.exports) {
     validateBank: validateBank,
     sampleQuiz: sampleQuiz,
     selectCustomQuestions: selectCustomQuestions,
+    filterByTagging: filterByTagging,
     masteryByDomain: masteryByDomain,
     masteryBySubdomain: masteryBySubdomain,
     filterBySubKey: filterBySubKey,
@@ -546,6 +554,11 @@ if (typeof document !== "undefined") {
     EXAMS.forEach(function (e) {
       examById[e.id] = { id: e.id, name: e.name, count: e.count, questions: e.questions };
     });
+
+    /* Mock exams draw from the exam-guide-mapped pool; the unmapped ones are
+     * kept aside and only used by the supplementary exam. */
+    var MAPPED = filterByTagging(BANK, true);
+    var UNMAPPED = filterByTagging(BANK, false);
 
     var bankIds = {};
     BANK.forEach(function (q) { bankIds[q.id] = true; });
@@ -745,18 +758,23 @@ if (typeof document !== "undefined") {
 
       html += '<header class="hero"><div class="intro"><div class="rule"></div>' +
         "<p>Claude Certified Architect (Foundations) exam prep. Mark your answers, grade yourself against the real pass line, and drill what you miss.</p>" +
-        '<div class="facts"><span><b>' + BANK.length + "</b> questions</span><span><b>5</b> domains</span>" +
+        '<div class="facts"><span><b>' + BANK.length + "</b> questions</span>" +
+        "<span><b>" + MAPPED.length + "</b> exam-guide mapped</span>" +
+        "<span><b>" + UNMAPPED.length + "</b> supplementary</span>" +
         "<span><b>30</b> subdomains</span></div></div>" +
         '<div class="hero-cta">' +
-        '<button class="btn primary" data-action="start-exam">Start mock exam</button>' +
+        '<button class="btn primary" data-action="start-exam" data-scope="mapped">Start mock exam</button>' +
         (saved ? '<button class="btn" data-action="resume">Resume session</button>' : "") +
-        '<span class="sub">60 questions · 120 min · pass 720/1000</span>' +
+        '<span class="sub">60 questions · 120 min · pass 720/1000<br>drawn from the ' +
+        MAPPED.length + " exam-guide questions</span>" +
         "</div></header>";
 
       if (saved) {
         var savedDone = answeredCount(saved) >= saved.questions.length;
         html += '<div class="card resume-card"><div><strong>' +
-          (Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
+          (saved.scope === "unmapped"
+            ? "Supplementary mock"
+            : Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
           (saved.examName ? " — " + esc(saved.examName) : "") +
           (savedDone ? " ready to grade" : " in progress") + "</strong>" +
           "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
@@ -770,6 +788,10 @@ if (typeof document !== "undefined") {
       }
 
       html += '<div class="grid">';
+      html += '<div class="card"><h2>Supplementary mock exam</h2>' +
+        "<p>Same 60-question format, drawn from the " + UNMAPPED.length +
+        " questions that are not mapped to an exam-guide subdomain. Extra practice once you have worked through the main pool.</p>" +
+        '<button class="btn" data-action="start-exam" data-scope="unmapped">Start supplementary</button></div>';
       html += '<div class="card"><h2>Drill weak questions</h2><p>' +
         (weak.length
           ? weak.length + " question" + (weak.length === 1 ? "" : "s") + " you previously missed. Answer correctly to clear them."
@@ -1105,16 +1127,18 @@ if (typeof document !== "undefined") {
         confirm("You have a session in progress. Starting a new one will discard it. Continue?");
     }
 
-    function startExam() {
+    function startExam(scope) {
       if (!okToReplaceSaved()) return;
+      var unmapped = scope === "unmapped";
       var questions;
       try {
-        questions = drawExam(BANK, EXAM_DRAW_COUNTS);
+        questions = drawExam(unmapped ? UNMAPPED : MAPPED, EXAM_DRAW_COUNTS);
       } catch (e) {
         alert("Question bank problem: " + e.message);
         return;
       }
       session = newSession("exam", questions, EXAM_DURATION_MS);
+      session.scope = unmapped ? "unmapped" : "mapped";
       persistSession();
       renderQuestion();
       startTimer();
@@ -1312,7 +1336,8 @@ if (typeof document !== "undefined") {
     /* --------------------------------------------------- question screen */
     function sessionTitle() {
       switch (session.mode) {
-        case "exam": return "Mock Exam";
+        case "exam":
+          return session.scope === "unmapped" ? "Supplementary Mock Exam" : "Mock Exam";
         case "retry": return "Retry Failed Questions";
         case "weak": return "Weak Questions Drill";
         case "practice":
@@ -1503,7 +1528,7 @@ if (typeof document !== "undefined") {
         entry = {
           date: new Date().toISOString(),
           examId: session.examId || null,
-          examName: session.examName || null,
+          examName: session.examName || (session.scope === "unmapped" ? "Supplementary mock" : null),
           /* The questions and answers are kept so the attempt can be
            * reviewed and broken down by subdomain later. */
           items: session.questions.map(function (s) {
@@ -1766,7 +1791,7 @@ if (typeof document !== "undefined") {
       var action = btn.dataset.action;
 
       switch (action) {
-        case "start-exam": return startExam();
+        case "start-exam": return startExam(btn.dataset.scope || "mapped");
         case "start-imported": return startImportedExam(btn.dataset.exam);
         case "practice-imported": return startImportedPractice(btn.dataset.exam);
         case "start-weak": return startWeak();

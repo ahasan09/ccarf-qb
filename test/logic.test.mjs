@@ -26,6 +26,7 @@ const {
   correctIndices,
   toggleChoice,
   selectCustomQuestions,
+  filterByTagging,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -443,4 +444,38 @@ test("the untagged group can be selected on its own", () => {
 
 test("deselecting every domain selects nothing", () => {
   assert.deepEqual(selectCustomQuestions(SUB_BANK, { domains: {}, subs: {} }), []);
+});
+
+/* ---- exam pools --------------------------------------------------------- */
+
+const MIXED_BANK = [
+  { id: "t1", domain: 1, subdomain: "1.1 Loops" },
+  { id: "t2", domain: 1, subdomain: "1.2 Orchestration" },
+  { id: "u1", domain: 1 },
+  { id: "u2", domain: 2 },
+  { id: "t3", domain: 2, subdomain: "2.1 Interfaces" },
+];
+
+test("filterByTagging splits the bank into exam-guide-mapped and unmapped", () => {
+  assert.deepEqual(filterByTagging(MIXED_BANK, true).map((q) => q.id), ["t1", "t2", "t3"]);
+  assert.deepEqual(filterByTagging(MIXED_BANK, false).map((q) => q.id), ["u1", "u2"]);
+});
+
+test("a mapped-pool exam never draws an unmapped question", () => {
+  const bank = makeBank({ 1: 49, 2: 32, 3: 36, 4: 36, 5: 27 }).map((q, i) => (
+    i % 2 ? { ...q, subdomain: `${q.domain}.1 Tagged` } : q
+  ));
+  const mapped = filterByTagging(bank, true);
+  const exam = drawExam(mapped, EXAM_DRAW_COUNTS);
+  assert.equal(exam.length, 60);
+  assert.ok(exam.every((q) => q.subdomain), "every drawn question is mapped");
+});
+
+test("an unmapped-pool exam draws only unmapped questions", () => {
+  const bank = makeBank({ 1: 49, 2: 32, 3: 36, 4: 36, 5: 27 }).map((q, i) => (
+    i % 2 ? { ...q, subdomain: `${q.domain}.1 Tagged` } : q
+  ));
+  const exam = drawExam(filterByTagging(bank, false), EXAM_DRAW_COUNTS);
+  assert.equal(exam.length, 60);
+  assert.ok(exam.every((q) => !q.subdomain), "every drawn question is unmapped");
 });

@@ -40,7 +40,7 @@ function launch(opts = {}) {
   appEl.addEventListener = (type, fn) => { if (type === "click") clickHandler = fn; };
 
   const win = {
-    QUESTION_BANK: bank(),
+    QUESTION_BANK: opts.bank || bank(),
     MOCK_EXAMS: opts.exams || [],
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
@@ -91,6 +91,7 @@ function launch(opts = {}) {
     click,
     storage,
     store: () => win.CCARF_STORE,
+    bank: () => win.QUESTION_BANK,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
   };
@@ -599,4 +600,68 @@ test("bank questions are still shuffled", () => {
     if (order.join() !== "0,1,2,3") shuffledAtLeastOnce = true;
   }
   assert.ok(shuffledAtLeastOnce, "bank options must not be served in a fixed order");
+});
+
+/* The stub bank tags every question, so build one with both kinds. */
+function launchMixed() {
+  return launch({
+    bank: (() => {
+      const qs = [];
+      // both pools need enough per domain to fill a 60-question draw
+      for (let d = 1; d <= 5; d++) {
+        for (let i = 1; i <= 40; i++) {
+          const q = {
+            id: `d${d}-q${i}`, domain: d,
+            question: `Question ${d}-${i}?`, options: ["A", "B", "C", "D"],
+            answer: 0, explanation: "Because.",
+          };
+          if (i <= 20) q.subdomain = `${d}.1 Sample subdomain`;
+          qs.push(q);
+        }
+      }
+      return qs;
+    })(),
+  });
+}
+
+test("the home screen offers both a mapped and a supplementary mock exam", () => {
+  const app = launchMixed();
+  const html = app.html();
+  assert.ok(html.includes('data-scope="mapped"'), "the main exam is mapped-only");
+  assert.ok(html.includes('data-scope="unmapped"'), "a supplementary exam is offered");
+  assert.ok(html.includes("Supplementary mock exam"));
+  assert.ok(html.includes("exam-guide mapped"), "the split is stated");
+});
+
+test("the main mock exam never includes an unmapped question", () => {
+  const app = launchMixed();
+  app.click("start-exam", { scope: "mapped" });
+  const ids = app.store().snapshot().session.questions.map((s) => s.id);
+  const bank = app.bank();
+  assert.ok(ids.length > 0);
+  assert.ok(
+    ids.every((id) => bank.find((q) => q.id === id).subdomain),
+    "every drawn question is mapped to a subdomain"
+  );
+});
+
+test("the supplementary exam draws only unmapped questions", () => {
+  const app = launchMixed();
+  app.click("start-exam", { scope: "unmapped" });
+  assert.ok(app.html().includes("Supplementary Mock Exam"), "titled distinctly");
+  const ids = app.store().snapshot().session.questions.map((s) => s.id);
+  const bank = app.bank();
+  assert.ok(
+    ids.every((id) => !bank.find((q) => q.id === id).subdomain),
+    "every drawn question is unmapped"
+  );
+});
+
+test("a supplementary attempt is labelled in score history", () => {
+  const app = launchMixed();
+  app.click("start-exam", { scope: "unmapped" });
+  completeSession(app);
+  const attempt = app.store().snapshot().history[0];
+  assert.equal(attempt.examName, "Supplementary mock");
+  assert.equal(attempt.examId, null, "it is not an imported exam");
 });
