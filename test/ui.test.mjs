@@ -556,3 +556,47 @@ test("bank questions keep their domain label", () => {
   assert.ok(/chip-d[1-5]/.test(html), "a real domain chip renders");
   assert.ok(!html.includes("undefined"));
 });
+
+test("practice lets a select-two question collect both picks before grading", () => {
+  const app = launchWithExams();
+  app.click("practice-imported", { exam: "pt1" });
+  app.click("select", { opt: "1" }); // answer q1 first; practice gates Next
+  app.click("next"); // the select-two question
+
+  app.click("select", { opt: "0" }); // first of two correct
+  assert.ok(!app.html().includes("Incorrect."), "one pick must not be graded yet");
+  assert.ok(!app.html().includes("Correct."), "nor marked right yet");
+
+  app.click("select", { opt: "3" }); // second correct pick
+  assert.ok(app.html().includes("Correct."), "grades once both are chosen");
+});
+
+test("a wrong pair in practice is graded wrong, not on the first click", () => {
+  const app = launchWithExams();
+  app.click("practice-imported", { exam: "pt1" });
+  app.click("select", { opt: "1" });
+  app.click("next");
+
+  app.click("select", { opt: "1" });
+  assert.ok(!app.html().includes("Incorrect."), "still waiting for the second pick");
+  app.click("select", { opt: "2" });
+  assert.ok(app.html().includes("Incorrect."), "now it grades");
+});
+
+test("imported questions keep their written option order so lettered explanations line up", () => {
+  const app = launchWithExams();
+  app.click("start-imported", { exam: "pt1" });
+  const order = renderedOptions(app.html()).map((o) => o.opt);
+  assert.deepEqual(order, [0, 1, 2, 3], "imported options render in source order");
+});
+
+test("bank questions are still shuffled", () => {
+  let shuffledAtLeastOnce = false;
+  for (let i = 0; i < 8; i++) {
+    const app = launch();
+    app.click("start-exam");
+    const order = renderedOptions(app.html()).map((o) => o.opt);
+    if (order.join() !== "0,1,2,3") shuffledAtLeastOnce = true;
+  }
+  assert.ok(shuffledAtLeastOnce, "bank options must not be served in a fixed order");
+});

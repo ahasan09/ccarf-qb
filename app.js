@@ -1034,10 +1034,10 @@ if (typeof document !== "undefined") {
       return {
         mode: mode, // 'exam' | 'retry' | 'weak' | 'practice' | 'custom'
         questions: questions.map(function (q) {
-          return {
-            id: q.id,
-            order: shuffle(q.options.map(function (_, i) { return i; })),
-          };
+          var natural = q.options.map(function (_, i) { return i; });
+          /* Imported explanations refer to options by letter ("why not A, C,
+           * E"), so their order has to stay as written. */
+          return { id: q.id, order: q.exam ? natural : shuffle(natural) };
         }),
         answers: questions.reduce(function (acc, q) { acc[q.id] = null; return acc; }, {}),
         flagged: {},
@@ -1401,7 +1401,20 @@ if (typeof document !== "undefined") {
       if (showFeedback) {
         var right = sameChoice(answered, correct);
         html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status">' +
-          "<strong>" + (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
+          "<strong>" + (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation);
+        /* Where the source explains each option, show the reasoning for the
+         * ones actually picked wrongly. */
+        if (q.optionNotes) {
+          chosen.forEach(function (optIdx) {
+            if (correct.indexOf(optIdx) !== -1) return;
+            var note = q.optionNotes[optIdx];
+            if (note) {
+              html += '<div class="opt-note">Your pick (' +
+                String.fromCharCode(65 + sq.order.indexOf(optIdx)) + "): " + esc(note) + "</div>";
+            }
+          });
+        }
+        html += "</div>";
       }
       html += "</div>";
 
@@ -1438,10 +1451,22 @@ if (typeof document !== "undefined") {
       var sq = session.questions[session.current];
       if (session.mode === "practice") {
         if (session.feedback === sq.id) return; // already answered
-        session.answers[sq.id] = optIdx;
-        session.feedback = sq.id;
         var q = byId[sq.id];
-        var right = sameChoice(session.answers[sq.id], correctIndices(q));
+        var wanted = correctIndices(q);
+        if (wanted.length > 1) {
+          /* Collect picks until as many are chosen as the question asks for,
+           * then grade; otherwise the first click would score it wrong. */
+          session.answers[sq.id] = toggleChoice(session.answers[sq.id], optIdx);
+          if (chosenIndices(session.answers[sq.id]).length < wanted.length) {
+            persistSession();
+            renderQuestion();
+            return;
+          }
+        } else {
+          session.answers[sq.id] = optIdx;
+        }
+        session.feedback = sq.id;
+        var right = sameChoice(session.answers[sq.id], wanted);
         if (right) session.tally.correct++;
         else session.tally.wrong++;
         if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right));
