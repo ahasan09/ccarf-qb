@@ -293,10 +293,30 @@ test("validateBank flags structural problems", () => {
     { id: "d9-q01", domain: 9, question: "", options: ["a", "b", "c", "d"], answer: 1, explanation: "" },
   ];
   const errors = validateBank(bad);
-  assert.ok(errors.some((e) => e.includes("4 options")), "flags wrong option count");
+  assert.ok(errors.some((e) => e.includes("four or five options")), "flags wrong option count");
   assert.ok(errors.some((e) => e.includes("duplicate")), "flags duplicate id");
   assert.ok(errors.some((e) => e.includes("answer")), "flags out-of-range answer");
   assert.ok(errors.some((e) => e.includes("domain")), "flags invalid domain");
+});
+
+test("validateBank checks multiple-response questions too", () => {
+  const ok = [{
+    id: "d1-m01", domain: 1, question: "q (Select TWO.)",
+    options: ["a", "b", "c", "d", "e"], answers: [1, 3], explanation: "e",
+  }];
+  assert.deepEqual(validateBank(ok), [], "a well-formed select-two question passes");
+
+  const bad = [
+    { id: "m1", domain: 1, question: "q", options: ["a", "b", "c", "d", "e"], answers: [2], explanation: "e" },
+    { id: "m2", domain: 1, question: "q", options: ["a", "b", "c", "d", "e"], answers: [1, 1], explanation: "e" },
+    { id: "m3", domain: 1, question: "q", options: ["a", "b", "c", "d", "e"], answers: [0, 9], explanation: "e" },
+    { id: "m4", domain: 1, question: "q", options: ["a", "b", "c", "d"], answer: 0, answers: [0, 1], explanation: "e" },
+  ];
+  const errors = validateBank(bad);
+  assert.ok(errors.some((e) => e.startsWith("m1") && e.includes("at least two")), "one index is not enough");
+  assert.ok(errors.some((e) => e.startsWith("m2") && e.includes("repeated")), "catches a repeated index");
+  assert.ok(errors.some((e) => e.startsWith("m3") && e.includes("out of range")), "catches a bad index");
+  assert.ok(errors.some((e) => e.startsWith("m4") && e.includes("both answer")), "catches both keys set");
 });
 
 test("correctIndices reads both single- and multi-answer questions", () => {

@@ -1,5 +1,5 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v7";
+const VERSION = "v9";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
@@ -25,15 +25,15 @@ const CORE = [
   "questions/domain3-gap.js",
   "questions/domain4-gap.js",
   "questions/domain5-gap.js",
-  "exams/mock1.js",
-  "exams/purcell.js",
-  "exams/pt1.js",
-  "exams/pt2.js",
-  "exams/pt3.js",
-  "exams/pt4.js",
-  "exams/pt5.js",
-  "exams/pt6.js",
+  "questions/domain1-multi.js",
+  "questions/domain2-multi.js",
+  "questions/domain3-multi.js",
+  "questions/domain4-multi.js",
+  "questions/domain5-multi.js",
+  "exams/index.js",
 ];
+/* Exam question files are deliberately not precached: they are large and
+ * only needed once an exam is opened. The fetch handler caches them then. */
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));

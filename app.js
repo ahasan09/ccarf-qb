@@ -4,7 +4,7 @@
 "use strict";
 
 var EXAM_DRAW_COUNTS = { 1: 16, 2: 11, 3: 12, 4: 12, 5: 9 };
-var EXPECTED_BANK_SIZE = 837; // kept honest by test/validate-bank.mjs
+var EXPECTED_BANK_SIZE = 877; // kept honest by test/validate-bank.mjs
 var PASS_SCORE = 720;
 var EXAM_DURATION_MS = 120 * 60 * 1000;
 var DOMAIN_NAMES = {
@@ -193,12 +193,23 @@ function validateBank(bank) {
     seen[id] = true;
     if (!q.domain || !DOMAIN_NAMES[q.domain]) errors.push(id + ": invalid domain " + q.domain);
     if (!q.question || !String(q.question).trim()) errors.push(id + ": empty question");
-    if (!Array.isArray(q.options) || q.options.length !== 4)
-      errors.push(id + ": must have exactly 4 options");
+    /* Single-answer questions have four options; multiple-response ones have
+     * five, with two or more correct. */
+    var multi = Array.isArray(q.answers);
+    if (!Array.isArray(q.options) || q.options.length < 4 || q.options.length > 5)
+      errors.push(id + ": must have four or five options");
     else if (q.options.some(function (o) { return !o || !String(o).trim(); }))
       errors.push(id + ": blank option");
-    if (!Number.isInteger(q.answer) || q.answer < 0 || !q.options || q.answer >= q.options.length)
-      errors.push(id + ": answer index out of range");
+
+    var picks = multi ? q.answers : [q.answer];
+    if (multi && q.answers.length < 2) errors.push(id + ": answers must list at least two indices");
+    if (multi && Number.isInteger(q.answer)) errors.push(id + ": has both answer and answers");
+    if (multi && new Set(q.answers).size !== q.answers.length)
+      errors.push(id + ": repeated index in answers");
+    picks.forEach(function (idx) {
+      if (!Number.isInteger(idx) || idx < 0 || !q.options || idx >= q.options.length)
+        errors.push(id + ": answer index out of range");
+    });
     if (!q.explanation || !String(q.explanation).trim()) errors.push(id + ": empty explanation");
   });
   return errors;
@@ -527,19 +538,61 @@ if (typeof document !== "undefined") {
   (function () {
     var BANK = window.QUESTION_BANK || [];
     /* Imported exams are deliberately kept out of BANK: they never feed the
-     * practice pools, custom quizzes, mastery or the weak-question drill. */
-    var EXAMS = window.MOCK_EXAMS || [];
+     * practice pools, custom quizzes, mastery or the weak-question drill.
+     * Only the manifest loads with the page; each exam's questions are
+     * fetched the first time they are needed. */
+    var EXAMS = window.MOCK_EXAM_INDEX || (window.MOCK_EXAMS || []);
     var examById = {};
-    EXAMS.forEach(function (e) { examById[e.id] = e; });
+    EXAMS.forEach(function (e) {
+      examById[e.id] = { id: e.id, name: e.name, count: e.count, questions: e.questions };
+    });
 
     var bankIds = {};
     BANK.forEach(function (q) { bankIds[q.id] = true; });
 
     var byId = {};
     BANK.forEach(function (q) { byId[q.id] = q; });
-    EXAMS.forEach(function (e) {
-      e.questions.forEach(function (q) { byId[q.id] = q; });
-    });
+
+    var examLoads = {};
+
+    function registerLoadedExams() {
+      (window.MOCK_EXAMS || []).forEach(function (e) {
+        var known = examById[e.id] || (examById[e.id] = { id: e.id, name: e.name });
+        known.questions = e.questions;
+        e.questions.forEach(function (q) { byId[q.id] = q; });
+      });
+    }
+    registerLoadedExams();
+
+    function loadExam(examId) {
+      if (!examId || !examById[examId]) return Promise.resolve(null);
+      if (examById[examId].questions) return Promise.resolve(examById[examId]);
+      if (examLoads[examId]) return examLoads[examId];
+
+      examLoads[examId] = new Promise(function (resolve, reject) {
+        var tag = document.createElement("script");
+        tag.src = "exams/" + examId + ".js";
+        tag.onload = function () { registerLoadedExams(); resolve(examById[examId]); };
+        tag.onerror = function () { delete examLoads[examId]; reject(new Error("Could not load " + examId)); };
+        document.head.appendChild(tag);
+      });
+      return examLoads[examId];
+    }
+
+    /* Load every exam referenced by stored progress, so a resumed session, a
+     * saved question or a past attempt still resolves after a reload. */
+    function loadReferencedExams(progress) {
+      var ids = {};
+      var note = function (id) { if (id && examById[id]) ids[id] = true; };
+      if (progress.session) note(progress.session.examId);
+      (progress.history || []).forEach(function (h) { note(h.examId); });
+      (progress.saved || []).forEach(function (qid) { note(String(qid).split("-")[0]); });
+      var pending = Object.keys(ids).filter(function (id) { return !examById[id].questions; });
+      if (!pending.length) return Promise.resolve();
+      return Promise.all(pending.map(function (id) {
+        return loadExam(id).catch(function () { return null; });
+      }));
+    }
 
     var LS = {
       get: function (key, fallback) {
@@ -821,7 +874,7 @@ if (typeof document !== "undefined") {
         EXAMS.forEach(function (e) {
           var attempt = bestAttemptFor(e.id, history);
           html += '<div class="domain-row exam-row"><span>' + esc(e.name) + "</span>" +
-            '<span class="muted">' + e.questions.length + " questions" +
+            '<span class="muted">' + (e.count || (e.questions ? e.questions.length : 0)) + " questions" +
             (attempt ? " · best " + attempt.score + (attempt.pass ? " · passed" : "") : "") + "</span>" +
             '<button class="btn small" data-action="practice-imported" data-exam="' + esc(e.id) + '">Practice</button>' +
             '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
@@ -1007,7 +1060,14 @@ if (typeof document !== "undefined") {
 
     function startImportedExam(examId) {
       var exam = examById[examId];
-      if (!exam || !exam.questions.length) return;
+      if (!exam) return;
+      if (!exam.questions) {
+        return loadExam(examId).then(
+          function () { startImportedExam(examId); },
+          function () { alert("That exam could not be loaded. Check your connection and try again."); }
+        );
+      }
+      if (!exam.questions.length) return;
       if (!okToReplaceSaved()) return;
       session = newSession("imported", exam.questions, EXAM_DURATION_MS);
       session.examId = exam.id;
@@ -1023,7 +1083,14 @@ if (typeof document !== "undefined") {
      * never mixed into bank mastery or the weak drill. */
     function startImportedPractice(examId) {
       var exam = examById[examId];
-      if (!exam || !exam.questions.length) return;
+      if (!exam) return;
+      if (!exam.questions) {
+        return loadExam(examId).then(
+          function () { startImportedPractice(examId); },
+          function () { alert("That exam could not be loaded. Check your connection and try again."); }
+        );
+      }
+      if (!exam.questions.length) return;
       if (!okToReplaceSaved()) return;
       session = newSession("practice", exam.questions, null);
       session.examId = exam.id;
@@ -1504,6 +1571,20 @@ if (typeof document !== "undefined") {
       }
     }
 
+    function reviewStoredAttempt(date) {
+      var entry = null;
+      Store.snapshot().history.forEach(function (h) { if (h.date === date) entry = h; });
+      var restored = attemptToFinished(entry);
+      if (!restored) {
+        alert("That attempt cannot be reviewed — its questions are no longer in the app.");
+        return;
+      }
+      lastFinished = restored;
+      reviewWrongOnly = false;
+      reviewDomain = 0;
+      renderReview();
+    }
+
     /* Turn a stored history entry back into the shape the review screen
      * expects, recomputing the grade from the questions as they are today. */
     function attemptToFinished(entry) {
@@ -1573,9 +1654,11 @@ if (typeof document !== "undefined") {
           var cls = "option readonly";
           if (isCorrect) cls += " correct";
           if (wasPicked && !isCorrect) cls += " wrong";
+          var note = q.optionNotes && q.optionNotes[optIdx];
           html += '<div class="' + cls + '"><span class="opt-letter"></span>' + esc(q.options[optIdx]) +
             (isCorrect ? ' <span class="tag">correct answer</span>' : "") +
             (wasPicked ? ' <span class="tag">your answer</span>' : "") +
+            (note ? '<div class="opt-note">' + esc(note) + "</div>" : "") +
             "</div>";
         });
         html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div></div>";
@@ -1736,19 +1819,16 @@ if (typeof document !== "undefined") {
         case "retry-failed": return startRetry(lastFinished.grade.wrongIds);
         case "show-review": reviewWrongOnly = false; reviewDomain = 0; return renderReview();
         case "review-attempt": {
+          var wanted = btn.dataset.date;
           var entry = null;
-          Store.snapshot().history.forEach(function (h) {
-            if (h.date === btn.dataset.date) entry = h;
-          });
-          var restored = attemptToFinished(entry);
-          if (!restored) {
-            alert("That attempt cannot be reviewed — its questions are no longer in the app.");
-            return;
+          Store.snapshot().history.forEach(function (h) { if (h.date === wanted) entry = h; });
+          if (entry && entry.examId && examById[entry.examId] && !examById[entry.examId].questions) {
+            return loadExam(entry.examId).then(
+              function () { reviewStoredAttempt(wanted); },
+              function () { alert("That exam could not be loaded."); }
+            );
           }
-          lastFinished = restored;
-          reviewWrongOnly = false;
-          reviewDomain = 0;
-          return renderReview();
+          return reviewStoredAttempt(wanted);
         }
         case "toggle-wrong-only": reviewWrongOnly = !reviewWrongOnly; return renderReview();
         case "back-results": return renderResults(lastFinished);
@@ -1845,6 +1925,9 @@ if (typeof document !== "undefined") {
         console.warn("Question bank validation issues:", bankErrors);
       }
       renderHome();
+      loadReferencedExams(Store.snapshot()).then(function () {
+        if (view === "home") renderHome();
+      });
     }
   })();
 }
