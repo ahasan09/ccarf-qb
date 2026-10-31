@@ -343,14 +343,19 @@ test("a multi-answer question lets you pick several options and says how many", 
   app.click("select", { opt: "0" });
   app.click("select", { opt: "3" });
 
+  // options render in shuffled display order, so compare as a set
   const selected = renderedOptions(app.html())
     .filter((o) => o.classes.includes("selected"))
-    .map((o) => o.opt);
+    .map((o) => o.opt)
+    .sort((a, b) => a - b);
   assert.deepEqual(selected, [0, 3], "both picks stay highlighted");
 
   app.click("select", { opt: "0" }); // clicking again removes it
   assert.deepEqual(
-    renderedOptions(app.html()).filter((o) => o.classes.includes("selected")).map((o) => o.opt),
+    renderedOptions(app.html())
+      .filter((o) => o.classes.includes("selected"))
+      .map((o) => o.opt)
+      .sort((a, b) => a - b),
     [3]
   );
 });
@@ -381,4 +386,44 @@ test("a partly answered multi-answer question counts as wrong", () => {
   app.click("submit");
 
   assert.equal(app.store().snapshot().history[0].correct, 0);
+});
+
+test("an imported exam can be practised with instant feedback before taking it", () => {
+  const app = launchWithExams();
+  assert.ok(app.html().includes('data-action="practice-imported"'), "a practice button is offered");
+  assert.ok(app.html().includes("Take mock"), "and a separate timed option");
+
+  app.click("practice-imported", { exam: "pt1" });
+  assert.ok(app.html().includes("Practice — Practice Test 1"), "titled by exam");
+  assert.ok(!app.html().includes('id="timer"'), "practice is untimed");
+
+  app.click("select", { opt: "1" }); // correct
+  assert.ok(app.html().includes("Correct."), "explanation shown straight away");
+  assert.ok(app.html().includes("feedback"), "feedback block rendered");
+});
+
+test("practising an imported exam leaves bank progress and score history alone", () => {
+  const app = launchWithExams();
+  app.click("practice-imported", { exam: "pt1" });
+  app.click("select", { opt: "1" });
+  app.click("next");
+  app.click("select", { opt: "0" });
+  app.click("select", { opt: "3" });
+  app.click("submit");
+
+  const state = app.store().snapshot();
+  assert.equal(state.correctEver.length, 0, "imported questions never enter mastery");
+  assert.equal(state.weak.length, 0, "nor the weak drill");
+  assert.equal(state.history.length, 0, "a practice run is not an exam attempt");
+});
+
+test("a practice run over an imported exam can be exited and resumed", () => {
+  const app = launchWithExams();
+  app.click("practice-imported", { exam: "pt1" });
+  app.click("select", { opt: "1" });
+  app.click("quit");
+
+  assert.ok(app.html().includes("Practice — Practice Test 1"), "the resume card names the exam");
+  app.click("resume");
+  assert.ok(app.html().includes('data-action="select"'), "resumes into the questions");
 });

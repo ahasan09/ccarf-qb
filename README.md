@@ -24,8 +24,9 @@ Modes:
   each answer.
 - **Custom quiz** — pick domains, length (10/20/30/60), timed or untimed.
 - **Imported mock exams** — eight complete exams loaded from `exams/`, listed
-  separately on the home screen with their own start button, timed like the
-  real thing and scored on their own. Supports select-two questions.
+  separately on the home screen. Each offers **Practice** (untimed, explanation
+  after every answer) and **Take mock** (120-minute timer, scored attempt).
+  Supports select-two questions.
 - **Score history** — all exam attempts with per-domain results.
 - **Mastery view** — per-domain share of the bank you've ever answered
   correctly, on the home screen.

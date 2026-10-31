@@ -637,6 +637,7 @@ if (typeof document !== "undefined") {
         var savedDone = answeredCount(saved) >= saved.questions.length;
         html += '<div class="card resume-card"><div><strong>' +
           (Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
+          (saved.examName ? " — " + esc(saved.examName) : "") +
           (savedDone ? " ready to grade" : " in progress") + "</strong>" +
           "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
           (savedDone ? " — finish to see your score" : "") + "</p></div>" +
@@ -725,8 +726,9 @@ if (typeof document !== "undefined") {
           html += '<div class="domain-row exam-row"><span>' + esc(e.name) + "</span>" +
             '<span class="muted">' + e.questions.length + " questions" +
             (attempt ? " · best " + attempt.score + (attempt.pass ? " · passed" : "") : "") + "</span>" +
-            '<button class="btn small" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
-            (attempt ? "Retake" : "Start") + "</button></div>";
+            '<button class="btn small" data-action="practice-imported" data-exam="' + esc(e.id) + '">Practice</button>' +
+            '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
+            (attempt ? "Retake mock" : "Take mock") + "</button></div>";
         });
         html += "</div></div>";
       }
@@ -889,9 +891,25 @@ if (typeof document !== "undefined") {
       session = newSession("imported", exam.questions, EXAM_DURATION_MS);
       session.examId = exam.id;
       session.examName = exam.name;
+      session.separate = true;
       persistSession();
       renderQuestion();
       startTimer();
+    }
+
+    /* Untimed walk through an imported exam with the explanation after each
+     * answer. Scored for the session only — never recorded as an attempt and
+     * never mixed into bank mastery or the weak drill. */
+    function startImportedPractice(examId) {
+      var exam = examById[examId];
+      if (!exam || !exam.questions.length) return;
+      if (!okToReplaceSaved()) return;
+      session = newSession("practice", exam.questions, null);
+      session.examId = exam.id;
+      session.examName = exam.name;
+      session.separate = true;
+      persistSession();
+      renderQuestion();
     }
 
     function okToReplaceSaved() {
@@ -1071,6 +1089,7 @@ if (typeof document !== "undefined") {
         case "retry": return "Retry Failed Questions";
         case "weak": return "Weak Questions Drill";
         case "practice":
+          if (session.examName) return "Practice — " + session.examName;
           return "Practice — " + (session.subKey && session.subKey !== "general"
             ? "Subdomain " + session.subKey
             : DOMAIN_NAMES[session.domain] + (session.subKey === "general" ? " (untagged)" : ""));
@@ -1198,7 +1217,7 @@ if (typeof document !== "undefined") {
         var right = sameChoice(session.answers[sq.id], correctIndices(q));
         if (right) session.tally.correct++;
         else session.tally.wrong++;
-        Store.mutate(Mutations.recordAnswer(q.id, right));
+        if (!session.separate) Store.mutate(Mutations.recordAnswer(q.id, right));
       } else if (isMultiAnswer(byId[sq.id])) {
         session.answers[sq.id] = toggleChoice(session.answers[sq.id], optIdx);
       } else {
@@ -1224,9 +1243,10 @@ if (typeof document !== "undefined") {
         grade: grade,
       };
 
-      var separate = session.mode === "imported";
+      var separate = session.separate === true || session.mode === "imported";
+      var isAttempt = session.mode === "exam" || session.mode === "imported";
       var entry = null;
-      if (session.mode === "exam" || separate) {
+      if (isAttempt) {
         var score = scaledScore(grade.correct, grade.total);
         entry = {
           date: new Date().toISOString(),
@@ -1441,6 +1461,7 @@ if (typeof document !== "undefined") {
       switch (action) {
         case "start-exam": return startExam();
         case "start-imported": return startImportedExam(btn.dataset.exam);
+        case "practice-imported": return startImportedPractice(btn.dataset.exam);
         case "start-weak": return startWeak();
         case "practice": return startPractice(Number(btn.dataset.domain), btn.dataset.sub || null);
         case "toggle-practice": {
