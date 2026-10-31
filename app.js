@@ -892,13 +892,16 @@ if (typeof document !== "undefined") {
     /* Imported exam questions carry no domain tag, so label them by their
      * exam instead of rendering an empty domain chip. */
     function questionMeta(q) {
+      var bits = "";
       if (DOMAIN_NAMES[q.domain]) {
-        return '<span class="domain-chip chip-d' + esc(q.domain) + '">D' + esc(q.domain) + "</span>" +
-          '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>" +
-          (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "");
+        bits += '<span class="domain-chip chip-d' + esc(q.domain) + '">D' + esc(q.domain) + "</span>" +
+          '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>";
+      } else if (q.exam && examById[q.exam]) {
+        bits += '<span class="muted">' + esc(examById[q.exam].name) + "</span>";
       }
-      var exam = q.exam && examById[q.exam];
-      return exam ? '<span class="muted sub-tag">' + esc(exam.name) + "</span>" : "";
+      if (q.subdomain) bits += '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>";
+      if (q.scenario) bits += '<span class="scenario-tag">' + esc(q.scenario) + "</span>";
+      return bits;
     }
 
     function chev(open) {
