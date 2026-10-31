@@ -64,9 +64,20 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
       },
     });
 
-    function sync() {
+    /* Focus, visibility, storage and online events can all fire together.
+     * Without pending work there is nothing urgent to send, so collapse those
+     * into at most one read per MIN_GAP. */
+    const MIN_GAP = 10000;
+    let lastSyncAt = 0;
+
+    function sync(force) {
       if (!user) return Promise.resolve();
       if (inFlight) { rerun = true; return inFlight; }
+      if (!force && !Store.pending.length && !Store.hasUnsyncedWork() &&
+          Date.now() - lastSyncAt < MIN_GAP) {
+        return Promise.resolve();
+      }
+      lastSyncAt = Date.now();
       setStatus("syncing");
       inFlight = engine
         .sync()
@@ -80,7 +91,8 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
         })
         .then(() => {
           inFlight = null;
-          if (rerun) { rerun = false; return sync(); }
+          lastSyncAt = Date.now();
+          if (rerun) { rerun = false; return sync(true); }
         });
       return inFlight;
     }
@@ -104,7 +116,7 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
         if (error) throw error;
       },
       signOut: async () => { await sb.auth.signOut(); },
-      syncNow: () => sync(),
+      syncNow: () => sync(true),
     };
 
     sb.auth.onAuthStateChange((_event, session) => {
@@ -126,7 +138,7 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
         const cachedUid = localStorage.getItem("ccarf.uid");
         if (cachedUid && cachedUid !== user.id) Store.reset();
         localStorage.setItem("ccarf.uid", user.id);
-        sync();
+        sync(true);
       }
     });
 
@@ -140,11 +152,11 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
       clearTimeout(debounceTimer);
       const waited = Date.now() - firstPendingAt;
       const delay = waited >= MAX_WAIT ? 0 : Math.min(1200, MAX_WAIT - waited);
-      debounceTimer = setTimeout(() => { firstPendingAt = 0; sync(); }, delay);
+      debounceTimer = setTimeout(() => { firstPendingAt = 0; sync(true); }, delay);
     });
 
     const flush = () => {
-      if (user && Store.pending.length) { clearTimeout(debounceTimer); sync(); }
+      if (user && Store.pending.length) { clearTimeout(debounceTimer); sync(true); }
     };
     const refresh = () => { if (user) sync(); };
 
@@ -155,9 +167,14 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
       if (document.hidden) flush();
       else refresh();
     });
-    /* Another tab in this browser changed progress. */
+    /* Another tab in this browser changed progress. Debounced and routed
+     * through the throttle so two open tabs cannot trigger each other in a
+     * loop. */
+    let storageTimer = null;
     window.addEventListener("storage", (e) => {
-      if (e.key === "ccarf.progress" && user) sync();
+      if (e.key !== "ccarf.progress" || !user || e.newValue === e.oldValue) return;
+      clearTimeout(storageTimer);
+      storageTimer = setTimeout(() => sync(), 2000);
     });
 
     announce();

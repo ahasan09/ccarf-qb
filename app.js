@@ -366,11 +366,16 @@ function createStore(io) {
       writeFlag(true);
       emit();
     },
-    /* Server state wins, with anything not yet written replayed on top. */
+    /* Server state wins, with anything not yet written replayed on top.
+     * Only persists when something actually changed: rewriting the cache on
+     * every sync would wake other tabs through the storage event and have
+     * them sync straight back. */
     adopt: function (serverState) {
-      this.state = applyMutations(normalizeProgress(serverState), this.pending);
-      save(this.state);
-      return this.state;
+      var next = applyMutations(normalizeProgress(serverState), this.pending);
+      var changed = JSON.stringify(next) !== JSON.stringify(this.state);
+      this.state = next;
+      if (changed) save(next);
+      return next;
     },
     markSynced: function () {
       this.pending = [];

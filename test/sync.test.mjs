@@ -238,3 +238,48 @@ test("progress that has never reached the server is uploaded, not replaced by an
   assert.ok(server.row.data.session, "an in-progress session must reach the server");
   assert.equal(store.snapshot().correctEver.length, 2, "and must not vanish locally");
 });
+
+test("adopting an unchanged server copy does not rewrite the local cache", async () => {
+  const server = makeServer();
+  let saves = 0;
+  let dirty = false;
+  const store = createStore({
+    initial: undefined,
+    save: () => { saves++; },
+    readFlag: () => dirty,
+    writeFlag: (v) => { dirty = v; },
+  });
+  const engine = createSyncEngine({
+    store,
+    readRow: () => server.readRow(),
+    writeRow: (s, stamp) => server.writeRow(s, stamp),
+  });
+
+  await engine.sync();          // creates the row, one save is expected
+  const after = saves;
+  await engine.sync();
+  await engine.sync();
+  assert.equal(saves, after, "idle syncs must not touch storage (it wakes other tabs)");
+});
+
+test("a real change still writes the cache", async () => {
+  const server = makeServer();
+  let saves = 0;
+  let dirty = false;
+  const store = createStore({
+    initial: undefined,
+    save: () => { saves++; },
+    readFlag: () => dirty,
+    writeFlag: (v) => { dirty = v; },
+  });
+  const engine = createSyncEngine({
+    store,
+    readRow: () => server.readRow(),
+    writeRow: (s, stamp) => server.writeRow(s, stamp),
+  });
+  await engine.sync();
+  const before = saves;
+  store.mutate(Mutations.recordAnswer("q1", true));
+  await engine.sync();
+  assert.ok(saves > before, "a genuine change is persisted");
+});
