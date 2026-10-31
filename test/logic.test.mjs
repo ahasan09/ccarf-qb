@@ -23,6 +23,8 @@ const {
   applyMutations,
   compactMutations,
   Mutations,
+  correctIndices,
+  toggleChoice,
 } = require("../app.js");
 
 function makeBank(countsPerDomain) {
@@ -294,4 +296,38 @@ test("validateBank flags structural problems", () => {
   assert.ok(errors.some((e) => e.includes("duplicate")), "flags duplicate id");
   assert.ok(errors.some((e) => e.includes("answer")), "flags out-of-range answer");
   assert.ok(errors.some((e) => e.includes("domain")), "flags invalid domain");
+});
+
+test("correctIndices reads both single- and multi-answer questions", () => {
+  assert.deepEqual(correctIndices({ answer: 2 }), [2]);
+  assert.deepEqual(correctIndices({ answers: [3, 1] }), [1, 3], "sorted");
+  assert.deepEqual(correctIndices({}), []);
+});
+
+test("grading a multi-answer question needs every correct option and no extras", () => {
+  const qs = [{ id: "m1", domain: 1, answers: [0, 2] }];
+  const grade = (given) => gradeSession(qs, { m1: given });
+
+  assert.equal(grade([0, 2]).correct, 1, "exactly right");
+  assert.equal(grade([2, 0]).correct, 1, "order must not matter");
+  assert.equal(grade([0]).correct, 0, "partial answers do not count");
+  assert.equal(grade([0, 1, 2]).correct, 0, "an extra selection does not count");
+  assert.equal(grade([1, 3]).correct, 0);
+  assert.equal(grade(null).correct, 0);
+  assert.equal(grade([]).correct, 0);
+});
+
+test("single-answer grading is unchanged by multi support", () => {
+  const qs = [{ id: "s1", domain: 1, answer: 1 }];
+  assert.equal(gradeSession(qs, { s1: 1 }).correct, 1);
+  assert.equal(gradeSession(qs, { s1: 0 }).correct, 0);
+  assert.equal(gradeSession(qs, { s1: null }).correct, 0);
+  assert.equal(gradeSession(qs, { s1: [1] }).correct, 1, "an array of one is still correct");
+});
+
+test("toggleChoice adds and removes options for multi-answer questions", () => {
+  assert.deepEqual(toggleChoice(null, 2), [2]);
+  assert.deepEqual(toggleChoice([2], 0), [0, 2], "kept sorted");
+  assert.deepEqual(toggleChoice([0, 2], 2), [0], "clicking again removes it");
+  assert.equal(toggleChoice([2], 2), null, "emptying it clears the answer");
 });

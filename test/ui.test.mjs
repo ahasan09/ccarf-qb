@@ -27,7 +27,7 @@ function bank() {
   return qs;
 }
 
-function launch() {
+function launch(opts = {}) {
   const storage = {};
   const listeners = {};
   const appEl = {
@@ -41,6 +41,7 @@ function launch() {
 
   const win = {
     QUESTION_BANK: bank(),
+    MOCK_EXAMS: opts.exams || [],
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -258,7 +259,7 @@ test("answering the last question prompts you to finish rather than looking done
 /* Pull out the option buttons as [{opt, selected, letterPosition}]. */
 function renderedOptions(html) {
   const out = [];
-  const re = /<button class="(option[^"]*)" role="radio" aria-checked="(true|false)" data-action="select" data-opt="(\d+)"/g;
+  const re = /<button class="(option[^"]*)" role="(?:radio|checkbox)" aria-checked="(true|false)" data-action="select" data-opt="(\d+)"/g;
   let m;
   while ((m = re.exec(html))) {
     out.push({ classes: m[1], checked: m[2] === "true", opt: Number(m[3]) });
@@ -304,4 +305,80 @@ test("the selection stays put as other questions get answered", () => {
     .filter((o) => o.classes.includes("selected"))
     .map((o) => o.opt);
   assert.deepEqual(selected, [3], "going back shows the original answer, not a count-derived one");
+});
+
+/* ---- imported exams ---------------------------------------------------- */
+
+function launchWithExams() {
+  const app = launch({
+    exams: [
+      {
+        id: "pt1",
+        name: "Practice Test 1",
+        questions: [
+          { id: "pt1-q001", exam: "pt1", question: "Single?", options: ["a", "b", "c", "d"], answer: 1, explanation: "e" },
+          { id: "pt1-q002", exam: "pt1", question: "Pick two?", options: ["a", "b", "c", "d", "e"], answers: [0, 3], explanation: "e" },
+        ],
+      },
+    ],
+  });
+  return app;
+}
+
+test("imported exams are listed separately and never enter the question bank", () => {
+  const app = launchWithExams();
+  assert.ok(app.html().includes("Imported mock exams"));
+  assert.ok(app.html().includes("Practice Test 1"));
+  assert.ok(app.html().includes('data-action="start-imported"'));
+  // bank totals must be untouched by the imported questions
+  assert.ok(app.html().includes("0/20"), "domain mastery still counts only bank questions");
+});
+
+test("a multi-answer question lets you pick several options and says how many", () => {
+  const app = launchWithExams();
+  app.click("start-imported", { exam: "pt1" });
+  app.click("next"); // move to the select-two question
+
+  assert.ok(app.html().includes("Select 2 answers."), "the instruction is shown");
+  app.click("select", { opt: "0" });
+  app.click("select", { opt: "3" });
+
+  const selected = renderedOptions(app.html())
+    .filter((o) => o.classes.includes("selected"))
+    .map((o) => o.opt);
+  assert.deepEqual(selected, [0, 3], "both picks stay highlighted");
+
+  app.click("select", { opt: "0" }); // clicking again removes it
+  assert.deepEqual(
+    renderedOptions(app.html()).filter((o) => o.classes.includes("selected")).map((o) => o.opt),
+    [3]
+  );
+});
+
+test("an imported exam is scored and recorded without touching bank progress", () => {
+  const app = launchWithExams();
+  app.click("start-imported", { exam: "pt1" });
+  app.click("select", { opt: "1" }); // correct single answer
+  app.click("next");
+  app.click("select", { opt: "0" });
+  app.click("select", { opt: "3" }); // correct pair
+  app.click("submit");
+
+  assert.ok(app.html().includes("score-ring"), "results are shown");
+  const state = app.store().snapshot();
+  assert.equal(state.history.length, 1, "the attempt is recorded");
+  assert.equal(state.history[0].examName, "Practice Test 1");
+  assert.equal(state.history[0].correct, 2, "both questions graded correct");
+  assert.equal(state.correctEver.length, 0, "bank mastery is untouched");
+  assert.equal(state.weak.length, 0, "the weak drill is untouched");
+});
+
+test("a partly answered multi-answer question counts as wrong", () => {
+  const app = launchWithExams();
+  app.click("start-imported", { exam: "pt1" });
+  app.click("next");
+  app.click("select", { opt: "0" }); // only one of the two
+  app.click("submit");
+
+  assert.equal(app.store().snapshot().history[0].correct, 0);
 });

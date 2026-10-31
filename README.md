@@ -23,6 +23,9 @@ Modes:
 - **Practice by domain** — untimed, instant feedback and explanation after
   each answer.
 - **Custom quiz** — pick domains, length (10/20/30/60), timed or untimed.
+- **Imported mock exams** — eight complete exams loaded from `exams/`, listed
+  separately on the home screen with their own start button, timed like the
+  real thing and scored on their own. Supports select-two questions.
 - **Score history** — all exam attempts with per-domain results.
 - **Mastery view** — per-domain share of the bank you've ever answered
   correctly, on the home screen.
@@ -88,6 +91,9 @@ clears it, and progress cached for one account is never folded into another.
 - `questions/domain1-gap.js` … `domain5-gap.js` — 57 targeted questions
   filling subdomain gaps found by the coverage audit (6/6/15/6/24).
   Totals per domain: 199/140/171/162/165.
+- `exams/*.js` — eight imported mock exams (480 questions), kept out of the
+  practice bank: they never feed practice pools, custom quizzes, mastery or the
+  weak drill, and are scored as standalone attempts
 - `node --test test/logic.test.mjs test/sync.test.mjs test/ui.test.mjs` — engine,
   cross-device sync, and screen-flow tests
 - `node test/validate-bank.mjs` — structural validation of the question bank

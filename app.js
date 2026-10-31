@@ -46,12 +46,47 @@ function scaledScore(correct, total) {
   return Math.round((correct / total) * 1000);
 }
 
+/* A question is answered with one option index, or several when it asks for
+ * more than one. Both shapes normalise to a sorted list. */
+function correctIndices(q) {
+  if (Array.isArray(q.answers)) return q.answers.slice().sort(function (a, b) { return a - b; });
+  if (Number.isInteger(q.answer)) return [q.answer];
+  return [];
+}
+
+function isMultiAnswer(q) {
+  return correctIndices(q).length > 1;
+}
+
+function chosenIndices(given) {
+  if (given === null || given === undefined) return [];
+  if (Array.isArray(given)) return given.slice().sort(function (a, b) { return a - b; });
+  return [given];
+}
+
+/* Add or remove one option from a multi-answer selection. */
+function toggleChoice(given, optIdx) {
+  var chosen = chosenIndices(given);
+  var at = chosen.indexOf(optIdx);
+  if (at === -1) chosen.push(optIdx);
+  else chosen.splice(at, 1);
+  if (!chosen.length) return null;
+  return chosen.sort(function (a, b) { return a - b; });
+}
+
+function sameChoice(given, correct) {
+  var chosen = chosenIndices(given);
+  if (chosen.length !== correct.length) return false;
+  for (var i = 0; i < correct.length; i++) if (chosen[i] !== correct[i]) return false;
+  return true;
+}
+
 function gradeSession(questions, answers) {
   var result = { correct: 0, total: questions.length, perDomain: {}, wrongIds: [], correctIds: [] };
   questions.forEach(function (q) {
     var d = result.perDomain[q.domain] || (result.perDomain[q.domain] = { correct: 0, total: 0 });
     d.total++;
-    if (answers[q.id] === q.answer) {
+    if (sameChoice(answers[q.id], correctIndices(q))) {
       result.correct++;
       d.correct++;
       result.correctIds.push(q.id);
@@ -224,13 +259,16 @@ var Mutations = {
   clearSession: function () {
     return { key: "session", apply: function (s) { s.session = null; } };
   },
-  finishSession: function (grade, entry) {
+  finishSession: function (grade, entry, opts) {
+    var trackBankProgress = !(opts && opts.separate);
     return {
       key: null,
       apply: function (s) {
         s.session = null;
-        s.weak = updateWeakSet(s.weak, grade).sort();
-        s.correctEver = unionIds(s.correctEver, grade.correctIds);
+        if (trackBankProgress) {
+          s.weak = updateWeakSet(s.weak, grade).sort();
+          s.correctEver = unionIds(s.correctEver, grade.correctIds);
+        }
         if (entry && !s.history.some(function (h) { return h.date === entry.date; })) {
           s.history = s.history.concat([entry]).sort(function (a, b) {
             return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
@@ -401,6 +439,10 @@ if (typeof module !== "undefined" && module.exports) {
     drawExam: drawExam,
     scaledScore: scaledScore,
     gradeSession: gradeSession,
+    correctIndices: correctIndices,
+    isMultiAnswer: isMultiAnswer,
+    chosenIndices: chosenIndices,
+    toggleChoice: toggleChoice,
     updateWeakSet: updateWeakSet,
     validateBank: validateBank,
     sampleQuiz: sampleQuiz,
@@ -426,8 +468,17 @@ if (typeof window !== "undefined") {
 if (typeof document !== "undefined") {
   (function () {
     var BANK = window.QUESTION_BANK || [];
+    /* Imported exams are deliberately kept out of BANK: they never feed the
+     * practice pools, custom quizzes, mastery or the weak-question drill. */
+    var EXAMS = window.MOCK_EXAMS || [];
+    var examById = {};
+    EXAMS.forEach(function (e) { examById[e.id] = e; });
+
     var byId = {};
     BANK.forEach(function (q) { byId[q.id] = q; });
+    EXAMS.forEach(function (e) {
+      e.questions.forEach(function (q) { byId[q.id] = q; });
+    });
 
     var LS = {
       get: function (key, fallback) {
@@ -664,6 +715,22 @@ if (typeof document !== "undefined") {
       }
       html += "</div></div>";
 
+      if (EXAMS.length) {
+        html += '<div class="card"><h2>Imported mock exams</h2>' +
+          '<p class="muted">Full exams from your own files, scored separately. They do not feed the ' +
+          "question bank, mastery or the weak drill.</p>" +
+          '<div class="domain-list">';
+        EXAMS.forEach(function (e) {
+          var attempt = bestAttemptFor(e.id, history);
+          html += '<div class="domain-row exam-row"><span>' + esc(e.name) + "</span>" +
+            '<span class="muted">' + e.questions.length + " questions" +
+            (attempt ? " · best " + attempt.score + (attempt.pass ? " · passed" : "") : "") + "</span>" +
+            '<button class="btn small" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
+            (attempt ? "Retake" : "Start") + "</button></div>";
+        });
+        html += "</div></div>";
+      }
+
       html += accountCard();
 
       html += '<div class="card"><h2>Score history</h2>';
@@ -678,7 +745,8 @@ if (typeof document !== "undefined") {
             var pd = h.perDomain[d2];
             cells += "<td>" + (pd ? pd.correct + "/" + pd.total : "–") + "</td>";
           }
-          html += "<tr><td>" + esc(new Date(h.date).toLocaleString()) + "</td>" +
+          html += "<tr><td>" + esc(new Date(h.date).toLocaleString()) +
+            (h.examName ? '<br><span class="muted">' + esc(h.examName) + "</span>" : "") + "</td>" +
             "<td><strong>" + h.score + "</strong></td>" +
             '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
             "<td>" + h.correct + "/" + h.total + "</td>" + cells + "</tr>";
@@ -696,7 +764,10 @@ if (typeof document !== "undefined") {
 
     function answeredCount(sess) {
       var answers = (sess && sess.answers) || {};
-      return Object.keys(answers).filter(function (k) { return answers[k] !== null; }).length;
+      return Object.keys(answers).filter(function (k) {
+        var a = answers[k];
+        return a !== null && a !== undefined && !(Array.isArray(a) && !a.length);
+      }).length;
     }
 
     /* A stored session is only offered for resume if it still lines up with
@@ -721,6 +792,14 @@ if (typeof document !== "undefined") {
         '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
         '<path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
         "</svg></span>";
+    }
+
+    function bestAttemptFor(examId, history) {
+      var best = null;
+      (history || []).forEach(function (h) {
+        if (h.examId === examId && (!best || h.score > best.score)) best = h;
+      });
+      return best;
     }
 
     function accountCard() {
@@ -800,8 +879,20 @@ if (typeof document !== "undefined") {
 
     var MODE_NAMES = {
       exam: "Mock exam", retry: "Retry failed", weak: "Weak drill",
-      practice: "Practice", custom: "Custom quiz",
+      practice: "Practice", custom: "Custom quiz", imported: "Imported exam",
     };
+
+    function startImportedExam(examId) {
+      var exam = examById[examId];
+      if (!exam || !exam.questions.length) return;
+      if (!okToReplaceSaved()) return;
+      session = newSession("imported", exam.questions, EXAM_DURATION_MS);
+      session.examId = exam.id;
+      session.examName = exam.name;
+      persistSession();
+      renderQuestion();
+      startTimer();
+    }
 
     function okToReplaceSaved() {
       return !Store.snapshot().session ||
@@ -984,6 +1075,7 @@ if (typeof document !== "undefined") {
             ? "Subdomain " + session.subKey
             : DOMAIN_NAMES[session.domain] + (session.subKey === "general" ? " (untagged)" : ""));
         case "custom": return "Custom Quiz";
+        case "imported": return session.examName || "Imported exam";
       }
     }
 
@@ -993,6 +1085,9 @@ if (typeof document !== "undefined") {
       var q = byId[sq.id];
       var total = session.questions.length;
       var answered = session.answers[q.id];
+      var correct = correctIndices(q);
+      var multi = correct.length > 1;
+      var chosen = chosenIndices(answered);
       var isPractice = session.mode === "practice";
       var showFeedback = isPractice && session.feedback === q.id;
 
@@ -1037,24 +1132,28 @@ if (typeof document !== "undefined") {
         '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>" +
         (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "") +
         "</div>" +
-        '<p class="q-text">' + esc(q.question) + '</p><div class="options" role="radiogroup">';
+        '<p class="q-text">' + esc(q.question) + "</p>" +
+        (multi ? '<p class="pick-hint">Select ' + correct.length + " answers.</p>" : "") +
+        '<div class="options" role="' + (multi ? "group" : "radiogroup") + '">';
 
       sq.order.forEach(function (optIdx) {
         var cls = "option";
         var disabled = showFeedback ? " disabled" : "";
-        if (answered === optIdx) cls += " selected";
+        var picked = chosen.indexOf(optIdx) !== -1;
+        if (picked) cls += " selected";
         if (showFeedback) {
-          if (optIdx === q.answer) cls += " correct";
-          else if (answered === optIdx) cls += " wrong";
+          if (correct.indexOf(optIdx) !== -1) cls += " correct";
+          else if (picked) cls += " wrong";
         }
-        html += '<button class="' + cls + '" role="radio" aria-checked="' + (answered === optIdx) +
+        html += '<button class="' + cls + '" role="' + (multi ? "checkbox" : "radio") +
+          '" aria-checked="' + picked +
           '" data-action="select" data-opt="' + optIdx + '"' + disabled + ">" +
           '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>";
       });
       html += "</div>";
 
       if (showFeedback) {
-        var right = answered === q.answer;
+        var right = sameChoice(answered, correct);
         html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status">' +
           "<strong>" + (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
       }
@@ -1096,10 +1195,12 @@ if (typeof document !== "undefined") {
         session.answers[sq.id] = optIdx;
         session.feedback = sq.id;
         var q = byId[sq.id];
-        var right = optIdx === q.answer;
+        var right = sameChoice(session.answers[sq.id], correctIndices(q));
         if (right) session.tally.correct++;
         else session.tally.wrong++;
         Store.mutate(Mutations.recordAnswer(q.id, right));
+      } else if (isMultiAnswer(byId[sq.id])) {
+        session.answers[sq.id] = toggleChoice(session.answers[sq.id], optIdx);
       } else {
         session.answers[sq.id] = session.answers[sq.id] === optIdx ? null : optIdx;
       }
@@ -1123,11 +1224,14 @@ if (typeof document !== "undefined") {
         grade: grade,
       };
 
+      var separate = session.mode === "imported";
       var entry = null;
-      if (session.mode === "exam") {
+      if (session.mode === "exam" || separate) {
         var score = scaledScore(grade.correct, grade.total);
         entry = {
           date: new Date().toISOString(),
+          examId: session.examId || null,
+          examName: session.examName || null,
           score: score,
           pass: score >= PASS_SCORE,
           correct: grade.correct,
@@ -1140,7 +1244,7 @@ if (typeof document !== "undefined") {
       /* One mutation clears the session, redeems the weak questions answered
        * correctly, and records the attempt — so a later sync cannot bring
        * any of it back. */
-      Store.mutate(Mutations.finishSession(grade, entry));
+      Store.mutate(Mutations.finishSession(grade, entry, { separate: separate }));
 
       session = null;
       renderResults(finished);
@@ -1231,7 +1335,7 @@ if (typeof document !== "undefined") {
       finished.questions.forEach(function (s, i) {
         var q = byId[s.id];
         var given = finished.answers[q.id];
-        var right = given === q.answer;
+        var right = sameChoice(given, correctIndices(q));
         if (reviewWrongOnly && right) return;
         if (reviewDomain && q.domain !== reviewDomain) return;
         shown++;
@@ -1239,15 +1343,20 @@ if (typeof document !== "undefined") {
           '<div class="q-meta"><strong>Q' + (i + 1) + "</strong>" +
           '<span class="domain-chip chip-d' + q.domain + '">D' + q.domain + "</span>" +
           (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "") +
-          '<span class="badge ' + (right ? "pass" : "fail") + '">' + (right ? "Correct" : given === null ? "Unanswered" : "Wrong") + "</span></div>" +
+          '<span class="badge ' + (right ? "pass" : "fail") + '">' +
+          (right ? "Correct" : !chosenIndices(given).length ? "Unanswered" : "Wrong") + "</span></div>" +
           '<p class="q-text">' + esc(q.question) + "</p><div class=\"options\">";
+        var correctOpts = correctIndices(q);
+        var givenOpts = chosenIndices(given);
         s.order.forEach(function (optIdx) {
+          var isCorrect = correctOpts.indexOf(optIdx) !== -1;
+          var wasPicked = givenOpts.indexOf(optIdx) !== -1;
           var cls = "option readonly";
-          if (optIdx === q.answer) cls += " correct";
-          if (given === optIdx && given !== q.answer) cls += " wrong";
+          if (isCorrect) cls += " correct";
+          if (wasPicked && !isCorrect) cls += " wrong";
           html += '<div class="' + cls + '"><span class="opt-letter"></span>' + esc(q.options[optIdx]) +
-            (optIdx === q.answer ? ' <span class="tag">correct answer</span>' : "") +
-            (given === optIdx && given !== q.answer ? ' <span class="tag">your answer</span>' : "") +
+            (isCorrect ? ' <span class="tag">correct answer</span>' : "") +
+            (wasPicked ? ' <span class="tag">your answer</span>' : "") +
             "</div>";
         });
         html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div></div>";
@@ -1331,6 +1440,7 @@ if (typeof document !== "undefined") {
 
       switch (action) {
         case "start-exam": return startExam();
+        case "start-imported": return startImportedExam(btn.dataset.exam);
         case "start-weak": return startWeak();
         case "practice": return startPractice(Number(btn.dataset.domain), btn.dataset.sub || null);
         case "toggle-practice": {

@@ -1,5 +1,5 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v6";
+const VERSION = "v7";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
@@ -25,6 +25,14 @@ const CORE = [
   "questions/domain3-gap.js",
   "questions/domain4-gap.js",
   "questions/domain5-gap.js",
+  "exams/mock1.js",
+  "exams/purcell.js",
+  "exams/pt1.js",
+  "exams/pt2.js",
+  "exams/pt3.js",
+  "exams/pt4.js",
+  "exams/pt5.js",
+  "exams/pt6.js",
 ];
 
 self.addEventListener("install", (e) => {
