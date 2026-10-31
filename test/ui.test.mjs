@@ -524,3 +524,35 @@ test("deselecting everything refuses to start rather than drawing nothing", () =
   app.click("start-custom");
   assert.ok(!app.html().includes("Custom Quiz"), "no empty session is created");
 });
+
+test("imported questions are labelled by exam, never as an empty domain", () => {
+  const app = launchWithExams();
+  app.click("start-imported", { exam: "pt1" });
+  const html = app.html();
+  assert.ok(!html.includes("Dundefined"), "no broken domain chip");
+  assert.ok(!html.includes("undefined"), "nothing undefined leaks into the markup");
+  assert.ok(html.includes("Practice Test 1"), "the exam name is shown instead");
+});
+
+test("an imported result shows no empty per-domain breakdown", () => {
+  const app = launchWithExams();
+  app.click("start-imported", { exam: "pt1" });
+  app.click("select", { opt: "1" });
+  app.click("next");
+  app.click("select", { opt: "0" });
+  app.click("select", { opt: "3" });
+  app.click("submit");
+
+  const html = app.html();
+  assert.ok(!html.includes("undefined"), "results stay clean");
+  assert.ok(!html.includes("By domain"), "untagged questions get no domain card");
+  assert.ok(html.includes("score-ring"), "the score is still shown");
+});
+
+test("bank questions keep their domain label", () => {
+  const app = launch();
+  app.click("start-exam");
+  const html = app.html();
+  assert.ok(/chip-d[1-5]/.test(html), "a real domain chip renders");
+  assert.ok(!html.includes("undefined"));
+});

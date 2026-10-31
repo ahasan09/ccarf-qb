@@ -889,6 +889,18 @@ if (typeof document !== "undefined") {
       return new Date(ms).toLocaleString();
     }
 
+    /* Imported exam questions carry no domain tag, so label them by their
+     * exam instead of rendering an empty domain chip. */
+    function questionMeta(q) {
+      if (DOMAIN_NAMES[q.domain]) {
+        return '<span class="domain-chip chip-d' + esc(q.domain) + '">D' + esc(q.domain) + "</span>" +
+          '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>" +
+          (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "");
+      }
+      var exam = q.exam && examById[q.exam];
+      return exam ? '<span class="muted sub-tag">' + esc(exam.name) + "</span>" : "";
+    }
+
     function chev(open) {
       return '<span class="chev' + (open ? " open" : "") + '">' +
         '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
@@ -1295,10 +1307,7 @@ if (typeof document !== "undefined") {
       }
 
       html += '<div class="card question-card">' +
-        '<div class="q-meta"><span class="domain-chip chip-d' + esc(q.domain) + '">D' + esc(q.domain) + "</span>" +
-        '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>" +
-        (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "") +
-        "</div>" +
+        '<div class="q-meta">' + questionMeta(q) + "</div>" +
         '<p class="q-text">' + esc(q.question) + "</p>" +
         (multi ? '<p class="pick-hint">Select ' + correct.length + " answers.</p>" : "") +
         '<div class="options" role="' + (multi ? "group" : "radiogroup") + '">';
@@ -1452,8 +1461,12 @@ if (typeof document !== "undefined") {
           '<p class="muted">' + sessionResultLabel(finished.mode) + "</p></div>";
       }
 
+      var gradedDomains = Object.keys(grade.perDomain).filter(function (d) {
+        return !!DOMAIN_NAMES[d];
+      });
+      if (gradedDomains.length) {
       html += '<div class="card"><h2>By domain</h2>';
-      Object.keys(grade.perDomain).sort().forEach(function (d) {
+      gradedDomains.sort().forEach(function (d) {
         var pd = grade.perDomain[d];
         var pct = pd.total ? Math.round((pd.correct / pd.total) * 100) : 0;
         html += '<div class="domain-score"><div class="domain-score-label">' +
@@ -1462,6 +1475,7 @@ if (typeof document !== "undefined") {
           '<div class="bar"><div class="bar-fill ' + (pct >= 72 ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div></div>';
       });
       html += "</div>";
+      }
 
       html += '<div class="row actions">';
       if (grade.wrongIds.length) {
@@ -1544,8 +1558,7 @@ if (typeof document !== "undefined") {
         shown++;
         html += '<div class="card review-card ' + (right ? "r-ok" : "r-bad") + '">' +
           '<div class="q-meta"><strong>Q' + (i + 1) + "</strong>" +
-          '<span class="domain-chip chip-d' + q.domain + '">D' + q.domain + "</span>" +
-          (q.subdomain ? '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>" : "") +
+          questionMeta(q) +
           '<span class="badge ' + (right ? "pass" : "fail") + '">' +
           (right ? "Correct" : !chosenIndices(given).length ? "Unanswered" : "Wrong") + "</span></div>" +
           '<p class="q-text">' + esc(q.question) + "</p><div class=\"options\">";
