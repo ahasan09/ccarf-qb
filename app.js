@@ -110,14 +110,21 @@ function sampleQuiz(bank, domains, count, rng) {
   return shuffle(pool, rng).slice(0, Math.min(count, pool.length));
 }
 
-function masteryByDomain(bank, correctEverIds) {
-  var correct = {};
-  correctEverIds.forEach(function (id) { correct[id] = true; });
+function indexIds(ids) {
+  var set = {};
+  (ids || []).forEach(function (id) { set[id] = true; });
+  return set;
+}
+
+function masteryByDomain(bank, correctEverIds, attemptedIds) {
+  var correct = indexIds(correctEverIds);
+  var seen = indexIds(attemptedIds);
   var result = {};
   bank.forEach(function (q) {
-    var d = result[q.domain] || (result[q.domain] = { correct: 0, total: 0 });
+    var d = result[q.domain] || (result[q.domain] = { correct: 0, attempted: 0, total: 1 - 1 });
     d.total++;
     if (correct[q.id]) d.correct++;
+    if (seen[q.id] || correct[q.id]) d.attempted++;
   });
   return result;
 }
@@ -135,17 +142,18 @@ function filterBySubKey(bank, domain, subKey) {
   });
 }
 
-function masteryBySubdomain(bank, correctEverIds, domain) {
-  var correct = {};
-  correctEverIds.forEach(function (id) { correct[id] = true; });
+function masteryBySubdomain(bank, correctEverIds, domain, attemptedIds) {
+  var correct = indexIds(correctEverIds);
+  var seen = indexIds(attemptedIds);
   var rows = {};
   bank.forEach(function (q) {
     if (q.domain !== domain) return;
     var sk = subKeyOf(q);
     var key = sk.key, title = sk.title;
-    var row = rows[key] || (rows[key] = { key: key, title: title, correct: 0, total: 0 });
+    var row = rows[key] || (rows[key] = { key: key, title: title, correct: 0, attempted: 0, total: 0 });
     row.total++;
     if (correct[q.id]) row.correct++;
+    if (seen[q.id] || correct[q.id]) row.attempted++;
   });
   return Object.keys(rows)
     .sort(function (a, b) {
@@ -184,7 +192,7 @@ function validateBank(bank) {
  * of a merge guessing what was deleted. */
 
 function emptyProgress() {
-  return { history: [], weak: [], correctEver: [], session: null };
+  return { history: [], weak: [], correctEver: [], attempted: [], session: null };
 }
 
 function normalizeProgress(raw) {
@@ -196,6 +204,9 @@ function normalizeProgress(raw) {
   if (Array.isArray(raw.weak)) s.weak = raw.weak.filter(function (id) { return typeof id === "string"; });
   if (Array.isArray(raw.correctEver)) {
     s.correctEver = raw.correctEver.filter(function (id) { return typeof id === "string"; });
+  }
+  if (Array.isArray(raw.attempted)) {
+    s.attempted = raw.attempted.filter(function (id) { return typeof id === "string"; });
   }
   if (raw.session && typeof raw.session === "object" && Array.isArray(raw.session.questions)) {
     s.session = raw.session;
@@ -217,6 +228,7 @@ function progressFromStored(raw) {
       history: raw["ccarf.history"],
       weak: raw["ccarf.weak"],
       correctEver: raw["ccarf.correctEver"],
+      attempted: raw["ccarf.attempted"],
       session: raw["ccarf.session"],
     });
   }
@@ -235,6 +247,7 @@ function mergeProgress(a, b) {
     history: Object.keys(byDate).sort().map(function (d) { return byDate[d]; }),
     weak: unionIds(a.weak, b.weak),
     correctEver: unionIds(a.correctEver, b.correctEver),
+    attempted: unionIds(a.attempted, b.attempted),
     session: !a.session ? b.session
       : !b.session ? a.session
       : (b.session.startedAt || 0) > (a.session.startedAt || 0) ? b.session : a.session,
@@ -268,6 +281,7 @@ var Mutations = {
         if (trackBankProgress) {
           s.weak = updateWeakSet(s.weak, grade).sort();
           s.correctEver = unionIds(s.correctEver, grade.correctIds);
+          s.attempted = unionIds(s.attempted, (grade.correctIds || []).concat(grade.wrongIds || []));
         }
         if (entry && !s.history.some(function (h) { return h.date === entry.date; })) {
           s.history = s.history.concat([entry]).sort(function (a, b) {
@@ -299,6 +313,7 @@ var Mutations = {
     return {
       key: null,
       apply: function (s) {
+        s.attempted = unionIds(s.attempted, [questionId]);
         if (wasCorrect) {
           s.correctEver = unionIds(s.correctEver, [questionId]);
           s.weak = s.weak.filter(function (id) { return id !== questionId; });
@@ -660,27 +675,47 @@ if (typeof document !== "undefined") {
       html += "</div>";
 
       var correctEver = progress.correctEver;
-      var mastery = masteryByDomain(BANK, correctEver);
-      html += '<div class="card"><h2>Mastery</h2><p class="muted">Share of the bank you have ever answered correctly. Click a domain for its subdomains.</p>';
+      var attempted = progress.attempted;
+      var mastery = masteryByDomain(BANK, correctEver, attempted);
+      var seenAll = 0, rightAll = 0, totalAll = 0;
+      for (var sd = 1; sd <= 5; sd++) {
+        var row = mastery[sd] || { correct: 0, attempted: 0, total: 0 };
+        seenAll += row.attempted; rightAll += row.correct; totalAll += row.total;
+      }
+      html += '<div class="card"><h2>Progress</h2>' +
+        '<div class="metric-row">' +
+        metricTile("Coverage", totalAll ? Math.round((seenAll / totalAll) * 100) : 0, seenAll + " of " + totalAll + " seen") +
+        metricTile("Accuracy", seenAll ? Math.round((rightAll / seenAll) * 100) : 0, rightAll + " of " + seenAll + " right") +
+        metricTile("Mastery", totalAll ? Math.round((rightAll / totalAll) * 100) : 0, rightAll + " of " + totalAll + " bank") +
+        "</div>" +
+        '<p class="muted">Coverage is how much of the bank you have tried; accuracy is how much of that you got right. Click a domain for its subdomains.</p>';
       for (var md = 1; md <= 5; md++) {
-        var m = mastery[md] || { correct: 0, total: 0 };
+        var m = mastery[md] || { correct: 0, attempted: 0, total: 0 };
         var pct = m.total ? Math.round((m.correct / m.total) * 100) : 0;
+        var seenPct = m.total ? Math.round((m.attempted / m.total) * 100) : 0;
+        var accPct = m.attempted ? Math.round((m.correct / m.attempted) * 100) : 0;
         var open = expandedMastery === md;
         html += '<div class="domain-score">' +
           '<button class="domain-score-label expandable" data-action="toggle-mastery" data-domain="' + md + '" aria-expanded="' + open + '">' +
           '<span class="domain-chip chip-d' + md + '">D' + md + "</span><span>" + esc(DOMAIN_NAMES[md]) + "</span>" +
-          '<span class="muted">' + m.correct + "/" + m.total + " · " + pct + "%</span>" +
+          '<span class="muted">' + m.attempted + "/" + m.total + " seen" +
+          (m.attempted ? " · " + accPct + "% right" : "") + "</span>" +
           chev(open) + "</button>" +
-          '<div class="bar"><div class="bar-fill ' + (pct >= 72 ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div>';
+          '<div class="bar"><div class="bar-seen" style="width:' + seenPct + '%"></div>' +
+          '<div class="bar-fill ' + (accPct >= 72 || !m.attempted ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div>';
         if (open) {
           html += '<div class="sub-scores">';
-          masteryBySubdomain(BANK, correctEver, md).forEach(function (row) {
+          masteryBySubdomain(BANK, correctEver, md, attempted).forEach(function (row) {
             var spct = row.total ? Math.round((row.correct / row.total) * 100) : 0;
+            var sSeen = row.total ? Math.round((row.attempted / row.total) * 100) : 0;
+            var sAcc = row.attempted ? Math.round((row.correct / row.attempted) * 100) : 0;
             html += '<div class="sub-score"><div class="sub-label">' +
               (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
               '<span class="sub-title">' + esc(row.title) + "</span>" +
-              '<span class="muted">' + row.correct + "/" + row.total + "</span></div>" +
-              '<div class="bar thin"><div class="bar-fill ' + (spct >= 72 ? "ok" : "bad") + '" style="width:' + spct + '%"></div></div></div>';
+              '<span class="muted">' + row.attempted + "/" + row.total + " seen" +
+              (row.attempted ? " · " + sAcc + "%" : "") + "</span></div>" +
+              '<div class="bar thin"><div class="bar-seen" style="width:' + sSeen + '%"></div>' +
+              '<div class="bar-fill ' + (sAcc >= 72 || !row.attempted ? "ok" : "bad") + '" style="width:' + spct + '%"></div></div></div>';
           });
           html += "</div>";
         }
@@ -740,7 +775,7 @@ if (typeof document !== "undefined") {
         html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
       } else {
         html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
-          "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th></tr></thead><tbody>";
+          "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
         history.slice().reverse().forEach(function (h) {
           var cells = "";
           for (var d2 = 1; d2 <= 5; d2++) {
@@ -751,7 +786,10 @@ if (typeof document !== "undefined") {
             (h.examName ? '<br><span class="muted">' + esc(h.examName) + "</span>" : "") + "</td>" +
             "<td><strong>" + h.score + "</strong></td>" +
             '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
-            "<td>" + h.correct + "/" + h.total + "</td>" + cells + "</tr>";
+            "<td>" + h.correct + "/" + h.total + "</td>" + cells +
+            '<td>' + (Array.isArray(h.items)
+              ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
+              : "") + "</td></tr>";
         });
         html += "</tbody></table></div>" +
           '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
@@ -794,6 +832,12 @@ if (typeof document !== "undefined") {
         '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
         '<path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
         "</svg></span>";
+    }
+
+    function metricTile(label, pct, detail) {
+      return '<div class="metric"><div class="metric-value">' + pct + '<span class="metric-pct">%</span></div>' +
+        '<div class="metric-label">' + esc(label) + "</div>" +
+        '<div class="metric-detail">' + esc(detail) + "</div></div>";
     }
 
     function bestAttemptFor(examId, history) {
@@ -1252,6 +1296,11 @@ if (typeof document !== "undefined") {
           date: new Date().toISOString(),
           examId: session.examId || null,
           examName: session.examName || null,
+          /* The questions and answers are kept so the attempt can be
+           * reviewed and broken down by subdomain later. */
+          items: session.questions.map(function (s) {
+            return { id: s.id, order: s.order, given: session.answers[s.id] };
+          }),
           score: score,
           pass: score >= PASS_SCORE,
           correct: grade.correct,
@@ -1334,6 +1383,30 @@ if (typeof document !== "undefined") {
       }
     }
 
+    /* Turn a stored history entry back into the shape the review screen
+     * expects, recomputing the grade from the questions as they are today. */
+    function attemptToFinished(entry) {
+      if (!entry || !Array.isArray(entry.items)) return null;
+      var items = entry.items.filter(function (it) { return byId[it.id]; });
+      if (!items.length) return null;
+      var answers = {};
+      items.forEach(function (it) { answers[it.id] = it.given === undefined ? null : it.given; });
+      var questions = items.map(function (it) {
+        return { id: it.id, order: it.order || byId[it.id].options.map(function (_, i) { return i; }) };
+      });
+      var grade = gradeSession(items.map(function (it) { return byId[it.id]; }), answers);
+      return {
+        mode: entry.examId ? "imported" : "exam",
+        examName: entry.examName || null,
+        date: entry.date,
+        questions: questions,
+        answers: answers,
+        grade: grade,
+        score: entry.score,
+        fromHistory: true,
+      };
+    }
+
     var lastFinished = null;
     var reviewWrongOnly = false;
     var reviewDomain = 0; // 0 = all
@@ -1345,11 +1418,17 @@ if (typeof document !== "undefined") {
       for (var rd = 1; rd <= 5; rd++) {
         domainOptions += '<option value="' + rd + '"' + (reviewDomain === rd ? " selected" : "") + ">D" + rd + " — " + esc(DOMAIN_NAMES[rd]) + "</option>";
       }
-      var html = '<div class="quiz-header"><div><strong>Review</strong></div><div class="row">' +
+      var html = '<div class="quiz-header"><div><strong>Review</strong>' +
+        (finished.fromHistory
+          ? '<span class="muted"> · ' + esc(finished.examName || "Mock exam") + ", " +
+            esc(new Date(finished.date).toLocaleString()) + "</span>"
+          : "") +
+        "</div><div class=\"row\">" +
         '<select id="review-domain" class="select">' + domainOptions + "</select>" +
         '<button class="btn small ' + (reviewWrongOnly ? "" : "ghost") + '" data-action="toggle-wrong-only">' +
         (reviewWrongOnly ? "Showing wrong only" : "Show wrong only") + "</button>" +
-        '<button class="btn ghost small" data-action="back-results">Back to results</button></div></div>';
+        '<button class="btn ghost small" data-action="' + (finished.fromHistory ? "home" : "back-results") + '">' +
+        (finished.fromHistory ? "← Home" : "Back to results") + "</button></div></div>";
 
       var shown = 0;
       finished.questions.forEach(function (s, i) {
@@ -1515,6 +1594,21 @@ if (typeof document !== "undefined") {
           return renderHome();
         case "retry-failed": return startRetry(lastFinished.grade.wrongIds);
         case "show-review": reviewWrongOnly = false; reviewDomain = 0; return renderReview();
+        case "review-attempt": {
+          var entry = null;
+          Store.snapshot().history.forEach(function (h) {
+            if (h.date === btn.dataset.date) entry = h;
+          });
+          var restored = attemptToFinished(entry);
+          if (!restored) {
+            alert("That attempt cannot be reviewed — its questions are no longer in the app.");
+            return;
+          }
+          lastFinished = restored;
+          reviewWrongOnly = false;
+          reviewDomain = 0;
+          return renderReview();
+        }
         case "toggle-wrong-only": reviewWrongOnly = !reviewWrongOnly; return renderReview();
         case "back-results": return renderResults(lastFinished);
         case "home": return renderHome();

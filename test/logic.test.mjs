@@ -129,10 +129,10 @@ test("sampleQuiz draws only from chosen domains, without duplicates, clamped to 
 
 test("masteryByDomain reports correct-ever counts per domain", () => {
   const correctEver = ["d1-q01", "d1-q02", "d5-q01", "nonexistent"];
-  const m = masteryByDomain(FULL_BANK, correctEver);
-  assert.deepEqual(m[1], { correct: 2, total: 49 });
-  assert.deepEqual(m[5], { correct: 1, total: 27 });
-  assert.deepEqual(m[2], { correct: 0, total: 32 });
+  const m = masteryByDomain(FULL_BANK, correctEver, correctEver);
+  assert.deepEqual(m[1], { correct: 2, attempted: 2, total: 49 });
+  assert.deepEqual(m[5], { correct: 1, attempted: 1, total: 27 });
+  assert.deepEqual(m[2], { correct: 0, attempted: 0, total: 32 });
 });
 
 test("masteryBySubdomain groups tagged questions by subdomain and untagged as general", () => {
@@ -143,11 +143,11 @@ test("masteryBySubdomain groups tagged questions by subdomain and untagged as ge
     { id: "d", domain: 2 },
     { id: "e", domain: 3, subdomain: "3.1 CLAUDE.md" },
   ];
-  const rows = masteryBySubdomain(bank, ["a", "d"], 2);
+  const rows = masteryBySubdomain(bank, ["a", "d"], 2, ["a", "b", "d"]);
   assert.deepEqual(rows, [
-    { key: "2.1", title: "Tool interfaces", correct: 1, total: 2 },
-    { key: "2.4", title: "MCP integration", correct: 0, total: 1 },
-    { key: "general", title: "General (untagged)", correct: 1, total: 1 },
+    { key: "2.1", title: "Tool interfaces", correct: 1, attempted: 2, total: 2 },
+    { key: "2.4", title: "MCP integration", correct: 0, attempted: 0, total: 1 },
+    { key: "general", title: "General (untagged)", correct: 1, attempted: 1, total: 1 },
   ]);
 });
 
@@ -330,4 +330,46 @@ test("toggleChoice adds and removes options for multi-answer questions", () => {
   assert.deepEqual(toggleChoice([2], 0), [0, 2], "kept sorted");
   assert.deepEqual(toggleChoice([0, 2], 2), [0], "clicking again removes it");
   assert.equal(toggleChoice([2], 2), null, "emptying it clears the answer");
+});
+
+/* ---- coverage / mastery / accuracy -------------------------------------- */
+
+test("answering a question records it as attempted, right or wrong", () => {
+  let s = applyMutations(emptyProgress(), [Mutations.recordAnswer("q1", true)]);
+  s = applyMutations(s, [Mutations.recordAnswer("q2", false)]);
+  assert.deepEqual(s.attempted, ["q1", "q2"], "both count as seen");
+  assert.deepEqual(s.correctEver, ["q1"]);
+  assert.deepEqual(s.weak, ["q2"]);
+});
+
+test("finishing a session marks every graded question as attempted", () => {
+  const grade = { correct: 1, total: 2, correctIds: ["q1"], wrongIds: ["q2"], perDomain: {} };
+  const s = applyMutations(emptyProgress(), [Mutations.finishSession(grade, null)]);
+  assert.deepEqual(s.attempted, ["q1", "q2"]);
+});
+
+test("a session kept separate records nothing, not even attempts", () => {
+  const grade = { correct: 1, total: 1, correctIds: ["x1"], wrongIds: [], perDomain: {} };
+  const s = applyMutations(emptyProgress(), [Mutations.finishSession(grade, null, { separate: true })]);
+  assert.deepEqual(s.attempted, []);
+  assert.deepEqual(s.correctEver, []);
+});
+
+test("masteryByDomain reports coverage and correctness separately", () => {
+  const bank = [
+    { id: "a", domain: 1 }, { id: "b", domain: 1 },
+    { id: "c", domain: 1 }, { id: "d", domain: 2 },
+  ];
+  const m = masteryByDomain(bank, ["a"], ["a", "b"]);
+  assert.deepEqual(m[1], { correct: 1, attempted: 2, total: 3 });
+  assert.deepEqual(m[2], { correct: 0, attempted: 0, total: 1 });
+});
+
+test("mergeProgress unions the attempted set too", () => {
+  const m = mergeProgress({ attempted: ["q1"] }, { attempted: ["q2", "q1"] });
+  assert.deepEqual(m.attempted, ["q1", "q2"]);
+});
+
+test("normalizeProgress defaults attempted for records written before it existed", () => {
+  assert.deepEqual(normalizeProgress({ correctEver: ["q1"] }).attempted, []);
 });

@@ -427,3 +427,46 @@ test("a practice run over an imported exam can be exited and resumed", () => {
   app.click("resume");
   assert.ok(app.html().includes('data-action="select"'), "resumes into the questions");
 });
+
+test("the progress card separates coverage, accuracy and mastery", () => {
+  const app = launch();
+  app.click("practice", { domain: "1", sub: "1.1" });
+  app.click("select", { opt: "0" }); // right
+  app.click("next");
+  app.click("select", { opt: "1" }); // wrong
+  app.click("quit");
+
+  const html = app.html();
+  assert.ok(html.includes("Coverage"), "coverage tile present");
+  assert.ok(html.includes("Accuracy"), "accuracy tile present");
+  assert.ok(html.includes("Mastery"), "mastery tile present");
+  assert.ok(html.includes("2 of 100 seen"), "two questions counted as seen");
+  assert.ok(html.includes("1 of 2 right"), "accuracy counts only what was attempted");
+});
+
+test("a finished exam can be reviewed again from score history", () => {
+  const app = launch();
+  app.click("start-exam");
+  completeSession(app);
+  app.click("home");
+
+  const attempt = app.store().snapshot().history[0];
+  assert.ok(Array.isArray(attempt.items) && attempt.items.length, "the attempt keeps its questions");
+  assert.ok(app.html().includes('data-action="review-attempt"'), "history offers a review button");
+
+  app.click("review-attempt", { date: attempt.date });
+  assert.ok(app.html().includes("correct answer"), "the stored attempt renders in review");
+  assert.ok(app.html().includes("Review"), "review header shown");
+});
+
+test("reviewing a past attempt does not disturb current progress", () => {
+  const app = launch();
+  app.click("start-exam");
+  completeSession(app);
+  app.click("home");
+  const before = JSON.stringify(app.store().snapshot());
+
+  app.click("review-attempt", { date: app.store().snapshot().history[0].date });
+  app.click("home");
+  assert.equal(JSON.stringify(app.store().snapshot()), before, "nothing changed");
+});

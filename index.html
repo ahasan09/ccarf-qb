@@ -334,6 +334,22 @@
   .sub-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .sub-label .muted { margin-left: auto; font-family: var(--mono); font-size: 0.72rem; flex: none; }
   .bar.thin { height: 5px; }
+  .bar { position: relative; }
+  .bar-seen {
+    position: absolute; inset: 0 auto 0 0; height: 100%;
+    background: var(--line-strong); border-radius: 999px;
+  }
+  .bar-fill { position: relative; z-index: 1; }
+
+  .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .metric {
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; text-align: center;
+  }
+  .metric-value { font-family: var(--mono); font-size: 1.7rem; font-weight: 700; line-height: 1; }
+  .metric-pct { font-size: 0.9rem; color: var(--graphite); }
+  .metric-label { font-size: 0.8rem; font-weight: 700; margin-top: 4px; }
+  .metric-detail { font-family: var(--mono); font-size: 0.68rem; color: var(--graphite); margin-top: 2px; }
+  @media (max-width: 460px) { .metric-row { grid-template-columns: 1fr; } }
   .practice-subs { margin-top: 2px; margin-bottom: 10px; gap: 5px; }
   .sub-row {
     display: flex; gap: 8px; align-items: baseline; text-align: left;

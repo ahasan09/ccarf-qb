@@ -28,8 +28,11 @@ Modes:
   after every answer) and **Take mock** (120-minute timer, scored attempt).
   Supports select-two questions.
 - **Score history** — all exam attempts with per-domain results.
-- **Mastery view** — per-domain share of the bank you've ever answered
-  correctly, on the home screen.
+- **Progress** — coverage (how much of the bank you have tried), accuracy
+  (how much of that you got right) and mastery (correct share of the whole
+  bank), overall and per domain/subdomain.
+- **Attempt review** — every exam attempt stores its questions and answers, so
+  any past attempt can be reopened and reviewed from score history.
 
 Keyboard shortcuts during a session: `1`–`4` (or `A`–`D`) answer, `←`/`→`
 navigate, `F` flag, `Enter` next.
