@@ -12,6 +12,32 @@ Open `index.html` in any browser. No server, build step, or dependencies.
 Progress, score history, and your weak-question set are stored in the
 browser's localStorage.
 
+### Home page
+
+- **First visit** — a 20-question **diagnostic** (2 scenarios × 10, 40 min,
+  in the real exam's layout) and an optional exam date.
+- **Your readiness** — a predicted score (the last five exams, newest weighted
+  most: 5,4,3,2,1) with a verdict (**Likely pass** ≥ 760, **Borderline**
+  680–759, **Not yet** below), the countdown to your exam date, how many
+  questions are due for review, a trend chart of recent scores against the
+  720 line, and a link to review your last attempt. **Start scenario exam** is
+  the main action; the mock, supplementary and imported exams are under
+  **Other exams**.
+- **Next best step** — your three weakest exam-guide objectives (at least
+  three answered), each with a **Drill**: up to 8 scenario questions on that
+  objective with a note on every option.
+- **By objective** — accuracy in your exams for each domain and each of the
+  30 task statements, with a Drill per objective and **Practice all** for the
+  question bank. Bank coverage, accuracy and mastery are shown above it.
+- **Practice** — **Due for review**, Saved questions, missed questions,
+  Custom quiz, and the six scenarios with your best score in each.
+- Score history, imported mock exams and account/sync are folded away below.
+
+**Spaced review:** every question you miss (in practice, or unanswered or
+wrong in an exam) comes back after 1 day; each time you get it right when due
+it waits 3, 7, then 14 days, and after that it is done. The schedule and your
+exam date sync with the rest of your progress.
+
 Modes:
 
 - **Mock exam** — 60 questions drawn by real domain weights (D1 16, D2 11,
@@ -174,7 +200,7 @@ clears it, and progress cached for one account is never folded into another.
   imported-exam questions that belong to a scenario, as raw material for new
   scenario questions
 - `node --test test/logic.test.mjs test/sync.test.mjs test/ui.test.mjs test/scenario.test.mjs` — engine,
-  cross-device sync, screen-flow and scenario tests
+  cross-device sync, screen-flow, scenario and home-page tests (also `test/home.test.mjs`)
 - `node test/validate-bank.mjs` — structural validation of the question bank
 - `node test/validate-scenarios.mjs` — validation of the scenario bank. It
   rejects a question that repeats the scenario intro, is under 40 words, has
@@ -185,4 +211,5 @@ clears it, and progress cached for one account is never folded into another.
   `CORE` in `sw.js` (and bump `VERSION`).
 
 Design spec: `docs/superpowers/specs/2026-10-23-ccarf-question-bank-design.md`
-(scenario exam: `docs/superpowers/specs/2026-11-02-scenario-exam-design.md`)
+(scenario exam: `docs/superpowers/specs/2026-11-02-scenario-exam-design.md`;
+home page: `docs/superpowers/specs/2026-11-02-home-redesign-design.md`)
