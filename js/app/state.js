@@ -187,6 +187,17 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+/* The one expand/collapse icon used everywhere: a chevron that turns over when
+ * open. `open` marks state the app tracks itself; inside a <summary> leave it
+ * out and the CSS follows the <details> element's own open state. `bare`
+ * drops the ring, for use inside a button that already has a border. */
+function chev(open, bare) {
+  return '<span class="chev' + (open ? " open" : "") + (bare ? " bare" : "") + '" aria-hidden="true">' +
+    '<svg width="12" height="12" viewBox="0 0 16 16">' +
+    '<path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+    "</svg></span>";
+}
+
 function stopTimer() {
   if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
 }

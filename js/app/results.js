@@ -206,7 +206,7 @@ function renderScenarioReviewAfter() {
     if (!g.cards) return;
     var scn = scenarioById[g.scenario] || { name: g.scenario, text: "" };
     html += '<div class="scn-body">' +
-      '<aside class="scn-panel"><details open><summary>' + esc(scn.name) + "</summary>" +
+      '<aside class="scn-panel"><details open><summary><span>' + esc(scn.name) + "</span>" + chev() + "</summary>" +
       '<div class="scn-text">' + esc(scn.text) + "</div></details></aside>" +
       '<section class="scn-review-list">' + g.cards + "</section></div>";
   });
