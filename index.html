@@ -485,6 +485,9 @@
   .tile.answered { background: var(--pen-soft); color: var(--pen); border-color: var(--pen); }
   .tile.unanswered { border-style: dashed; border-color: var(--fail); }
   .tile.flagged { border-color: var(--flag); box-shadow: inset 0 -3px 0 var(--flag); }
+  .obj-row, .scn-row { margin-top: 12px; }
+  .scn-review-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .scn-review-list .review-card { margin: 0; }
   @media (max-width: 680px) {
     .scn-screen { width: 100%; left: 0; transform: none; }
     .scn-body { grid-template-columns: 1fr; }

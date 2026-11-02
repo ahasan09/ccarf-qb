@@ -1914,7 +1914,8 @@ if (typeof document !== "undefined") {
     function renderResults(finished) {
       view = "results";
       var grade = finished.grade;
-      var isExam = finished.mode === "exam";
+      var isExam = finished.mode === "exam" || finished.mode === "scenario";
+      var isScenario = isScenarioMode(finished.mode);
       var html = "";
 
       var CIRC = 408; // 2π × r65, matches the CSS dasharray
@@ -1940,7 +1941,25 @@ if (typeof document !== "undefined") {
           '<p class="muted">' + sessionResultLabel(finished.mode) + "</p></div>";
       }
 
-      var gradedDomains = Object.keys(grade.perDomain).filter(function (d) {
+      if (isScenario) {
+        var finishedQs = finished.questions.map(function (s) { return byId[s.id]; }).filter(Boolean);
+        var bar = function (row, label, cls) {
+          return '<div class="' + cls + '" data-pct="' + row.pct + '"><div class="domain-score-label"><span>' + esc(label) + "</span>" +
+            '<span class="muted">' + row.pct + "% · " + row.correct + "/" + row.total + "</span></div>" +
+            '<div class="bar"><div class="bar-fill ' + (row.pct >= 72 ? "ok" : "bad") + '" style="width:' + row.pct + '%"></div></div></div>';
+        };
+        html += '<div class="card"><h2>By objective</h2><p class="muted">Percent correct per exam-guide task statement, weakest first — like the real score report.</p>';
+        breakdownBy(finishedQs, finished.answers, function (q) { return q.subdomain; }).forEach(function (row) {
+          html += bar(row, row.key, "obj-row");
+        });
+        html += '</div><div class="card"><h2>By scenario</h2>';
+        breakdownBy(finishedQs, finished.answers, function (q) { return q.scenario; }).forEach(function (row) {
+          html += bar(row, (scenarioById[row.key] || {}).name || row.key, "scn-row");
+        });
+        html += "</div>";
+      }
+
+      var gradedDomains = isScenario ? [] : Object.keys(grade.perDomain).filter(function (d) {
         return !!DOMAIN_NAMES[d];
       });
       if (gradedDomains.length) {
@@ -1957,7 +1976,14 @@ if (typeof document !== "undefined") {
       }
 
       html += '<div class="row actions">';
-      if (grade.wrongIds.length) {
+      if (isScenario) {
+        /* Missed scenario questions are practised as scenario questions, never
+         * sent to the general weak-question drill. */
+        if (grade.wrongIds.length) {
+          html += '<button class="btn primary" data-action="practice-missed">Practise the ' + grade.wrongIds.length +
+            " you missed</button>";
+        }
+      } else if (grade.wrongIds.length) {
         html += '<button class="btn primary" data-action="retry-failed">Retry ' + grade.wrongIds.length +
           " failed question" + (grade.wrongIds.length === 1 ? "" : "s") + "</button>";
       } else {
@@ -2028,7 +2054,76 @@ if (typeof document !== "undefined") {
     var reviewWrongOnly = false;
     var reviewDomain = 0; // 0 = all
 
+    /* One review card; scenario reviews show every option's note under it. */
+    function reviewCard(s, i, finished) {
+      var q = byId[s.id];
+      var given = finished.answers[q.id];
+      var right = sameChoice(given, correctIndices(q));
+      var html = '<div class="card review-card ' + (right ? "r-ok" : "r-bad") + '">' +
+        '<div class="q-meta"><strong>Q' + (i + 1) + "</strong>" +
+        (q.scenario ? '<span class="muted">' + esc(q.subdomain || "") + "</span>" : questionMeta(q)) +
+        '<span class="badge ' + (right ? "pass" : "fail") + '">' +
+        (right ? "Correct" : !chosenIndices(given).length ? "Unanswered" : "Wrong") + "</span></div>" +
+        '<p class="q-text">' + esc(q.question) + "</p><div class=\"options\">";
+      var correctOpts = correctIndices(q);
+      var givenOpts = chosenIndices(given);
+      s.order.forEach(function (optIdx) {
+        var isCorrect = correctOpts.indexOf(optIdx) !== -1;
+        var wasPicked = givenOpts.indexOf(optIdx) !== -1;
+        var cls = "option readonly";
+        if (isCorrect) cls += " correct";
+        if (wasPicked && !isCorrect) cls += " wrong";
+        var note = q.optionNotes && q.optionNotes[optIdx];
+        html += '<div class="' + cls + '"><span class="opt-letter"></span>' + esc(q.options[optIdx]) +
+          (isCorrect ? ' <span class="tag">correct answer</span>' : "") +
+          (wasPicked ? ' <span class="tag">your answer</span>' : "") +
+          (note ? '<div class="opt-note ' + (isCorrect ? "ok" : "bad") + '">' + esc(note) + "</div>" : "") +
+          "</div>";
+      });
+      html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div>";
+      var comment = finished.comments && finished.comments[q.id];
+      if (comment) html += '<div class="scn-comment"><strong>Your comment:</strong> ' + esc(comment) + "</div>";
+      return html + "</div>";
+    }
+
+    function renderScenarioReviewAfter() {
+      view = "review";
+      var finished = lastFinished;
+      var html = '<div class="scn-screen"><div class="scn-top"><div><strong>Review</strong>' +
+        (finished.fromHistory
+          ? '<span class="muted"> · ' + esc(finished.examName || "Scenario exam") + ", " +
+            esc(new Date(finished.date).toLocaleString()) + "</span>"
+          : "") +
+        '</div><div class="row">' +
+        '<button class="btn small ' + (reviewWrongOnly ? "" : "ghost") + '" data-action="toggle-wrong-only">' +
+        (reviewWrongOnly ? "Showing wrong only" : "Show wrong only") + "</button>" +
+        '<button class="btn ghost small" data-action="' + (finished.fromHistory ? "home" : "back-results") + '">' +
+        (finished.fromHistory ? "← Home" : "Back to results") + "</button></div></div>";
+      var shown = 0;
+      var groups = [];
+      finished.questions.forEach(function (s, i) {
+        var q = byId[s.id];
+        var last = groups[groups.length - 1];
+        if (!last || last.scenario !== q.scenario) groups.push(last = { scenario: q.scenario, cards: "" });
+        if (reviewWrongOnly && sameChoice(finished.answers[q.id], correctIndices(q))) return;
+        shown++;
+        last.cards += reviewCard(s, i, finished);
+      });
+      groups.forEach(function (g) {
+        if (!g.cards) return;
+        var scn = scenarioById[g.scenario] || { name: g.scenario, text: "" };
+        html += '<div class="scn-body">' +
+          '<aside class="scn-panel"><details open><summary>' + esc(scn.name) + "</summary>" +
+          '<div class="scn-text">' + esc(scn.text) + "</div></details></aside>" +
+          '<section class="scn-review-list">' + g.cards + "</section></div>";
+      });
+      if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';
+      app.innerHTML = html + "</div>";
+      window.scrollTo(0, 0);
+    }
+
     function renderReview() {
+      if (lastFinished && isScenarioMode(lastFinished.mode)) return renderScenarioReviewAfter();
       view = "review";
       var finished = lastFinished;
       var domainOptions = '<option value="0">All domains</option>';

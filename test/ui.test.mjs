@@ -894,3 +894,69 @@ test("the deadline on the review screen submits the exam", () => {
   assert.equal(snap.history[0].correct, 1);
   assert.equal(snap.history[0].total, 60);
 });
+
+/* ---------------------------------------------------- scenario results */
+function finishScenario(app, picks = (i) => (i % 3 === 0 ? 0 : 1)) {
+  app.click("start-scenario-exam");
+  for (let i = 0; i < 60; i++) {
+    app.click("jump", { index: String(i) });
+    app.click("select", { opt: String(picks(i)) });
+  }
+  app.click("submit");
+}
+
+test("scenario results show per-objective scores, weakest first", () => {
+  const bankQs = scenarioBank();
+  bankQs.forEach((q, i) => {
+    q.subdomain = i % 2
+      ? "4.5 Design efficient batch processing strategies"
+      : "1.1 Design and implement agentic loops for autonomous task execution";
+  });
+  const app = launch({ scenarioBank: bankQs });
+  finishScenario(app);
+  const html = app.html();
+  assert.ok(html.includes("By objective"));
+  assert.ok(html.includes("By scenario"));
+  const pcts = [...html.matchAll(/class="obj-row" data-pct="(\d+)"/g)].map((m) => Number(m[1]));
+  assert.ok(pcts.length >= 2);
+  assert.deepEqual(pcts, pcts.slice().sort((a, b) => a - b));
+  assert.ok(!html.includes('data-action="retry-failed"'), "no retry that would feed the weak set");
+});
+
+test("the scenario review puts each note under its own option", () => {
+  const app = launch({ prompt: () => "unsure here" });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  for (let i = 0; i < 60; i++) { app.click("jump", { index: String(i) }); app.click("select", { opt: "1" }); }
+  app.click("submit");
+  app.click("show-review");
+  const html = app.html();
+  assert.ok(html.includes('class="scn-panel"'), "scenario text on the left");
+  for (const [opt, note] of [["Opt one", "Note one"], ["Opt two", "Note two"], ["Opt three", "Note three"], ["Opt four", "Note four"]]) {
+    const re = new RegExp(`${opt}(?:(?!class="option)[\\s\\S])*?<div class="opt-note[^"]*">${note}<`);
+    assert.match(html, re, `${note} sits with ${opt}`);
+  }
+  assert.ok(html.includes("Your comment") && html.includes("unsure here"));
+});
+
+test("a scenario attempt reopens from score history in the two-panel review", () => {
+  const app = launch();
+  finishScenario(app);
+  app.click("home");
+  const attempt = app.store().snapshot().history[0];
+  app.click("review-attempt", { date: attempt.date });
+  const html = app.html();
+  assert.ok(html.includes('class="scn-panel"'));
+  assert.ok(html.includes("Note two"));
+});
+
+test("a legacy history entry still opens the one-panel review", () => {
+  const app = launch();
+  app.click("start-exam");
+  completeSession(app);
+  app.click("home");
+  const attempt = app.store().snapshot().history[0];
+  app.click("review-attempt", { date: attempt.date });
+  assert.ok(!app.html().includes('class="scn-panel"'));
+  assert.ok(app.html().includes("correct answer"));
+});
