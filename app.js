@@ -1553,7 +1553,107 @@ if (typeof document !== "undefined") {
       }
     }
 
+    /* Which scenario block the current question is in (0-based). */
+    function scenarioBlockOf(sess, index) {
+      if (sess.mode !== "scenario") return 0;
+      return Math.min(Math.floor(index / SCENARIO_BLOCK), (sess.scenarioIds || []).length - 1);
+    }
+
+    /* The real exam's layout: the scenario stays put on the left while its
+     * questions change on the right. */
+    function renderScenarioQuestion() {
+      view = "quiz";
+      var sq = session.questions[session.current];
+      var q = byId[sq.id];
+      var total = session.questions.length;
+      var isPractice = session.mode === "scenario-practice";
+      var block = scenarioBlockOf(session, session.current);
+      var scn = scenarioById[q.scenario] || { name: "Scenario", text: "" };
+      var chosen = chosenIndices(session.answers[q.id]);
+      var correct = correctIndices(q);
+      var struck = session.strikes[q.id] || [];
+      var showFeedback = isPractice && session.feedback === q.id;
+      var comment = session.comments[q.id];
+
+      var where = isPractice
+        ? "Question " + (session.current + 1) + " of " + total
+        : "Scenario " + (block + 1) + " of " + session.scenarioIds.length +
+          " · Question " + (session.current + 1) + " of " + total;
+
+      var html = '<div class="scn-screen">';
+      html += '<div class="scn-top">' +
+        '<div><strong>' + esc(sessionTitle()) + '</strong><span class="muted"> · ' + where + "</span></div>" +
+        '<div class="row">' +
+        (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
+        (isPractice
+          ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
+          : '<button class="btn ghost small" data-action="comment">' + (comment ? "💬 Edit comment" : "💬 Comment") + "</button>") +
+        '<button class="btn ghost small' + (session.flagged[q.id] ? " flag-on" : "") + '" data-action="toggle-flag">' +
+        (session.flagged[q.id] ? "⚑ Flagged" : "⚑ Flag for review") + "</button>" +
+        '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
+        "</div></div>";
+
+      html += '<div class="scn-body">' +
+        '<aside class="scn-panel"><details open><summary>' + esc(scn.name) + "</summary>" +
+        '<div class="scn-text">' + esc(scn.text) + "</div></details></aside>";
+
+      html += '<section class="scn-question">' +
+        '<p class="q-text">' + esc(q.question) + "</p>" +
+        '<div class="options" role="radiogroup">';
+      sq.order.forEach(function (optIdx) {
+        var cls = "option";
+        var picked = chosen.indexOf(optIdx) !== -1;
+        if (picked) cls += " selected";
+        if (struck.indexOf(optIdx) !== -1) cls += " struck";
+        if (showFeedback) {
+          if (correct.indexOf(optIdx) !== -1) cls += " correct";
+          else if (picked) cls += " wrong";
+        }
+        html += '<div class="opt-wrap"><button class="' + cls + '" role="radio" aria-checked="' + picked +
+          '" data-action="select" data-opt="' + optIdx + '"' + (showFeedback ? " disabled" : "") + ">" +
+          '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>";
+        if (showFeedback && q.optionNotes) {
+          html += '<div class="opt-note ' + (correct.indexOf(optIdx) !== -1 ? "ok" : "bad") + '">' +
+            esc(q.optionNotes[optIdx]) + "</div>";
+        }
+        html += "</div>";
+      });
+      html += "</div>";
+      if (showFeedback) {
+        var right = sameChoice(session.answers[q.id], correct);
+        html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status"><strong>' +
+          (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
+      }
+      if (comment) html += '<p class="scn-comment muted">💬 ' + esc(comment) + "</p>";
+      html += '<p class="muted scn-hint">Right-click an option to strike it through.</p>';
+      html += "</section></div>";
+
+      html += '<div class="scn-bottom">' +
+        (isPractice ? "<span></span>" :
+          '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>");
+      if (isPractice) {
+        html += showFeedback
+          ? (session.current + 1 < total
+            ? '<button class="btn primary" data-action="next">Next →</button>'
+            : '<button class="btn primary" data-action="submit">Finish</button>')
+          : '<span class="muted">Pick an answer to see the notes</span>';
+      } else {
+        var flaggedCount = Object.keys(session.flagged).filter(function (k) { return session.flagged[k]; }).length;
+        html += '<span class="muted">Answered ' + answeredCount(session) + " of " + total +
+          " · Flagged " + flaggedCount + "</span>" +
+          '<div class="row"><button class="btn" data-action="review-all">Review all</button>' +
+          '<button class="btn primary" data-action="next">' +
+          (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
+      }
+      html += "</div>";
+      html += '<div id="ctx-menu" class="ctx-menu" hidden></div></div>';
+
+      app.innerHTML = html;
+      window.scrollTo(0, 0);
+    }
+
     function renderQuestion() {
+      if (isScenarioMode(session.mode)) return renderScenarioQuestion();
       view = "quiz";
       var sq = session.questions[session.current];
       var q = byId[sq.id];
@@ -2004,6 +2104,30 @@ if (typeof document !== "undefined") {
       if (ev.key === "ArrowRight") { ev.preventDefault(); return goNext(); }
       if (key === "f") return toggleFlag();
     });
+
+    /* Right-click an option in a scenario question to strike it through,
+     * like the real exam. */
+    function hideCtxMenu() {
+      var menu = document.getElementById("ctx-menu");
+      if (menu) menu.hidden = true;
+    }
+    app.addEventListener("contextmenu", function (ev) {
+      if (!session || !isScenarioMode(session.mode) || view !== "quiz") return;
+      var opt = ev.target.closest && ev.target.closest(".option[data-opt]");
+      var menu = document.getElementById("ctx-menu");
+      if (!opt || !menu) return;
+      ev.preventDefault();
+      var optIdx = Number(opt.dataset.opt);
+      var id = session.questions[session.current].id;
+      var isStruck = (session.strikes[id] || []).indexOf(optIdx) !== -1;
+      menu.innerHTML = '<button class="ctx-item" data-action="strike" data-opt="' + optIdx + '">' +
+        (isStruck ? "Remove strike-through" : "Strike through") + "</button>";
+      menu.style.left = ev.clientX + "px";
+      menu.style.top = ev.clientY + "px";
+      menu.hidden = false;
+    });
+    document.addEventListener("click", hideCtxMenu, true);
+    document.addEventListener("scroll", hideCtxMenu, true);
 
     app.addEventListener("click", function (ev) {
       var btn = ev.target.closest("[data-action]");

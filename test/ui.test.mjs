@@ -774,3 +774,55 @@ test("the scenario exam refuses to start when fewer than 4 scenarios have 15 que
   app.click("start-scenario-exam");
   assert.equal(app.store().snapshot().session, null);
 });
+
+/* ------------------------------------------------ two-panel exam screen */
+function scenarioPanel(html) {
+  const m = html.match(/<aside class="scn-panel"[\s\S]*?<\/aside>/);
+  return m ? m[0] : "";
+}
+
+test("the scenario text sits on the left, the question only on the right", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  const sid = sess.scenarioIds[0];
+  const html = app.html();
+  const panel = scenarioPanel(html);
+  assert.ok(panel.includes(`Background text for ${sid}.`), "scenario text in the left panel");
+  assert.ok(html.includes("Scenario 1 of 4"));
+  assert.ok(html.includes("Question 1 of 60"));
+  const qText = app.html().match(/Scenario question \S+ \d+\?/)[0];
+  assert.equal(html.split(qText).length - 1, 1, "question text appears once");
+  assert.ok(!panel.includes(qText), "question text is not in the scenario panel");
+  assert.ok(html.includes('data-action="comment"') && html.includes('data-action="toggle-flag"'));
+  assert.ok(html.includes('data-action="prev"') && html.includes('data-action="next"'));
+});
+
+test("a struck option renders crossed out and still selectable", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("strike", { opt: "3" });
+  const btn = app.html().match(/<button[^>]*data-opt="3"[^>]*>/)[0];
+  assert.match(btn, /class="[^"]*\bstruck\b/);
+  assert.ok(!/disabled/.test(btn));
+});
+
+test("the scenario label follows the question across blocks", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  app.click("jump", { index: "15" });
+  assert.ok(app.html().includes("Scenario 2 of 4"));
+  assert.ok(app.html().includes("Question 16 of 60"));
+  assert.ok(scenarioPanel(app.html()).includes(`Background text for ${sess.scenarioIds[1]}.`));
+});
+
+test("a comment and a flag show in the top bar", () => {
+  const app = launch({ prompt: () => "hmm" });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  app.click("toggle-flag");
+  const html = app.html();
+  assert.ok(html.includes("Flagged"));
+  assert.ok(html.includes("💬 Comment ✓") || html.includes("Edit comment"));
+});
