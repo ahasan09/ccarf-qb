@@ -370,6 +370,24 @@ function emptyProgress() {
   return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null, review: {}, examDate: null };
 }
 
+/* A real calendar date in YYYY-MM-DD form (rejects 2026-02-30 etc.). */
+function isValidDate(str) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(str || ""));
+  if (!m) return false;
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+}
+
+/* Whole calendar days from today (local) to the date, counted on UTC
+ * midnights so a daylight-saving change never shifts the count. */
+function daysUntil(str, now) {
+  if (!isValidDate(str)) return null;
+  var p = str.split("-");
+  var today = new Date(now);
+  var from = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((Date.UTC(+p[0], +p[1] - 1, +p[2]) - from) / 86400000);
+}
+
 function isReviewEntry(e) {
   return !!e && typeof e === "object" && typeof e.due === "number" &&
     typeof e.step === "number" && typeof e.updatedAt === "number";
@@ -399,7 +417,7 @@ function normalizeProgress(raw) {
       if (isReviewEntry(raw.review[id])) s.review[id] = raw.review[id];
     });
   }
-  if (typeof raw.examDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.examDate)) s.examDate = raw.examDate;
+  if (isValidDate(raw.examDate)) s.examDate = raw.examDate;
   return s;
 }
 
@@ -609,7 +627,8 @@ var Mutations = {
          * overwrite a newer entry written by another device. */
         Object.keys(updates || {}).forEach(function (id) {
           var cur = s.review[id];
-          if (updates[id] && !(cur && cur.updatedAt > updates[id].updatedAt)) s.review[id] = updates[id];
+          if (updates[id] === null) delete s.review[id];
+          else if (updates[id] && !(cur && cur.updatedAt > updates[id].updatedAt)) s.review[id] = updates[id];
         });
       },
     };
@@ -801,6 +820,8 @@ if (typeof module !== "undefined" && module.exports) {
     validateBank: validateBank,
     validateScenarioBank: validateScenarioBank,
     reviewAfterAnswer: reviewAfterAnswer,
+    isValidDate: isValidDate,
+    daysUntil: daysUntil,
     examAttempts: examAttempts,
     predictedScore: predictedScore,
     objectiveAccuracy: objectiveAccuracy,
@@ -1072,8 +1093,9 @@ if (typeof document !== "undefined") {
       html += firstVisit ? homeFirstVisit(progress) : homeReadiness(progress, now);
       if (saved) html += resumeCard(saved);
       if (!firstVisit) {
-        html += homeNextStep(progress, lookup);
-        html += '<div class="h-cols">' + homeObjectives(progress, lookup) + homePractice(progress, now, lookup) + "</div>";
+        var acc = objectiveAccuracy(progress.history, lookup);
+        html += homeNextStep(acc);
+        html += '<div class="h-cols">' + homeObjectives(progress, acc) + homePractice(progress, now, lookup) + "</div>";
       }
       html += homeCollapsed(progress);
       html += '<footer class="site-footer">Practice material for personal study. ' +
@@ -1082,10 +1104,9 @@ if (typeof document !== "undefined") {
     }
 
     function examDateLine(progress, now) {
-      if (!progress.examDate) return "";
+      var days = daysUntil(progress.examDate, now);
+      if (days === null || days < 0) return "";
       var at = new Date(progress.examDate + "T00:00:00").getTime();
-      var days = Math.ceil((at - now) / DAY_MS);
-      if (!(days >= 0)) return "";
       return "Exam on <b>" + esc(new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" })) +
         "</b> · <b>" + days + " day" + (days === 1 ? "" : "s") + " left</b>";
     }
@@ -1101,8 +1122,8 @@ if (typeof document !== "undefined") {
 
     function otherExamsMenu() {
       return '<details class="h-menu"><summary class="btn">Other exams ▾</summary><div class="h-menu-list">' +
-        '<button class="btn ghost" data-action="start-exam" data-scope="mapped">Mock exam · exam-guide mapped, by domain weight</button>' +
-        '<button class="btn ghost" data-action="start-exam" data-scope="unmapped">Supplementary mock exam</button>' +
+        '<button class="btn ghost" data-action="start-exam" data-scope="mapped">Mock exam<small>exam-guide mapped, by domain weight</small></button>' +
+        '<button class="btn ghost" data-action="start-exam" data-scope="unmapped">Supplementary mock exam<small>the unmapped questions</small></button>' +
         (EXAMS.length ? '<button class="btn ghost" data-action="open-section" data-id="h-imported">Imported practice tests ↓</button>' : "") +
         "</div></details>";
     }
@@ -1202,8 +1223,8 @@ if (typeof document !== "undefined") {
       return '<div class="h-meter"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
     }
 
-    function homeNextStep(progress, lookup) {
-      var weak = weakestObjectives(objectiveAccuracy(progress.history, lookup));
+    function homeNextStep(acc) {
+      var weak = weakestObjectives(acc);
       if (!weak.length) return "";
       var html = '<section class="card h-next"><h2 class="h-h2">Next best step</h2>' +
         '<p class="h-sub">Your weakest objectives across your exams — each drill is up to 8 questions with a note on every option.</p>';
@@ -1215,8 +1236,7 @@ if (typeof document !== "undefined") {
       return html + "</section>";
     }
 
-    function homeObjectives(progress, lookup) {
-      var acc = objectiveAccuracy(progress.history, lookup);
+    function homeObjectives(progress, acc) {
       var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted);
       var seenAll = 0, rightAll = 0, totalAll = 0;
       for (var sd = 1; sd <= 5; sd++) {
@@ -2567,7 +2587,7 @@ if (typeof document !== "undefined") {
     }
 
     document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") hideCtxMenu();
+      if (ev.key === "Escape") { hideCtxMenu(); closeMenus(null); }
       if (!inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
       var tag = ev.target && ev.target.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -2593,6 +2613,18 @@ if (typeof document !== "undefined") {
 
     /* Right-click an option in a scenario question to strike it through,
      * like the real exam. */
+    /* The Other exams menu is a <details>; close it on Escape or a click
+     * anywhere outside it, like a normal dropdown. */
+    function closeMenus(except) {
+      if (!document.querySelectorAll) return;
+      Array.prototype.forEach.call(document.querySelectorAll("details.h-menu[open]"), function (d) {
+        if (d !== except) d.open = false;
+      });
+    }
+    document.addEventListener("click", function (ev) {
+      closeMenus(ev.target && ev.target.closest ? ev.target.closest("details.h-menu") : null);
+    }, true);
+
     function hideCtxMenu() {
       var menu = document.getElementById("ctx-menu");
       if (menu) menu.hidden = true;
@@ -2692,11 +2724,12 @@ if (typeof document !== "undefined") {
           var got = prompt("Exam date (YYYY-MM-DD). Leave empty to clear.", cur);
           if (got === null) return;
           got = String(got).trim();
-          if (got && !/^\d{4}-\d{2}-\d{2}$/.test(got)) { alert("Please use the format YYYY-MM-DD, e.g. 2026-12-14."); return; }
+          if (got && !isValidDate(got)) { alert("Please enter a real date as YYYY-MM-DD, e.g. 2026-12-14."); return; }
           Store.mutate(Mutations.setExamDate(got || null));
           return renderHome();
         }
         case "open-section": {
+          closeMenus(null);
           var sec = document.getElementById(btn.dataset.id);
           if (sec) { sec.open = true; if (sec.scrollIntoView) sec.scrollIntoView({ behavior: "smooth" }); }
           return;
