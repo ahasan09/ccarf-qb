@@ -1102,3 +1102,59 @@ test("each option has a strike button for touch screens", () => {
   const btns = app.html().match(/<button class="strike-btn"[^>]*data-action="strike"[^>]*>/g) || [];
   assert.equal(btns.length, 4);
 });
+
+/* ------------------------------------------------- spaced review wiring */
+test("a wrong practice answer schedules the question for review", () => {
+  const app = launch();
+  app.click("practice", { domain: "2", sub: "2.1" });
+  const id = app.store().snapshot().session.questions[0].id;
+  app.click("select", { opt: "1" });
+  const r = app.store().snapshot().review[id];
+  assert.equal(r.step, 0);
+  assert.ok(r.due > Date.now());
+});
+
+test("a correct answer to a question not under review changes nothing", () => {
+  const app = launch();
+  app.click("practice", { domain: "2", sub: "2.1" });
+  app.click("select", { opt: "0" });
+  assert.deepEqual(app.store().snapshot().review, {});
+});
+
+test("a wrong scenario-practice answer is scheduled too", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "ci" });
+  const id = app.store().snapshot().session.questions[0].id;
+  app.click("select", { opt: "2" });
+  assert.equal(app.store().snapshot().review[id].step, 0);
+});
+
+test("unanswered exam questions are scheduled at submit", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  app.click("select", { opt: "0" });
+  assert.deepEqual(app.store().snapshot().review, {}, "nothing scheduled before submit");
+  app.click("submit");
+  const review = app.store().snapshot().review;
+  assert.equal(Object.keys(review).length, 59);
+  assert.ok(!review[sess.questions[0].id], "the correct one is not scheduled");
+});
+
+test("start-review runs a session over exactly the due questions", () => {
+  const app = launch();
+  const past = Date.now() - 1000;
+  app.store().mutate({ key: null, apply: (s) => {
+    s.review = {
+      "sc-ci-1": { step: 0, due: past, updatedAt: 1 },
+      "sc-support-2": { step: 1, due: past, updatedAt: 1 },
+      "d1-q1": { step: 0, due: past, updatedAt: 1 },
+      "sc-ci-3": { step: 0, due: Date.now() + 1e9, updatedAt: 1 },
+      "sc-ci-4": { step: 3, due: past, updatedAt: 1, done: true },
+    };
+  } });
+  app.click("start-review");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario-practice", "scenario questions first");
+  assert.deepEqual(sess.questions.map((q) => q.id).sort(), ["sc-ci-1", "sc-support-2"]);
+});

@@ -1484,7 +1484,7 @@ if (typeof document !== "undefined") {
     /* Untimed, one scenario (or a set of missed questions), with every
      * option's note shown after each answer. Questions not yet met in a
      * scenario exam come first. */
-    function startScenarioPractice(scenarioId, ids) {
+    function startScenarioPractice(scenarioId, ids, title) {
       if (!okToReplaceSaved()) return;
       var pool = ids
         ? ids.map(function (id) { return byId[id]; }).filter(Boolean)
@@ -1496,9 +1496,39 @@ if (typeof document !== "undefined") {
       session = newSession("scenario-practice", pool, false);
       session.scenarioId = scenarioId || null;
       session.missed = !!ids;
+      session.practiceTitle = title || null;
       session.strikes = {};
       session.comments = {};
       session.separate = true;
+      persistSession();
+      renderQuestion();
+    }
+
+    /* Update the spaced-review schedule for a batch of graded answers. */
+    function scheduleReview(results) {
+      var review = Store.snapshot().review || {};
+      var now = Date.now();
+      var updates = {};
+      var any = false;
+      results.forEach(function (r) {
+        var next = reviewAfterAnswer(review[r.id], r.correct, now);
+        if (next) { updates[r.id] = next; any = true; }
+      });
+      if (any) Store.mutate(Mutations.recordReview(updates));
+    }
+
+    /* Due questions: scenario ones first (two-panel with notes), then the
+     * rest in ordinary practice. */
+    function startReview() {
+      var due = dueReviewIds(Store.snapshot().review, Date.now()).filter(function (id) { return byId[id]; });
+      var scn = due.filter(function (id) { return byId[id].scenario; });
+      if (scn.length) return startScenarioPractice(null, scn, "Due for review");
+      var rest = due.map(function (id) { return byId[id]; });
+      if (!rest.length) return;
+      if (!okToReplaceSaved()) return;
+      session = newSession("practice", shuffle(rest), false);
+      session.savedDrill = true;
+      session.reviewDrill = true;
       persistSession();
       renderQuestion();
     }
@@ -1728,6 +1758,7 @@ if (typeof document !== "undefined") {
         case "retry": return "Retry Failed Questions";
         case "weak": return "Weak Questions Drill";
         case "practice":
+          if (session.reviewDrill) return "Due for review";
           if (session.savedDrill) return "Saved questions";
           if (session.examName) return "Practice — " + session.examName;
           return "Practice — " + (session.subKey && session.subKey !== "general"
@@ -1737,6 +1768,7 @@ if (typeof document !== "undefined") {
         case "imported": return session.examName || "Imported exam";
         case "scenario": return "Scenario Exam";
         case "scenario-practice":
+          if (session.practiceTitle) return session.practiceTitle;
           return "Practice — " + (session.missed ? "missed scenario questions"
             : (scenarioById[session.scenarioId] || {}).name || "Scenario");
       }
@@ -2039,6 +2071,7 @@ if (typeof document !== "undefined") {
         if (right) session.tally.correct++;
         else session.tally.wrong++;
         if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right));
+        scheduleReview([{ id: q.id, correct: right }]);
       } else if (isMultiAnswer(byId[sq.id])) {
         session.answers[sq.id] = toggleChoice(session.answers[sq.id], optIdx);
       } else {
@@ -2103,6 +2136,13 @@ if (typeof document !== "undefined") {
        * correctly, and records the attempt — so a later sync cannot bring
        * any of it back. */
       Store.mutate(Mutations.finishSession(grade, entry, { separate: separate }));
+      /* Practice modes scheduled each answer as it was given; everything
+       * else is graded here, and an unanswered question counts as wrong. */
+      if (session.mode !== "practice" && session.mode !== "scenario-practice") {
+        var right = {};
+        grade.correctIds.forEach(function (id) { right[id] = true; });
+        scheduleReview(questions.map(function (q) { return { id: q.id, correct: !!right[q.id] }; }));
+      }
 
       session = null;
       renderResults(finished);
@@ -2539,6 +2579,7 @@ if (typeof document !== "undefined") {
         case "start-scenario-exam": return startScenarioExam();
         case "review-all": return session && renderScenarioReview();
         case "practice-scenario": return startScenarioPractice(btn.dataset.scenario);
+        case "start-review": return startReview();
         case "practice-missed": return lastFinished && startScenarioPractice(null, lastFinished.grade.wrongIds);
         case "review-filter": reviewFilter = btn.dataset.filter || "all"; return session && renderScenarioReview();
         case "strike": return session && toggleStrike(Number(btn.dataset.opt));
