@@ -90,3 +90,78 @@ test("review and exam-date mutations apply", () => {
   s = applyMutations(s, [Mutations.setExamDate(null)]);
   assert.equal(s.examDate, null);
 });
+
+/* ------------------------------------------------------------ Task 2 */
+const { examAttempts, predictedScore, objectiveAccuracy, weakestObjectives, objectiveDrillIds, bestScenarioScores } = app;
+
+const hist = (scores) => scores.map((score, i) => ({ date: `2026-10-0${i + 1}T00:00:00Z`, score, items: [] }));
+
+test("examAttempts keeps scored entries only", () => {
+  assert.equal(examAttempts([{ date: "x", score: 700 }, { date: "y" }]).length, 1);
+});
+
+test("predictedScore weights the last five newest-first 5..1", () => {
+  assert.equal(predictedScore([]), null);
+  const p = predictedScore(hist([600, 700, 800]));
+  assert.equal(p.score, Math.round((800 * 5 + 700 * 4 + 600 * 3) / 12));
+  assert.equal(p.count, 3);
+  assert.equal(p.verdict, "borderline");
+  assert.equal(predictedScore(hist([900])).verdict, "pass");
+  assert.equal(predictedScore(hist([500])).verdict, "not-yet");
+  assert.equal(predictedScore(hist([760])).verdict, "pass");
+  assert.equal(predictedScore(hist([680])).verdict, "borderline");
+  assert.equal(predictedScore(hist([100, 100, 100, 100, 100, 900])).count, 5, "only the last five");
+});
+
+const Q = {
+  a: { id: "a", subdomain: "4.5 Batch", options: [1, 2, 3, 4], answer: 0, scenario: "ci" },
+  b: { id: "b", subdomain: "4.5 Batch", options: [1, 2, 3, 4], answer: 0, scenario: "ci" },
+  c: { id: "c", subdomain: "1.1 Loops", options: [1, 2, 3, 4], answer: 0, scenario: "support" },
+  d: { id: "d", options: [1, 2, 3, 4], answer: 0 },
+};
+const lookup = (id) => Q[id];
+
+test("objectiveAccuracy skips unknown ids", () => {
+  const h = [
+    { date: "1", score: 500, items: [{ id: "a", given: 0 }, { id: "b", given: 1 }, { id: "zzz", given: 0 }, { id: "d", given: 0 }] },
+    { date: "2", score: 500, items: [{ id: "a", given: null }, { id: "c", given: 0 }] },
+  ];
+  assert.deepEqual(objectiveAccuracy(h, lookup), {
+    "4.5 Batch": { correct: 1, total: 3 },
+    "1.1 Loops": { correct: 1, total: 1 },
+  });
+});
+
+test("weakestObjectives needs three answers and breaks ties by fewer answered", () => {
+  const acc = {
+    "1.1 x": { correct: 1, total: 4 },
+    "2.1 y": { correct: 1, total: 3 },
+    "3.1 z": { correct: 3, total: 3 },
+    "4.5 w": { correct: 0, total: 2 },
+    "5.1 v": { correct: 2, total: 8 },
+  };
+  assert.deepEqual(weakestObjectives(acc).map((r) => r.key), ["1.1 x", "5.1 v", "2.1 y"]);
+  assert.deepEqual(weakestObjectives(acc, 1)[0], { key: "1.1 x", correct: 1, total: 4, pct: 25 });
+  assert.deepEqual(weakestObjectives({}), []);
+});
+
+test("objectiveDrillIds takes unseen questions first, up to eight", () => {
+  const bank = [];
+  for (let i = 0; i < 12; i++) bank.push({ id: `s${i}`, subdomain: "4.5 Batch" });
+  bank.push({ id: "other", subdomain: "1.1 Loops" });
+  const used = new Set(["s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]);
+  const ids = objectiveDrillIds(bank, "4.5 Batch", used);
+  assert.equal(ids.length, 8);
+  for (const fresh of ["s9", "s10", "s11"]) assert.ok(ids.includes(fresh));
+  assert.ok(!ids.includes("other"));
+  assert.deepEqual(objectiveDrillIds(bank, "9.9 none", used), []);
+});
+
+test("bestScenarioScores takes the best per scenario from scenario attempts", () => {
+  const h = [
+    { date: "1", kind: "scenario", score: 1, items: [{ id: "a", given: 0 }, { id: "b", given: 1 }, { id: "c", given: 0 }] },
+    { date: "2", kind: "scenario", score: 1, items: [{ id: "a", given: 0 }, { id: "b", given: 0 }] },
+    { date: "3", score: 1, items: [{ id: "c", given: 1 }] },
+  ];
+  assert.deepEqual(bestScenarioScores(h, lookup), { ci: 100, support: 100 });
+});

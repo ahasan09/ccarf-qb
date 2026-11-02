@@ -456,6 +456,82 @@ function mergeReview(a, b) {
   return out;
 }
 
+/* ------------------------------------------------------------ readiness */
+function examAttempts(history) {
+  return (history || []).filter(function (h) { return h && typeof h.score === "number"; });
+}
+
+/* Recent exams count most: the last five, weighted 5..1 newest first. */
+function predictedScore(history) {
+  var recent = examAttempts(history).slice(-5).reverse();
+  if (!recent.length) return null;
+  var sum = 0, weights = 0;
+  recent.forEach(function (h, i) { var w = 5 - i; sum += h.score * w; weights += w; });
+  var score = Math.round(sum / weights);
+  return {
+    score: score,
+    count: recent.length,
+    verdict: score >= 760 ? "pass" : score >= 680 ? "borderline" : "not-yet",
+  };
+}
+
+/* Percent correct per exam-guide task statement across exam attempts. */
+function objectiveAccuracy(history, lookup) {
+  var acc = {};
+  examAttempts(history).forEach(function (h) {
+    (h.items || []).forEach(function (it) {
+      var q = lookup(it.id);
+      if (!q || !q.subdomain) return;
+      var row = acc[q.subdomain] || (acc[q.subdomain] = { correct: 0, total: 0 });
+      row.total++;
+      if (sameChoice(it.given === undefined ? null : it.given, correctIndices(q))) row.correct++;
+    });
+  });
+  return acc;
+}
+
+function weakestObjectives(acc, limit, minAnswered) {
+  limit = limit || 3;
+  minAnswered = minAnswered || 3;
+  return Object.keys(acc || {})
+    .filter(function (k) { return acc[k].total >= minAnswered; })
+    .map(function (k) {
+      return { key: k, correct: acc[k].correct, total: acc[k].total, pct: Math.round((100 * acc[k].correct) / acc[k].total) };
+    })
+    .sort(function (a, b) { return a.pct - b.pct || a.total - b.total || (a.key < b.key ? -1 : 1); })
+    .slice(0, limit);
+}
+
+function objectiveDrillIds(scenarioBank, subdomain, usedIds, n, rng) {
+  n = n || 8;
+  usedIds = usedIds || new Set();
+  var pool = (scenarioBank || []).filter(function (q) { return q.subdomain === subdomain; });
+  var fresh = shuffle(pool.filter(function (q) { return !usedIds.has(q.id); }), rng);
+  var seen = shuffle(pool.filter(function (q) { return usedIds.has(q.id); }), rng);
+  return fresh.concat(seen).slice(0, n).map(function (q) { return q.id; });
+}
+
+/* Best percent per scenario over scenario exam attempts. */
+function bestScenarioScores(history, lookup) {
+  var best = {};
+  (history || []).forEach(function (h) {
+    if (!h || h.kind !== "scenario") return;
+    var per = {};
+    (h.items || []).forEach(function (it) {
+      var q = lookup(it.id);
+      if (!q || !q.scenario) return;
+      var row = per[q.scenario] || (per[q.scenario] = { c: 0, t: 0 });
+      row.t++;
+      if (sameChoice(it.given === undefined ? null : it.given, correctIndices(q))) row.c++;
+    });
+    Object.keys(per).forEach(function (sid) {
+      var pct = Math.round((100 * per[sid].c) / per[sid].t);
+      if (best[sid] === undefined || pct > best[sid]) best[sid] = pct;
+    });
+  });
+  return best;
+}
+
 /* ------------------------------------------------------- spaced review */
 var DAY_MS = 86400000;
 var REVIEW_STEPS_DAYS = [1, 3, 7, 14];
@@ -719,6 +795,12 @@ if (typeof module !== "undefined" && module.exports) {
     validateBank: validateBank,
     validateScenarioBank: validateScenarioBank,
     reviewAfterAnswer: reviewAfterAnswer,
+    examAttempts: examAttempts,
+    predictedScore: predictedScore,
+    objectiveAccuracy: objectiveAccuracy,
+    weakestObjectives: weakestObjectives,
+    objectiveDrillIds: objectiveDrillIds,
+    bestScenarioScores: bestScenarioScores,
     dueReviewIds: dueReviewIds,
     REVIEW_STEPS_DAYS: REVIEW_STEPS_DAYS,
     DAY_MS: DAY_MS,
