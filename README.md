@@ -107,8 +107,13 @@ clears it, and progress cached for one account is never folded into another.
   Only the manifest loads with the page; each exam's questions are fetched the
   first time they are opened. Kept out of the practice bank: they never feed practice pools, custom quizzes, mastery or the
   weak drill, and are scored as standalone attempts
-- `node --test test/logic.test.mjs test/sync.test.mjs test/ui.test.mjs` — engine,
-  cross-device sync, and screen-flow tests
+- `scenarios/index.js` + `scenarios/<id>.js` — the scenario bank: the six
+  official scenarios and their single-answer questions, each with a note per
+  option. Kept separate from the practice bank.
+- `node --test test/logic.test.mjs test/sync.test.mjs test/ui.test.mjs test/scenario.test.mjs` — engine,
+  cross-device sync, screen-flow and scenario tests
 - `node test/validate-bank.mjs` — structural validation of the question bank
+- `node test/validate-scenarios.mjs` — validation of the scenario bank
 
 Design spec: `docs/superpowers/specs/2026-10-23-ccarf-question-bank-design.md`
+(scenario exam: `docs/superpowers/specs/2026-11-02-scenario-exam-design.md`)

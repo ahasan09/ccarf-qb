@@ -222,6 +222,78 @@ function validateBank(bank) {
   return errors;
 }
 
+/* ------------------------------------------------------ scenario bank */
+/* The 30 exam-guide task statements, spelled exactly as the general bank's
+ * `subdomain` values. Every scenario question must carry one. */
+var SUBDOMAINS = [
+  "1.1 Design and implement agentic loops for autonomous task execution",
+  "1.2 Orchestrate multi-agent systems with coordinator-subagent patterns",
+  "1.3 Configure subagent invocation, context passing, and spawning",
+  "1.4 Implement multi-step workflows with enforcement and handoff patterns",
+  "1.5 Apply Agent SDK hooks for tool call interception and data normalization",
+  "1.6 Design task decomposition strategies for complex workflows",
+  "1.7 Manage session state, resumption, and forking",
+  "2.1 Design effective tool interfaces with clear descriptions and boundaries",
+  "2.2 Implement structured error responses for MCP tools",
+  "2.3 Distribute tools appropriately across agents and configure tool choice",
+  "2.4 Integrate MCP servers into Claude Code and agent workflows",
+  "2.5 Select and apply built-in tools (Read, Write, Edit, Bash, Grep, Glob) effectively",
+  "3.1 Configure CLAUDE.md files with appropriate hierarchy, scoping, and modular organization",
+  "3.2 Create and configure custom slash commands and skills",
+  "3.3 Apply path-specific rules for conditional convention loading",
+  "3.4 Determine when to use plan mode vs direct execution",
+  "3.5 Apply iterative refinement techniques for progressive improvement",
+  "3.6 Integrate Claude Code into CI/CD pipelines",
+  "4.1 Design prompts with explicit criteria to improve precision and reduce false positives",
+  "4.2 Apply few-shot prompting to improve output consistency and quality",
+  "4.3 Enforce structured output using tool use and JSON schemas",
+  "4.4 Implement validation, retry, and feedback loops for extraction quality",
+  "4.5 Design efficient batch processing strategies",
+  "4.6 Design multi-instance and multi-pass review architectures",
+  "5.1 Manage conversation context to preserve critical information across long interactions",
+  "5.2 Design effective escalation and ambiguity resolution patterns",
+  "5.3 Implement error propagation strategies across multi-agent systems",
+  "5.4 Manage context effectively in large codebase exploration",
+  "5.5 Design human review workflows and confidence calibration",
+  "5.6 Preserve information provenance and handle uncertainty in multi-source synthesis"
+];
+var SCENARIO_MIN_WORDS = 40;
+var LETTER_REF = /\b(option|answer|choice)\s+[A-D]\b|\(\s*[A-D]\s*\)|^[A-D][.)]\s/;
+
+function validateScenarioBank(scenarios, bank) {
+  var errors = [];
+  var byScenario = {};
+  (scenarios || []).forEach(function (s) { byScenario[s.id] = s; });
+  var seen = {};
+  (bank || []).forEach(function (q) {
+    var id = q.id || "<missing id>";
+    if (seen[id]) errors.push(id + ": duplicate id");
+    seen[id] = true;
+    var scn = byScenario[q.scenario];
+    if (!scn) errors.push(id + ": unknown scenario " + q.scenario);
+    if (SUBDOMAINS.indexOf(q.subdomain) < 0) errors.push(id + ": unknown subdomain " + q.subdomain);
+    if (!q.domain || !DOMAIN_NAMES[q.domain]) errors.push(id + ": invalid domain " + q.domain);
+    if (!Array.isArray(q.options) || q.options.length !== 4 ||
+        q.options.some(function (o) { return !o || !String(o).trim(); }))
+      errors.push(id + ": must have exactly 4 options");
+    if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer > 3 || q.answers)
+      errors.push(id + ": needs a single answer index 0-3");
+    if (!Array.isArray(q.optionNotes) || q.optionNotes.length !== 4 ||
+        q.optionNotes.some(function (n) { return !n || !String(n).trim(); }))
+      errors.push(id + ": needs 4 non-empty optionNotes");
+    if (!q.explanation || !String(q.explanation).trim()) errors.push(id + ": empty explanation");
+    var text = String(q.question || "").trim();
+    if (/^scenario\s*:/i.test(text) ||
+        (scn && scn.text && text.indexOf(scn.text.slice(0, 60)) >= 0))
+      errors.push(id + ": repeats the scenario intro");
+    if (text.split(/\s+/).length < SCENARIO_MIN_WORDS) errors.push(id + ": question too short");
+    (q.optionNotes || []).concat([q.explanation || ""]).forEach(function (t) {
+      if (LETTER_REF.test(String(t))) errors.push(id + ": letter reference in note or explanation");
+    });
+  });
+  return errors;
+}
+
 /* --------------------------------------------------------- progress state */
 /* One object holds all synced progress. Changes are expressed as named
  * mutations rather than whole-blob writes so that removals (a finished
@@ -520,6 +592,9 @@ if (typeof module !== "undefined" && module.exports) {
     toggleChoice: toggleChoice,
     updateWeakSet: updateWeakSet,
     validateBank: validateBank,
+    validateScenarioBank: validateScenarioBank,
+    SUBDOMAINS: SUBDOMAINS,
+    SCENARIO_MIN_WORDS: SCENARIO_MIN_WORDS,
     sampleQuiz: sampleQuiz,
     selectCustomQuestions: selectCustomQuestions,
     filterByTagging: filterByTagging,
