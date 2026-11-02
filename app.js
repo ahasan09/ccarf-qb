@@ -709,6 +709,14 @@ if (typeof document !== "undefined") {
     var byId = {};
     BANK.forEach(function (q) { byId[q.id] = q; });
 
+    /* The scenario bank is separate too: its questions are looked up by id
+     * but never join BANK, so they don't touch mastery or the weak drill. */
+    var SCENARIOS = window.SCENARIOS || [];
+    var SCENARIO_BANK = window.SCENARIO_BANK || [];
+    var scenarioById = {};
+    SCENARIOS.forEach(function (s) { scenarioById[s.id] = s; });
+    SCENARIO_BANK.forEach(function (q) { byId[q.id] = q; });
+
     var examLoads = {};
 
     function registerLoadedExams() {
@@ -1202,7 +1210,9 @@ if (typeof document !== "undefined") {
           var natural = q.options.map(function (_, i) { return i; });
           /* Imported explanations refer to options by letter ("why not A, C,
            * E"), so their order has to stay as written. */
-          return { id: q.id, order: q.exam ? natural : shuffle(natural) };
+          /* Scenario questions keep their order so each option's note
+           * always sits under the option it explains. */
+          return { id: q.id, order: q.exam || q.scenario ? natural : shuffle(natural) };
         }),
         answers: questions.reduce(function (acc, q) { acc[q.id] = null; return acc; }, {}),
         flagged: {},
@@ -1221,6 +1231,7 @@ if (typeof document !== "undefined") {
     var MODE_NAMES = {
       exam: "Mock exam", retry: "Retry failed", weak: "Weak drill",
       practice: "Practice", custom: "Custom quiz", imported: "Imported exam",
+      scenario: "Scenario exam", "scenario-practice": "Scenario practice",
     };
 
     function startImportedExam(examId) {
@@ -1285,6 +1296,49 @@ if (typeof document !== "undefined") {
       persistSession();
       renderQuestion();
       startTimer();
+    }
+
+    function startScenarioExam() {
+      if (!okToReplaceSaved()) return;
+      var drawn = drawScenarioExam(SCENARIOS, SCENARIO_BANK,
+        usedScenarioQuestionIds(Store.snapshot().history));
+      if (!drawn) {
+        alert("The scenario exam needs at least four scenarios with " + SCENARIO_BLOCK + " questions each.");
+        return;
+      }
+      session = newSession("scenario", drawn.questions, EXAM_DURATION_MS);
+      session.scenarioIds = drawn.scenarioIds;
+      session.strikes = {};
+      session.comments = {};
+      session.separate = true;
+      persistSession();
+      renderQuestion();
+      startTimer();
+    }
+
+    function isScenarioMode(mode) {
+      return mode === "scenario" || mode === "scenario-practice";
+    }
+
+    /* Crossing an option out is only a visual aid: the answer stays. */
+    function toggleStrike(optIdx) {
+      var id = session.questions[session.current].id;
+      var list = (session.strikes[id] || []).slice();
+      var at = list.indexOf(optIdx);
+      if (at === -1) list.push(optIdx);
+      else list.splice(at, 1);
+      session.strikes[id] = list;
+      persistSession();
+      renderQuestion();
+    }
+
+    function setComment(text) {
+      var id = session.questions[session.current].id;
+      text = String(text || "").trim();
+      if (text) session.comments[id] = text;
+      else delete session.comments[id];
+      persistSession();
+      renderQuestion();
     }
 
     function customPool() {
@@ -1425,6 +1479,8 @@ if (typeof document !== "undefined") {
       if (!saved.answers) saved.answers = {};
       if (!saved.flagged) saved.flagged = {};
       if (!saved.tally) saved.tally = { correct: 0, wrong: 0 };
+      if (!saved.strikes) saved.strikes = {};
+      if (!saved.comments) saved.comments = {};
 
       session = saved;
       return true;
@@ -1491,6 +1547,9 @@ if (typeof document !== "undefined") {
             : DOMAIN_NAMES[session.domain] + (session.subKey === "general" ? " (untagged)" : ""));
         case "custom": return "Custom Quiz";
         case "imported": return session.examName || "Imported exam";
+        case "scenario": return "Scenario Exam";
+        case "scenario-practice":
+          return "Practice — " + ((scenarioById[session.scenarioId] || {}).name || "Scenario");
       }
     }
 
@@ -1663,19 +1722,23 @@ if (typeof document !== "undefined") {
         grade: grade,
       };
 
-      var separate = session.separate === true || session.mode === "imported";
-      var isAttempt = session.mode === "exam" || session.mode === "imported";
+      var separate = session.separate === true || session.mode === "imported" || isScenarioMode(session.mode);
+      var isAttempt = session.mode === "exam" || session.mode === "imported" || session.mode === "scenario";
+      var isScenarioExam = session.mode === "scenario";
       var entry = null;
       if (isAttempt) {
         var score = scaledScore(grade.correct, grade.total);
         entry = {
           date: new Date().toISOString(),
           examId: session.examId || null,
-          examName: session.examName || (session.scope === "unmapped" ? "Supplementary mock" : null),
+          examName: isScenarioExam ? "Scenario exam"
+            : session.examName || (session.scope === "unmapped" ? "Supplementary mock" : null),
           /* The questions and answers are kept so the attempt can be
            * reviewed and broken down by subdomain later. */
           items: session.questions.map(function (s) {
-            return { id: s.id, order: s.order, given: session.answers[s.id] };
+            var item = { id: s.id, order: s.order, given: session.answers[s.id] };
+            if (isScenarioExam && session.comments && session.comments[s.id]) item.comment = session.comments[s.id];
+            return item;
           }),
           score: score,
           pass: score >= PASS_SCORE,
@@ -1683,7 +1746,15 @@ if (typeof document !== "undefined") {
           total: grade.total,
           perDomain: grade.perDomain,
         };
+        if (isScenarioExam) {
+          entry.kind = "scenario";
+          entry.scenarioIds = session.scenarioIds.slice();
+        }
         finished.score = score;
+      }
+      if (isScenarioMode(session.mode)) {
+        finished.scenarioIds = session.scenarioIds || [session.scenarioId];
+        finished.comments = session.comments || {};
       }
 
       /* One mutation clears the session, redeems the weak questions answered
@@ -1790,8 +1861,8 @@ if (typeof document !== "undefined") {
         return { id: it.id, order: it.order || byId[it.id].options.map(function (_, i) { return i; }) };
       });
       var grade = gradeSession(items.map(function (it) { return byId[it.id]; }), answers);
-      return {
-        mode: entry.examId ? "imported" : "exam",
+      var finished = {
+        mode: entry.kind === "scenario" ? "scenario" : entry.examId ? "imported" : "exam",
         examName: entry.examName || null,
         date: entry.date,
         questions: questions,
@@ -1800,6 +1871,12 @@ if (typeof document !== "undefined") {
         score: entry.score,
         fromHistory: true,
       };
+      if (entry.kind === "scenario") {
+        finished.scenarioIds = entry.scenarioIds || [];
+        finished.comments = {};
+        items.forEach(function (it) { if (it.comment) finished.comments[it.id] = it.comment; });
+      }
+      return finished;
     }
 
     var lastFinished = null;
@@ -1994,8 +2071,17 @@ if (typeof document !== "undefined") {
           return renderQuestion();
         }
         case "start-saved": return startSaved();
+        case "start-scenario-exam": return startScenarioExam();
+        case "strike": return session && toggleStrike(Number(btn.dataset.opt));
+        case "comment": {
+          if (!session) return;
+          var cur = session.comments[session.questions[session.current].id] || "";
+          var text = prompt("Comment on this question (leave empty to remove):", cur);
+          if (text === null) return;
+          return setComment(text);
+        }
         case "submit": {
-          if (session.mode === "exam") {
+          if (session.mode === "exam" || session.mode === "scenario") {
             var unanswered = session.questions.filter(function (s) { return session.answers[s.id] === null; }).length;
             var msg = unanswered
               ? "You have " + unanswered + " unanswered question" + (unanswered === 1 ? "" : "s") + ". Submit anyway?"

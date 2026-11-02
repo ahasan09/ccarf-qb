@@ -27,8 +27,33 @@ function bank() {
   return qs;
 }
 
+const SCENARIOS = ["support", "codegen", "research", "devprod", "ci", "extraction"].map((id) => ({
+  id, name: `Scenario ${id}`, text: `Background text for ${id}.`,
+}));
+
+function scenarioBank(perScenario = 16) {
+  const qs = [];
+  for (const s of SCENARIOS) {
+    const n = typeof perScenario === "number" ? perScenario : perScenario[s.id] || 0;
+    for (let i = 1; i <= n; i++) {
+      qs.push({
+        id: `sc-${s.id}-${i}`,
+        scenario: s.id,
+        domain: 1,
+        subdomain: "1.1 Design and implement agentic loops for autonomous task execution",
+        question: `Scenario question ${s.id} ${i}?`,
+        options: ["Opt one", "Opt two", "Opt three", "Opt four"],
+        answer: 0,
+        optionNotes: ["Note one", "Note two", "Note three", "Note four"],
+        explanation: "Because.",
+      });
+    }
+  }
+  return qs;
+}
+
 function launch(opts = {}) {
-  const storage = {};
+  const storage = opts.storage || {};
   const listeners = {};
   const appEl = {
     innerHTML: "",
@@ -42,6 +67,8 @@ function launch(opts = {}) {
   const win = {
     QUESTION_BANK: opts.bank || bank(),
     MOCK_EXAMS: opts.exams || [],
+    SCENARIOS: opts.scenarios || SCENARIOS,
+    SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -61,7 +88,8 @@ function launch(opts = {}) {
       removeItem: (k) => { delete storage[k]; },
     },
     alert: () => {},
-    confirm: () => true,
+    confirm: opts.confirm || (() => true),
+    prompt: opts.prompt || (() => null),
     setInterval: () => 1,
     clearInterval: () => {},
     setTimeout: () => 1,
@@ -664,4 +692,85 @@ test("a supplementary attempt is labelled in score history", () => {
   const attempt = app.store().snapshot().history[0];
   assert.equal(attempt.examName, "Supplementary mock");
   assert.equal(attempt.examId, null, "it is not an imported exam");
+});
+
+/* ------------------------------------------------------- scenario exams */
+test("a scenario exam draws 60 questions from 4 scenarios", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario");
+  assert.equal(sess.questions.length, 60);
+  assert.equal(sess.scenarioIds.length, 4);
+  assert.ok(sess.questions.every((q) => q.order.join() === "0,1,2,3"), "options never shuffled");
+});
+
+test("striking an option keeps the answer, and striking again removes it", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "2" });
+  app.click("strike", { opt: "2" });
+  let sess = app.store().snapshot().session;
+  const id = sess.questions[0].id;
+  assert.equal(sess.answers[id], 2);
+  assert.deepEqual(sess.strikes[id], [2]);
+  app.click("strike", { opt: "2" });
+  sess = app.store().snapshot().session;
+  assert.deepEqual(sess.strikes[id], []);
+  assert.equal(sess.answers[id], 2);
+});
+
+test("resume keeps strikes, comments, flags and scenario order", () => {
+  const storage = {};
+  const app = launch({ storage, prompt: () => "check this later" });
+  app.click("start-scenario-exam");
+  app.click("strike", { opt: "1" });
+  app.click("comment");
+  app.click("toggle-flag");
+  const before = app.store().snapshot().session;
+  const id = before.questions[0].id;
+
+  const again = launch({ storage });
+  again.click("resume");
+  const sess = again.store().snapshot().session;
+  assert.deepEqual(sess.strikes[id], [1]);
+  assert.equal(sess.comments[id], "check this later");
+  assert.ok(sess.flagged[id]);
+  assert.deepEqual(sess.questions.map((q) => q.id), before.questions.map((q) => q.id));
+  assert.deepEqual(sess.scenarioIds, before.scenarioIds);
+});
+
+test("an empty comment removes it", () => {
+  let text = "first";
+  const app = launch({ prompt: () => text });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  text = "";
+  app.click("comment");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.comments[sess.questions[0].id], undefined);
+});
+
+test("a submitted scenario exam is recorded apart from bank progress", () => {
+  const app = launch({ prompt: () => "my note" });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  const first = app.store().snapshot().session.questions[0].id;
+  app.click("submit");
+  const snap = app.store().snapshot();
+  assert.equal(snap.session, null);
+  assert.deepEqual(snap.weak, []);
+  assert.deepEqual(snap.attempted, []);
+  assert.equal(snap.history.length, 1);
+  const h = snap.history[0];
+  assert.equal(h.kind, "scenario");
+  assert.equal(h.examName, "Scenario exam");
+  assert.equal(h.scenarioIds.length, 4);
+  assert.equal(h.items.find((it) => it.id === first).comment, "my note");
+});
+
+test("the scenario exam refuses to start when fewer than 4 scenarios have 15 questions", () => {
+  const app = launch({ scenarioBank: scenarioBank({ support: 16, ci: 16, research: 16, devprod: 10 }) });
+  app.click("start-scenario-exam");
+  assert.equal(app.store().snapshot().session, null);
 });
