@@ -450,12 +450,14 @@
   .scn-bottom { position: sticky; bottom: 0; z-index: 10; }
   .btn.flag-on { color: var(--flag); border-color: var(--flag); background: var(--flag-soft); }
   .scn-screen, .scn-body, .scn-question { min-width: 0; }
-  .scn-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+  .scn-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: stretch; }
+  /* The panel fills the column's full height; the scenario text inside it
+   * stays pinned while a long question scrolls. */
   .scn-panel {
-    position: sticky; top: 64px; max-height: calc(100vh - 150px); overflow-y: auto;
     padding: 18px 20px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
     line-height: 1.6;
   }
+  .scn-panel > details { position: sticky; top: 64px; max-height: calc(100vh - 150px); overflow-y: auto; }
   .scn-panel summary { font-family: var(--display); font-weight: 700; font-size: 1.05rem; cursor: pointer; margin-bottom: 8px; }
   .scn-text { white-space: pre-line; }
   .scn-question { padding: 22px 24px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
@@ -502,7 +504,7 @@
     .scn-body { grid-template-columns: minmax(0, 1fr); }
     .scn-question { padding: 16px; }
     .scn-top, .scn-bottom { padding: 8px 10px; }
-    .scn-panel { position: static; max-height: none; }
+    .scn-panel > details { position: static; max-height: none; }
     .scn-hint { display: none; }
   }
 
