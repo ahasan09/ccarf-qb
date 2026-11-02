@@ -222,6 +222,140 @@ function validateBank(bank) {
   return errors;
 }
 
+/* ------------------------------------------------------ scenario bank */
+/* The 30 exam-guide task statements, spelled exactly as the general bank's
+ * `subdomain` values. Every scenario question must carry one. */
+var SUBDOMAINS = [
+  "1.1 Design and implement agentic loops for autonomous task execution",
+  "1.2 Orchestrate multi-agent systems with coordinator-subagent patterns",
+  "1.3 Configure subagent invocation, context passing, and spawning",
+  "1.4 Implement multi-step workflows with enforcement and handoff patterns",
+  "1.5 Apply Agent SDK hooks for tool call interception and data normalization",
+  "1.6 Design task decomposition strategies for complex workflows",
+  "1.7 Manage session state, resumption, and forking",
+  "2.1 Design effective tool interfaces with clear descriptions and boundaries",
+  "2.2 Implement structured error responses for MCP tools",
+  "2.3 Distribute tools appropriately across agents and configure tool choice",
+  "2.4 Integrate MCP servers into Claude Code and agent workflows",
+  "2.5 Select and apply built-in tools (Read, Write, Edit, Bash, Grep, Glob) effectively",
+  "3.1 Configure CLAUDE.md files with appropriate hierarchy, scoping, and modular organization",
+  "3.2 Create and configure custom slash commands and skills",
+  "3.3 Apply path-specific rules for conditional convention loading",
+  "3.4 Determine when to use plan mode vs direct execution",
+  "3.5 Apply iterative refinement techniques for progressive improvement",
+  "3.6 Integrate Claude Code into CI/CD pipelines",
+  "4.1 Design prompts with explicit criteria to improve precision and reduce false positives",
+  "4.2 Apply few-shot prompting to improve output consistency and quality",
+  "4.3 Enforce structured output using tool use and JSON schemas",
+  "4.4 Implement validation, retry, and feedback loops for extraction quality",
+  "4.5 Design efficient batch processing strategies",
+  "4.6 Design multi-instance and multi-pass review architectures",
+  "5.1 Manage conversation context to preserve critical information across long interactions",
+  "5.2 Design effective escalation and ambiguity resolution patterns",
+  "5.3 Implement error propagation strategies across multi-agent systems",
+  "5.4 Manage context effectively in large codebase exploration",
+  "5.5 Design human review workflows and confidence calibration",
+  "5.6 Preserve information provenance and handle uncertainty in multi-source synthesis"
+];
+var SCENARIO_MIN_WORDS = 40;
+var LETTER_REF = /\b(option|answer|choice)\s+[A-D]\b|\(\s*[A-D]\s*\)|^[A-D][.)]\s/;
+
+function validateScenarioBank(scenarios, bank) {
+  var errors = [];
+  var byScenario = {};
+  (scenarios || []).forEach(function (s) { byScenario[s.id] = s; });
+  var seen = {};
+  (bank || []).forEach(function (q) {
+    var id = q.id || "<missing id>";
+    if (seen[id]) errors.push(id + ": duplicate id");
+    seen[id] = true;
+    var scn = byScenario[q.scenario];
+    if (!scn) errors.push(id + ": unknown scenario " + q.scenario);
+    if (SUBDOMAINS.indexOf(q.subdomain) < 0) errors.push(id + ": unknown subdomain " + q.subdomain);
+    if (!q.domain || !DOMAIN_NAMES[q.domain]) errors.push(id + ": invalid domain " + q.domain);
+    if (!Array.isArray(q.options) || q.options.length !== 4 ||
+        q.options.some(function (o) { return !o || !String(o).trim(); }))
+      errors.push(id + ": must have exactly 4 options");
+    if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer > 3 || q.answers)
+      errors.push(id + ": needs a single answer index 0-3");
+    if (!Array.isArray(q.optionNotes) || q.optionNotes.length !== 4 ||
+        q.optionNotes.some(function (n) { return !n || !String(n).trim(); }))
+      errors.push(id + ": needs 4 non-empty optionNotes");
+    if (!q.explanation || !String(q.explanation).trim()) errors.push(id + ": empty explanation");
+    var text = String(q.question || "").trim();
+    if (/^scenario\s*:/i.test(text) ||
+        (scn && scn.text && text.indexOf(scn.text.slice(0, 60)) >= 0))
+      errors.push(id + ": repeats the scenario intro");
+    if (text.split(/\s+/).length < SCENARIO_MIN_WORDS) errors.push(id + ": question too short");
+    (q.optionNotes || []).concat([q.explanation || ""]).forEach(function (t) {
+      if (LETTER_REF.test(String(t))) errors.push(id + ": letter reference in note or explanation");
+    });
+  });
+  return errors;
+}
+
+var SCENARIO_BLOCK = 15;
+var SCENARIO_COUNT = 4;
+
+function scenarioPool(bank, scenarioId) {
+  return (bank || []).filter(function (q) { return q.scenario === scenarioId; });
+}
+
+/* Scenarios with enough questions to fill a block of the exam. */
+function eligibleScenarios(scenarios, bank) {
+  return (scenarios || [])
+    .filter(function (s) { return scenarioPool(bank, s.id).length >= SCENARIO_BLOCK; })
+    .map(function (s) { return s.id; });
+}
+
+/* Ids of every question that appeared in an earlier scenario exam. */
+function usedScenarioQuestionIds(history) {
+  var used = new Set();
+  (history || []).forEach(function (h) {
+    if (h && h.kind === "scenario" && Array.isArray(h.items))
+      h.items.forEach(function (it) { used.add(it.id); });
+  });
+  return used;
+}
+
+/* Like the real exam: four scenarios, 15 questions each, kept in contiguous
+ * blocks. Questions not used in earlier attempts are taken first. */
+function drawScenarioExam(scenarios, bank, usedIds, rng) {
+  var eligible = eligibleScenarios(scenarios, bank);
+  if (eligible.length < SCENARIO_COUNT) return null;
+  usedIds = usedIds || new Set();
+  var picked = shuffle(eligible, rng).slice(0, SCENARIO_COUNT);
+  var questions = [];
+  picked.forEach(function (sid) {
+    var pool = scenarioPool(bank, sid);
+    var fresh = shuffle(pool.filter(function (q) { return !usedIds.has(q.id); }), rng);
+    var seen = shuffle(pool.filter(function (q) { return usedIds.has(q.id); }), rng);
+    questions = questions.concat(fresh.concat(seen).slice(0, SCENARIO_BLOCK));
+  });
+  return { scenarioIds: picked, questions: questions };
+}
+
+/* Percent correct per group (objective, scenario...), weakest first. */
+function breakdownBy(questions, answers, keyFn) {
+  var rows = {};
+  var order = [];
+  questions.forEach(function (q) {
+    var key = keyFn(q);
+    if (!rows[key]) { rows[key] = { key: key, correct: 0, total: 0, pct: 0 }; order.push(key); }
+    rows[key].total++;
+    if (sameChoice(answers[q.id], correctIndices(q))) rows[key].correct++;
+  });
+  return order
+    .map(function (k) {
+      var r = rows[k];
+      r.pct = Math.round((100 * r.correct) / r.total);
+      return r;
+    })
+    .sort(function (a, b) {
+      return a.pct - b.pct || String(a.key).localeCompare(String(b.key), undefined, { numeric: true });
+    });
+}
+
 /* --------------------------------------------------------- progress state */
 /* One object holds all synced progress. Changes are expressed as named
  * mutations rather than whole-blob writes so that removals (a finished
@@ -520,6 +654,15 @@ if (typeof module !== "undefined" && module.exports) {
     toggleChoice: toggleChoice,
     updateWeakSet: updateWeakSet,
     validateBank: validateBank,
+    validateScenarioBank: validateScenarioBank,
+    SUBDOMAINS: SUBDOMAINS,
+    SCENARIO_MIN_WORDS: SCENARIO_MIN_WORDS,
+    SCENARIO_BLOCK: SCENARIO_BLOCK,
+    SCENARIO_COUNT: SCENARIO_COUNT,
+    eligibleScenarios: eligibleScenarios,
+    usedScenarioQuestionIds: usedScenarioQuestionIds,
+    drawScenarioExam: drawScenarioExam,
+    breakdownBy: breakdownBy,
     sampleQuiz: sampleQuiz,
     selectCustomQuestions: selectCustomQuestions,
     filterByTagging: filterByTagging,
@@ -565,6 +708,14 @@ if (typeof document !== "undefined") {
 
     var byId = {};
     BANK.forEach(function (q) { byId[q.id] = q; });
+
+    /* The scenario bank is separate too: its questions are looked up by id
+     * but never join BANK, so they don't touch mastery or the weak drill. */
+    var SCENARIOS = window.SCENARIOS || [];
+    var SCENARIO_BANK = window.SCENARIO_BANK || [];
+    var scenarioById = {};
+    SCENARIOS.forEach(function (s) { scenarioById[s.id] = s; });
+    SCENARIO_BANK.forEach(function (q) { byId[q.id] = q; });
 
     var examLoads = {};
 
@@ -786,6 +937,21 @@ if (typeof document !== "undefined") {
             : '<button class="btn primary" data-action="resume">Resume</button>') +
           '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
       }
+
+      var scnEligible = eligibleScenarios(SCENARIOS, SCENARIO_BANK);
+      var scnReady = SCENARIOS.length > 0 && scnEligible.length === SCENARIOS.length;
+      html += '<div class="grid scn-cards"><div class="card scn-card"><h2>Scenario exam</h2>' +
+        "<p>The real exam's format: four of the six official scenarios, 15 questions each. The scenario stays on the left while you answer; flag, comment and strike out options, then review before you submit. 120 min · pass 720/1000.</p>" +
+        '<button class="btn primary" data-action="start-scenario-exam"' + (scnReady ? "" : " disabled") + ">Start scenario exam</button>" +
+        (scnReady ? "" : '<p class="muted">Available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>") +
+        '</div><div class="card"><h2>Practice by scenario</h2><p class="muted">Untimed, with a note for every option after each answer.</p>' +
+        '<div class="domain-list">';
+      SCENARIOS.forEach(function (sc) {
+        var n = SCENARIO_BANK.filter(function (q) { return q.scenario === sc.id; }).length;
+        html += '<button class="domain-row" data-action="practice-scenario" data-scenario="' + sc.id + '"' + (n ? "" : " disabled") + ">" +
+          "<span>" + esc(sc.name) + '</span><span class="muted">' + n + " question" + (n === 1 ? "" : "s") + "</span></button>";
+      });
+      html += "</div></div></div>";
 
       html += '<div class="grid">';
       html += '<div class="card"><h2>Supplementary mock exam</h2>' +
@@ -1059,7 +1225,9 @@ if (typeof document !== "undefined") {
           var natural = q.options.map(function (_, i) { return i; });
           /* Imported explanations refer to options by letter ("why not A, C,
            * E"), so their order has to stay as written. */
-          return { id: q.id, order: q.exam ? natural : shuffle(natural) };
+          /* Scenario questions keep their order so each option's note
+           * always sits under the option it explains. */
+          return { id: q.id, order: q.exam || q.scenario ? natural : shuffle(natural) };
         }),
         answers: questions.reduce(function (acc, q) { acc[q.id] = null; return acc; }, {}),
         flagged: {},
@@ -1078,6 +1246,7 @@ if (typeof document !== "undefined") {
     var MODE_NAMES = {
       exam: "Mock exam", retry: "Retry failed", weak: "Weak drill",
       practice: "Practice", custom: "Custom quiz", imported: "Imported exam",
+      scenario: "Scenario exam", "scenario-practice": "Scenario practice",
     };
 
     function startImportedExam(examId) {
@@ -1142,6 +1311,71 @@ if (typeof document !== "undefined") {
       persistSession();
       renderQuestion();
       startTimer();
+    }
+
+    function startScenarioExam() {
+      if (!okToReplaceSaved()) return;
+      var drawn = drawScenarioExam(SCENARIOS, SCENARIO_BANK,
+        usedScenarioQuestionIds(Store.snapshot().history));
+      if (!drawn) {
+        alert("The scenario exam needs at least four scenarios with " + SCENARIO_BLOCK + " questions each.");
+        return;
+      }
+      session = newSession("scenario", drawn.questions, EXAM_DURATION_MS);
+      session.scenarioIds = drawn.scenarioIds;
+      session.strikes = {};
+      session.comments = {};
+      session.separate = true;
+      persistSession();
+      renderQuestion();
+      startTimer();
+    }
+
+    /* Untimed, one scenario (or a set of missed questions), with every
+     * option's note shown after each answer. Questions not yet met in a
+     * scenario exam come first. */
+    function startScenarioPractice(scenarioId, ids) {
+      if (!okToReplaceSaved()) return;
+      var pool = ids
+        ? ids.map(function (id) { return byId[id]; }).filter(Boolean)
+        : SCENARIO_BANK.filter(function (q) { return q.scenario === scenarioId; });
+      if (!pool.length) return;
+      var used = usedScenarioQuestionIds(Store.snapshot().history);
+      pool = shuffle(pool.filter(function (q) { return !used.has(q.id); }))
+        .concat(shuffle(pool.filter(function (q) { return used.has(q.id); })));
+      session = newSession("scenario-practice", pool, false);
+      session.scenarioId = scenarioId || null;
+      session.missed = !!ids;
+      session.strikes = {};
+      session.comments = {};
+      session.separate = true;
+      persistSession();
+      renderQuestion();
+    }
+
+    function isScenarioMode(mode) {
+      return mode === "scenario" || mode === "scenario-practice";
+    }
+
+    /* Crossing an option out is only a visual aid: the answer stays. */
+    function toggleStrike(optIdx) {
+      var id = session.questions[session.current].id;
+      var list = (session.strikes[id] || []).slice();
+      var at = list.indexOf(optIdx);
+      if (at === -1) list.push(optIdx);
+      else list.splice(at, 1);
+      session.strikes[id] = list;
+      persistSession();
+      renderQuestion();
+    }
+
+    function setComment(text) {
+      var id = session.questions[session.current].id;
+      text = String(text || "").trim();
+      if (text) session.comments[id] = text;
+      else delete session.comments[id];
+      persistSession();
+      renderQuestion();
     }
 
     function customPool() {
@@ -1282,6 +1516,8 @@ if (typeof document !== "undefined") {
       if (!saved.answers) saved.answers = {};
       if (!saved.flagged) saved.flagged = {};
       if (!saved.tally) saved.tally = { correct: 0, wrong: 0 };
+      if (!saved.strikes) saved.strikes = {};
+      if (!saved.comments) saved.comments = {};
 
       session = saved;
       return true;
@@ -1348,10 +1584,161 @@ if (typeof document !== "undefined") {
             : DOMAIN_NAMES[session.domain] + (session.subKey === "general" ? " (untagged)" : ""));
         case "custom": return "Custom Quiz";
         case "imported": return session.examName || "Imported exam";
+        case "scenario": return "Scenario Exam";
+        case "scenario-practice":
+          return "Practice — " + (session.missed ? "missed scenario questions"
+            : (scenarioById[session.scenarioId] || {}).name || "Scenario");
       }
     }
 
+    /* Which scenario block the current question is in (0-based). */
+    function scenarioBlockOf(sess, index) {
+      if (sess.mode !== "scenario") return 0;
+      return Math.min(Math.floor(index / SCENARIO_BLOCK), (sess.scenarioIds || []).length - 1);
+    }
+
+    /* The real exam's layout: the scenario stays put on the left while its
+     * questions change on the right. */
+    function renderScenarioQuestion() {
+      view = "quiz";
+      var sq = session.questions[session.current];
+      var q = byId[sq.id];
+      var total = session.questions.length;
+      var isPractice = session.mode === "scenario-practice";
+      var block = scenarioBlockOf(session, session.current);
+      var scn = scenarioById[q.scenario] || { name: "Scenario", text: "" };
+      var chosen = chosenIndices(session.answers[q.id]);
+      var correct = correctIndices(q);
+      var struck = session.strikes[q.id] || [];
+      var showFeedback = isPractice && session.feedback === q.id;
+      var comment = session.comments[q.id];
+
+      var where = isPractice
+        ? "Question " + (session.current + 1) + " of " + total
+        : "Scenario " + (block + 1) + " of " + session.scenarioIds.length +
+          " · Question " + (session.current + 1) + " of " + total;
+
+      var html = '<div class="scn-screen">';
+      html += '<div class="scn-top">' +
+        '<div><strong>' + esc(sessionTitle()) + '</strong><span class="muted"> · ' + where + "</span></div>" +
+        '<div class="row">' +
+        (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
+        (isPractice
+          ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
+          : '<button class="btn ghost small" data-action="comment">' + (comment ? "💬 Edit comment" : "💬 Comment") + "</button>") +
+        '<button class="btn ghost small' + (session.flagged[q.id] ? " flag-on" : "") + '" data-action="toggle-flag">' +
+        (session.flagged[q.id] ? "⚑ Flagged" : "⚑ Flag for review") + "</button>" +
+        '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
+        "</div></div>";
+
+      html += '<div class="scn-body">' +
+        '<aside class="scn-panel"><details open><summary>' + esc(scn.name) + "</summary>" +
+        '<div class="scn-text">' + esc(scn.text) + "</div></details></aside>";
+
+      html += '<section class="scn-question">' +
+        '<p class="q-text">' + esc(q.question) + "</p>" +
+        '<div class="options" role="radiogroup">';
+      sq.order.forEach(function (optIdx) {
+        var cls = "option";
+        var picked = chosen.indexOf(optIdx) !== -1;
+        if (picked) cls += " selected";
+        if (struck.indexOf(optIdx) !== -1) cls += " struck";
+        if (showFeedback) {
+          if (correct.indexOf(optIdx) !== -1) cls += " correct";
+          else if (picked) cls += " wrong";
+        }
+        html += '<div class="opt-wrap"><button class="' + cls + '" role="radio" aria-checked="' + picked +
+          '" data-action="select" data-opt="' + optIdx + '"' + (showFeedback ? " disabled" : "") + ">" +
+          '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>";
+        if (showFeedback && q.optionNotes) {
+          html += '<div class="opt-note ' + (correct.indexOf(optIdx) !== -1 ? "ok" : "bad") + '">' +
+            esc(q.optionNotes[optIdx]) + "</div>";
+        }
+        html += "</div>";
+      });
+      html += "</div>";
+      if (showFeedback) {
+        var right = sameChoice(session.answers[q.id], correct);
+        html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status"><strong>' +
+          (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
+      }
+      if (comment) html += '<p class="scn-comment muted">💬 ' + esc(comment) + "</p>";
+      html += '<p class="muted scn-hint">Right-click an option to strike it through.</p>';
+      html += "</section></div>";
+
+      html += '<div class="scn-bottom">' +
+        (isPractice ? "<span></span>" :
+          '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>");
+      if (isPractice) {
+        html += showFeedback
+          ? (session.current + 1 < total
+            ? '<button class="btn primary" data-action="next">Next →</button>'
+            : '<button class="btn primary" data-action="submit">Finish</button>')
+          : '<span class="muted">Pick an answer to see the notes</span>';
+      } else {
+        var flaggedCount = Object.keys(session.flagged).filter(function (k) { return session.flagged[k]; }).length;
+        html += '<span class="muted">Answered ' + answeredCount(session) + " of " + total +
+          " · Flagged " + flaggedCount + "</span>" +
+          '<div class="row"><button class="btn" data-action="review-all">Review all</button>' +
+          '<button class="btn primary" data-action="next">' +
+          (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
+      }
+      html += "</div>";
+      /* The menu is position:fixed, so it lives outside .scn-screen: a
+       * transformed ancestor would offset it from the cursor. */
+      html += '</div><div id="ctx-menu" class="ctx-menu" hidden></div>';
+
+      app.innerHTML = html;
+      window.scrollTo(0, 0);
+    }
+
+    var reviewFilter = "all";
+
+    /* Before submitting: every question as a tile, grouped by scenario, so
+     * flagged and unanswered ones are easy to revisit. The clock keeps going. */
+    function renderScenarioReview() {
+      view = "scenario-review";
+      var total = session.questions.length;
+      var unanswered = session.questions.filter(function (s) { return session.answers[s.id] === null; }).length;
+      var flagged = session.questions.filter(function (s) { return session.flagged[s.id]; }).length;
+      var html = '<div class="scn-screen"><div class="scn-top"><div><strong>Review your answers</strong>' +
+        '<span class="muted"> · ' + (total - unanswered) + " of " + total + " answered</span></div>" +
+        '<div class="row">' +
+        (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
+        '<button class="btn exit small" data-action="quit">Exit ↩</button></div></div>';
+      html += '<div class="scn-review">';
+      html += '<div class="row review-filters">' +
+        [["all", "All (" + total + ")"], ["flagged", "⚑ Flagged (" + flagged + ")"], ["unanswered", "Unanswered (" + unanswered + ")"]]
+          .map(function (f) {
+            return '<button class="btn small' + (reviewFilter === f[0] ? " primary" : "") +
+              '" data-action="review-filter" data-filter="' + f[0] + '">' + f[1] + "</button>";
+          }).join("") + "</div>";
+      session.scenarioIds.forEach(function (sid, b) {
+        var tiles = "";
+        session.questions.slice(b * SCENARIO_BLOCK, (b + 1) * SCENARIO_BLOCK).forEach(function (s, k) {
+          var i = b * SCENARIO_BLOCK + k;
+          var isAnswered = session.answers[s.id] !== null;
+          if (reviewFilter === "flagged" && !session.flagged[s.id]) return;
+          if (reviewFilter === "unanswered" && isAnswered) return;
+          var cls = "tile " + (isAnswered ? "answered" : "unanswered") +
+            (session.flagged[s.id] ? " flagged" : "") + (session.comments[s.id] ? " commented" : "");
+          tiles += '<button class="' + cls + '" data-action="jump" data-index="' + i + '" aria-label="Question ' + (i + 1) +
+            (isAnswered ? ", answered" : ", not answered") + (session.flagged[s.id] ? ", flagged" : "") + '">' +
+            (i + 1) + (session.flagged[s.id] ? " ⚑" : "") + (session.comments[s.id] ? " 💬" : "") + "</button>";
+        });
+        html += '<h3 class="review-scn">Scenario ' + (b + 1) + ": " + esc((scenarioById[sid] || {}).name || sid) + "</h3>" +
+          '<div class="tiles">' + (tiles || '<span class="muted">Nothing here.</span>') + "</div>";
+      });
+      html += '<div class="scn-bottom"><button class="btn" data-action="jump" data-index="' + session.current +
+        '">← Back to question ' + (session.current + 1) + "</button>" +
+        '<button class="btn primary" data-action="submit">Submit exam</button></div>';
+      html += "</div></div>";
+      app.innerHTML = html;
+      window.scrollTo(0, 0);
+    }
+
     function renderQuestion() {
+      if (isScenarioMode(session.mode)) return renderScenarioQuestion();
       view = "quiz";
       var sq = session.questions[session.current];
       var q = byId[sq.id];
@@ -1474,7 +1861,7 @@ if (typeof document !== "undefined") {
 
     function selectOption(optIdx) {
       var sq = session.questions[session.current];
-      if (session.mode === "practice") {
+      if ((session.mode === "practice" || session.mode === "scenario-practice")) {
         if (session.feedback === sq.id) return; // already answered
         var q = byId[sq.id];
         var wanted = correctIndices(q);
@@ -1520,19 +1907,23 @@ if (typeof document !== "undefined") {
         grade: grade,
       };
 
-      var separate = session.separate === true || session.mode === "imported";
-      var isAttempt = session.mode === "exam" || session.mode === "imported";
+      var separate = session.separate === true || session.mode === "imported" || isScenarioMode(session.mode);
+      var isAttempt = session.mode === "exam" || session.mode === "imported" || session.mode === "scenario";
+      var isScenarioExam = session.mode === "scenario";
       var entry = null;
       if (isAttempt) {
         var score = scaledScore(grade.correct, grade.total);
         entry = {
           date: new Date().toISOString(),
           examId: session.examId || null,
-          examName: session.examName || (session.scope === "unmapped" ? "Supplementary mock" : null),
+          examName: isScenarioExam ? "Scenario exam"
+            : session.examName || (session.scope === "unmapped" ? "Supplementary mock" : null),
           /* The questions and answers are kept so the attempt can be
            * reviewed and broken down by subdomain later. */
           items: session.questions.map(function (s) {
-            return { id: s.id, order: s.order, given: session.answers[s.id] };
+            var item = { id: s.id, order: s.order, given: session.answers[s.id] };
+            if (isScenarioExam && session.comments && session.comments[s.id]) item.comment = session.comments[s.id];
+            return item;
           }),
           score: score,
           pass: score >= PASS_SCORE,
@@ -1540,7 +1931,15 @@ if (typeof document !== "undefined") {
           total: grade.total,
           perDomain: grade.perDomain,
         };
+        if (isScenarioExam) {
+          entry.kind = "scenario";
+          entry.scenarioIds = session.scenarioIds.slice();
+        }
         finished.score = score;
+      }
+      if (isScenarioMode(session.mode)) {
+        finished.scenarioIds = session.scenarioIds || [session.scenarioId];
+        finished.comments = session.comments || {};
       }
 
       /* One mutation clears the session, redeems the weak questions answered
@@ -1555,7 +1954,8 @@ if (typeof document !== "undefined") {
     function renderResults(finished) {
       view = "results";
       var grade = finished.grade;
-      var isExam = finished.mode === "exam";
+      var isExam = finished.mode === "exam" || finished.mode === "scenario";
+      var isScenario = isScenarioMode(finished.mode);
       var html = "";
 
       var CIRC = 408; // 2π × r65, matches the CSS dasharray
@@ -1581,7 +1981,25 @@ if (typeof document !== "undefined") {
           '<p class="muted">' + sessionResultLabel(finished.mode) + "</p></div>";
       }
 
-      var gradedDomains = Object.keys(grade.perDomain).filter(function (d) {
+      if (isScenario) {
+        var finishedQs = finished.questions.map(function (s) { return byId[s.id]; }).filter(Boolean);
+        var bar = function (row, label, cls) {
+          return '<div class="' + cls + '" data-pct="' + row.pct + '"><div class="domain-score-label"><span>' + esc(label) + "</span>" +
+            '<span class="muted">' + row.pct + "% · " + row.correct + "/" + row.total + "</span></div>" +
+            '<div class="bar"><div class="bar-fill ' + (row.pct >= 72 ? "ok" : "bad") + '" style="width:' + row.pct + '%"></div></div></div>';
+        };
+        html += '<div class="card"><h2>By objective</h2><p class="muted">Percent correct per exam-guide task statement, weakest first — like the real score report.</p>';
+        breakdownBy(finishedQs, finished.answers, function (q) { return q.subdomain; }).forEach(function (row) {
+          html += bar(row, row.key, "obj-row");
+        });
+        html += '</div><div class="card"><h2>By scenario</h2>';
+        breakdownBy(finishedQs, finished.answers, function (q) { return q.scenario; }).forEach(function (row) {
+          html += bar(row, (scenarioById[row.key] || {}).name || row.key, "scn-row");
+        });
+        html += "</div>";
+      }
+
+      var gradedDomains = isScenario ? [] : Object.keys(grade.perDomain).filter(function (d) {
         return !!DOMAIN_NAMES[d];
       });
       if (gradedDomains.length) {
@@ -1598,7 +2016,14 @@ if (typeof document !== "undefined") {
       }
 
       html += '<div class="row actions">';
-      if (grade.wrongIds.length) {
+      if (isScenario) {
+        /* Missed scenario questions are practised as scenario questions, never
+         * sent to the general weak-question drill. */
+        if (grade.wrongIds.length) {
+          html += '<button class="btn primary" data-action="practice-missed">Practise the ' + grade.wrongIds.length +
+            " you missed</button>";
+        }
+      } else if (grade.wrongIds.length) {
         html += '<button class="btn primary" data-action="retry-failed">Retry ' + grade.wrongIds.length +
           " failed question" + (grade.wrongIds.length === 1 ? "" : "s") + "</button>";
       } else {
@@ -1617,6 +2042,7 @@ if (typeof document !== "undefined") {
         case "weak": return "Weak questions drill";
         case "practice": return "Practice session complete";
         case "custom": return "Custom quiz complete";
+        case "scenario-practice": return "Scenario practice complete";
         default: return "";
       }
     }
@@ -1647,8 +2073,8 @@ if (typeof document !== "undefined") {
         return { id: it.id, order: it.order || byId[it.id].options.map(function (_, i) { return i; }) };
       });
       var grade = gradeSession(items.map(function (it) { return byId[it.id]; }), answers);
-      return {
-        mode: entry.examId ? "imported" : "exam",
+      var finished = {
+        mode: entry.kind === "scenario" ? "scenario" : entry.examId ? "imported" : "exam",
         examName: entry.examName || null,
         date: entry.date,
         questions: questions,
@@ -1657,13 +2083,89 @@ if (typeof document !== "undefined") {
         score: entry.score,
         fromHistory: true,
       };
+      if (entry.kind === "scenario") {
+        finished.scenarioIds = entry.scenarioIds || [];
+        finished.comments = {};
+        items.forEach(function (it) { if (it.comment) finished.comments[it.id] = it.comment; });
+      }
+      return finished;
     }
 
     var lastFinished = null;
     var reviewWrongOnly = false;
     var reviewDomain = 0; // 0 = all
 
+    /* One review card; scenario reviews show every option's note under it. */
+    function reviewCard(s, i, finished) {
+      var q = byId[s.id];
+      var given = finished.answers[q.id];
+      var right = sameChoice(given, correctIndices(q));
+      var html = '<div class="card review-card ' + (right ? "r-ok" : "r-bad") + '">' +
+        '<div class="q-meta"><strong>Q' + (i + 1) + "</strong>" +
+        (q.scenario ? '<span class="muted">' + esc(q.subdomain || "") + "</span>" : questionMeta(q)) +
+        '<span class="badge ' + (right ? "pass" : "fail") + '">' +
+        (right ? "Correct" : !chosenIndices(given).length ? "Unanswered" : "Wrong") + "</span></div>" +
+        '<p class="q-text">' + esc(q.question) + "</p><div class=\"options\">";
+      var correctOpts = correctIndices(q);
+      var givenOpts = chosenIndices(given);
+      s.order.forEach(function (optIdx) {
+        var isCorrect = correctOpts.indexOf(optIdx) !== -1;
+        var wasPicked = givenOpts.indexOf(optIdx) !== -1;
+        var cls = "option readonly";
+        if (isCorrect) cls += " correct";
+        if (wasPicked && !isCorrect) cls += " wrong";
+        var note = q.optionNotes && q.optionNotes[optIdx];
+        /* The note goes under its own option, never beside or after another. */
+        html += '<div class="opt-wrap"><div class="' + cls + '"><span class="opt-letter"></span><span>' + esc(q.options[optIdx]) +
+          (isCorrect ? ' <span class="tag">correct answer</span>' : "") +
+          (wasPicked ? ' <span class="tag">your answer</span>' : "") + "</span></div>" +
+          (note ? '<div class="opt-note ' + (isCorrect ? "ok" : "bad") + '">' + esc(note) + "</div>" : "") +
+          "</div>";
+      });
+      html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div>";
+      var comment = finished.comments && finished.comments[q.id];
+      if (comment) html += '<div class="scn-comment"><strong>Your comment:</strong> ' + esc(comment) + "</div>";
+      return html + "</div>";
+    }
+
+    function renderScenarioReviewAfter() {
+      view = "review";
+      var finished = lastFinished;
+      var html = '<div class="scn-screen"><div class="scn-top"><div><strong>Review</strong>' +
+        (finished.fromHistory
+          ? '<span class="muted"> · ' + esc(finished.examName || "Scenario exam") + ", " +
+            esc(new Date(finished.date).toLocaleString()) + "</span>"
+          : "") +
+        '</div><div class="row">' +
+        '<button class="btn small ' + (reviewWrongOnly ? "" : "ghost") + '" data-action="toggle-wrong-only">' +
+        (reviewWrongOnly ? "Showing wrong only" : "Show wrong only") + "</button>" +
+        '<button class="btn ghost small" data-action="' + (finished.fromHistory ? "home" : "back-results") + '">' +
+        (finished.fromHistory ? "← Home" : "Back to results") + "</button></div></div>";
+      var shown = 0;
+      var groups = [];
+      finished.questions.forEach(function (s, i) {
+        var q = byId[s.id];
+        var last = groups[groups.length - 1];
+        if (!last || last.scenario !== q.scenario) groups.push(last = { scenario: q.scenario, cards: "" });
+        if (reviewWrongOnly && sameChoice(finished.answers[q.id], correctIndices(q))) return;
+        shown++;
+        last.cards += reviewCard(s, i, finished);
+      });
+      groups.forEach(function (g) {
+        if (!g.cards) return;
+        var scn = scenarioById[g.scenario] || { name: g.scenario, text: "" };
+        html += '<div class="scn-body">' +
+          '<aside class="scn-panel"><details open><summary>' + esc(scn.name) + "</summary>" +
+          '<div class="scn-text">' + esc(scn.text) + "</div></details></aside>" +
+          '<section class="scn-review-list">' + g.cards + "</section></div>";
+      });
+      if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';
+      app.innerHTML = html + "</div>";
+      window.scrollTo(0, 0);
+    }
+
     function renderReview() {
+      if (lastFinished && isScenarioMode(lastFinished.mode)) return renderScenarioReviewAfter();
       view = "review";
       var finished = lastFinished;
       var domainOptions = '<option value="0">All domains</option>';
@@ -1727,7 +2229,7 @@ if (typeof document !== "undefined") {
 
     /* ------------------------------------------------------------ events */
     function inQuestionScreen() {
-      return !!(session && session.questions && session.questions[session.current]);
+      return view === "quiz" && !!(session && session.questions && session.questions[session.current]);
     }
 
     function goPrev() {
@@ -1740,10 +2242,11 @@ if (typeof document !== "undefined") {
 
     function goNext() {
       var sq = session.questions[session.current];
-      if (session.mode === "practice") {
+      if ((session.mode === "practice" || session.mode === "scenario-practice")) {
         if (session.feedback !== sq.id) return; // must answer first
         if (session.current + 1 >= session.questions.length) return submitSession();
       } else if (session.current + 1 >= session.questions.length) {
+        if (session.mode === "scenario") return renderScenarioReview();
         return;
       }
       session.current++;
@@ -1771,7 +2274,7 @@ if (typeof document !== "undefined") {
       else if (key.length === 1 && key >= "a" && key <= "d") optPos = key.charCodeAt(0) - 97;
       if (optPos >= 0) {
         var sq = session.questions[session.current];
-        if (session.mode === "practice" && session.feedback === sq.id) return;
+        if ((session.mode === "practice" || session.mode === "scenario-practice") && session.feedback === sq.id) return;
         return selectOption(sq.order[optPos]);
       }
       if (ev.key === "ArrowLeft") { ev.preventDefault(); return goPrev(); }
@@ -1784,6 +2287,30 @@ if (typeof document !== "undefined") {
       if (ev.key === "ArrowRight") { ev.preventDefault(); return goNext(); }
       if (key === "f") return toggleFlag();
     });
+
+    /* Right-click an option in a scenario question to strike it through,
+     * like the real exam. */
+    function hideCtxMenu() {
+      var menu = document.getElementById("ctx-menu");
+      if (menu) menu.hidden = true;
+    }
+    app.addEventListener("contextmenu", function (ev) {
+      if (!session || !isScenarioMode(session.mode) || view !== "quiz") return;
+      var opt = ev.target.closest && ev.target.closest(".option[data-opt]");
+      var menu = document.getElementById("ctx-menu");
+      if (!opt || !menu) return;
+      ev.preventDefault();
+      var optIdx = Number(opt.dataset.opt);
+      var id = session.questions[session.current].id;
+      var isStruck = (session.strikes[id] || []).indexOf(optIdx) !== -1;
+      menu.innerHTML = '<button class="ctx-item" data-action="strike" data-opt="' + optIdx + '">' +
+        (isStruck ? "Remove strike-through" : "Strike through") + "</button>";
+      menu.style.left = ev.clientX + "px";
+      menu.style.top = ev.clientY + "px";
+      menu.hidden = false;
+    });
+    document.addEventListener("click", hideCtxMenu, true);
+    document.addEventListener("scroll", hideCtxMenu, true);
 
     app.addEventListener("click", function (ev) {
       var btn = ev.target.closest("[data-action]");
@@ -1851,8 +2378,21 @@ if (typeof document !== "undefined") {
           return renderQuestion();
         }
         case "start-saved": return startSaved();
+        case "start-scenario-exam": reviewFilter = "all"; return startScenarioExam();
+        case "review-all": return session && renderScenarioReview();
+        case "practice-scenario": return startScenarioPractice(btn.dataset.scenario);
+        case "practice-missed": return lastFinished && startScenarioPractice(null, lastFinished.grade.wrongIds);
+        case "review-filter": reviewFilter = btn.dataset.filter || "all"; return session && renderScenarioReview();
+        case "strike": return session && toggleStrike(Number(btn.dataset.opt));
+        case "comment": {
+          if (!session) return;
+          var cur = session.comments[session.questions[session.current].id] || "";
+          var text = prompt("Comment on this question (leave empty to remove):", cur);
+          if (text === null) return;
+          return setComment(text);
+        }
         case "submit": {
-          if (session.mode === "exam") {
+          if (session.mode === "exam" || session.mode === "scenario") {
             var unanswered = session.questions.filter(function (s) { return session.answers[s.id] === null; }).length;
             var msg = unanswered
               ? "You have " + unanswered + " unanswered question" + (unanswered === 1 ? "" : "s") + ". Submit anyway?"

@@ -435,6 +435,71 @@
 
   code { background: var(--line); padding: 1px 6px; border-radius: 5px; font-family: var(--mono); font-size: 0.84em; }
 
+
+  /* scenario exam: scenario fixed on the left, question on the right */
+  .scn-screen {
+    position: relative; left: 50%; transform: translateX(-50%);
+    width: min(1240px, calc(100vw - 32px));
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .scn-top, .scn-bottom {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  .scn-top { position: sticky; top: 0; z-index: 10; }
+  .scn-bottom { position: sticky; bottom: 0; z-index: 10; }
+  .btn.flag-on { color: var(--flag); border-color: var(--flag); background: var(--flag-soft); }
+  .scn-screen, .scn-body, .scn-question { min-width: 0; }
+  .scn-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+  .scn-panel {
+    position: sticky; top: 64px; max-height: calc(100vh - 150px); overflow-y: auto;
+    padding: 18px 20px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    line-height: 1.6;
+  }
+  .scn-panel summary { font-family: var(--display); font-weight: 700; font-size: 1.05rem; cursor: pointer; margin-bottom: 8px; }
+  .scn-text { white-space: pre-line; }
+  .scn-question { padding: 22px 24px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+  .scn-screen .q-text { font-weight: 500; font-size: 1.04rem; line-height: 1.65; }
+  .scn-screen .opt-wrap > .option { width: 100%; }
+  .scn-screen .opt-note { border-top: 0; padding-top: 0; }
+  .opt-wrap + .opt-wrap { margin-top: 8px; }
+  .scn-question .options { display: flex; flex-direction: column; }
+  .option.struck { text-decoration: line-through; opacity: 0.5; }
+  .option.struck.selected { opacity: 0.75; }
+  .opt-note { margin: 6px 4px 0 44px; font-size: 0.9rem; line-height: 1.5; padding-left: 10px; border-left: 3px solid var(--line-strong); }
+  .opt-note.ok { border-left-color: var(--pass); }
+  .opt-note.bad { border-left-color: var(--fail); }
+  .scn-comment { margin-top: 14px; }
+  .scn-hint { font-size: 0.8rem; margin-top: 14px; }
+  .ctx-menu {
+    position: fixed; z-index: 50; padding: 4px; background: var(--card);
+    border: 1px solid var(--line-strong); border-radius: 9px; box-shadow: var(--shadow);
+  }
+  .ctx-item { display: block; border: 0; background: none; color: var(--ink); font: inherit; padding: 7px 12px; border-radius: 6px; cursor: pointer; }
+  .ctx-item:hover, .ctx-item:focus-visible { background: var(--pen-soft); }
+  .scn-review { display: flex; flex-direction: column; gap: 10px; }
+  .review-filters { gap: 8px; flex-wrap: wrap; }
+  .review-scn { margin: 10px 0 2px; font-size: 1rem; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tile {
+    min-width: 48px; height: 36px; padding: 0 8px; font-family: var(--mono); font-size: 0.8rem;
+    border: 1.5px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--ink); cursor: pointer;
+  }
+  .tile.answered { background: var(--pen-soft); color: var(--pen); border-color: var(--pen); }
+  .tile.unanswered { border-style: dashed; border-color: var(--fail); }
+  .tile.flagged { border-color: var(--flag); box-shadow: inset 0 -3px 0 var(--flag); }
+  .obj-row, .scn-row { margin-top: 12px; }
+  .scn-review-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .scn-review-list .review-card { margin: 0; }
+  @media (max-width: 680px) {
+    .scn-screen { width: 100%; left: 0; transform: none; }
+    .scn-body { grid-template-columns: minmax(0, 1fr); }
+    .scn-question { padding: 16px; }
+    .scn-top, .scn-bottom { padding: 8px 10px; }
+    .scn-panel { position: static; max-height: none; }
+    .scn-hint { display: none; }
+  }
+
   @media (max-width: 560px) {
     #app { padding: 18px 12px 70px; }
     .question-card { padding: 18px; }
@@ -473,6 +538,13 @@
 <script src="questions/domain4-multi.js"></script>
 <script src="questions/domain5-multi.js"></script>
 <script src="exams/index.js"></script>
+<script src="scenarios/index.js"></script>
+<script src="scenarios/support.js"></script>
+<script src="scenarios/extraction.js"></script>
+<script src="scenarios/ci.js"></script>
+<script src="scenarios/research.js"></script>
+<script src="scenarios/codegen.js"></script>
+<script src="scenarios/devprod.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script type="module" src="sync.js"></script>

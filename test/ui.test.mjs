@@ -27,8 +27,34 @@ function bank() {
   return qs;
 }
 
+const SCENARIOS = ["support", "codegen", "research", "devprod", "ci", "extraction"].map((id) => ({
+  id, name: `Scenario ${id}`, text: `Background text for ${id}.`,
+}));
+
+function scenarioBank(perScenario = 16) {
+  const qs = [];
+  for (const s of SCENARIOS) {
+    const n = typeof perScenario === "number" ? perScenario : perScenario[s.id] || 0;
+    for (let i = 1; i <= n; i++) {
+      qs.push({
+        id: `sc-${s.id}-${i}`,
+        scenario: s.id,
+        domain: 1,
+        subdomain: "1.1 Design and implement agentic loops for autonomous task execution",
+        question: `Scenario question ${s.id} ${i}?`,
+        options: ["Opt one", "Opt two", "Opt three", "Opt four"],
+        answer: 0,
+        optionNotes: ["Note one", "Note two", "Note three", "Note four"],
+        explanation: "Because.",
+      });
+    }
+  }
+  return qs;
+}
+
 function launch(opts = {}) {
-  const storage = {};
+  const storage = opts.storage || {};
+  const timers = [];
   const listeners = {};
   const appEl = {
     innerHTML: "",
@@ -42,6 +68,8 @@ function launch(opts = {}) {
   const win = {
     QUESTION_BANK: opts.bank || bank(),
     MOCK_EXAMS: opts.exams || [],
+    SCENARIOS: opts.scenarios || SCENARIOS,
+    SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -51,7 +79,7 @@ function launch(opts = {}) {
   const ctx = {
     window: win,
     console,
-    Date, Math, JSON, Object, Array, Number, String, Boolean, Promise,
+    Date: opts.Date || Date, Math, JSON, Object, Array, Number, String, Boolean, Promise,
     navigator: {},
     location: { protocol: "file:", hostname: "" },
     CustomEvent: class { constructor(type) { this.type = type; } },
@@ -61,8 +89,9 @@ function launch(opts = {}) {
       removeItem: (k) => { delete storage[k]; },
     },
     alert: () => {},
-    confirm: () => true,
-    setInterval: () => 1,
+    confirm: opts.confirm || (() => true),
+    prompt: opts.prompt || (() => null),
+    setInterval: (fn) => { timers.push(fn); return timers.length; },
     clearInterval: () => {},
     setTimeout: () => 1,
     clearTimeout: () => {},
@@ -88,6 +117,7 @@ function launch(opts = {}) {
 
   return {
     html: () => appEl.innerHTML,
+    tick: () => timers.slice().forEach((fn) => fn()),
     click,
     storage,
     store: () => win.CCARF_STORE,
@@ -664,4 +694,345 @@ test("a supplementary attempt is labelled in score history", () => {
   const attempt = app.store().snapshot().history[0];
   assert.equal(attempt.examName, "Supplementary mock");
   assert.equal(attempt.examId, null, "it is not an imported exam");
+});
+
+/* ------------------------------------------------------- scenario exams */
+test("a scenario exam draws 60 questions from 4 scenarios", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario");
+  assert.equal(sess.questions.length, 60);
+  assert.equal(sess.scenarioIds.length, 4);
+  assert.ok(sess.questions.every((q) => q.order.join() === "0,1,2,3"), "options never shuffled");
+});
+
+test("striking an option keeps the answer, and striking again removes it", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "2" });
+  app.click("strike", { opt: "2" });
+  let sess = app.store().snapshot().session;
+  const id = sess.questions[0].id;
+  assert.equal(sess.answers[id], 2);
+  assert.deepEqual(sess.strikes[id], [2]);
+  app.click("strike", { opt: "2" });
+  sess = app.store().snapshot().session;
+  assert.deepEqual(sess.strikes[id], []);
+  assert.equal(sess.answers[id], 2);
+});
+
+test("resume keeps strikes, comments, flags and scenario order", () => {
+  const storage = {};
+  const app = launch({ storage, prompt: () => "check this later" });
+  app.click("start-scenario-exam");
+  app.click("strike", { opt: "1" });
+  app.click("comment");
+  app.click("toggle-flag");
+  const before = app.store().snapshot().session;
+  const id = before.questions[0].id;
+
+  const again = launch({ storage });
+  again.click("resume");
+  const sess = again.store().snapshot().session;
+  assert.deepEqual(sess.strikes[id], [1]);
+  assert.equal(sess.comments[id], "check this later");
+  assert.ok(sess.flagged[id]);
+  assert.deepEqual(sess.questions.map((q) => q.id), before.questions.map((q) => q.id));
+  assert.deepEqual(sess.scenarioIds, before.scenarioIds);
+});
+
+test("an empty comment removes it", () => {
+  let text = "first";
+  const app = launch({ prompt: () => text });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  text = "";
+  app.click("comment");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.comments[sess.questions[0].id], undefined);
+});
+
+test("a submitted scenario exam is recorded apart from bank progress", () => {
+  const app = launch({ prompt: () => "my note" });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  const first = app.store().snapshot().session.questions[0].id;
+  app.click("submit");
+  const snap = app.store().snapshot();
+  assert.equal(snap.session, null);
+  assert.deepEqual(snap.weak, []);
+  assert.deepEqual(snap.attempted, []);
+  assert.equal(snap.history.length, 1);
+  const h = snap.history[0];
+  assert.equal(h.kind, "scenario");
+  assert.equal(h.examName, "Scenario exam");
+  assert.equal(h.scenarioIds.length, 4);
+  assert.equal(h.items.find((it) => it.id === first).comment, "my note");
+});
+
+test("the scenario exam refuses to start when fewer than 4 scenarios have 15 questions", () => {
+  const app = launch({ scenarioBank: scenarioBank({ support: 16, ci: 16, research: 16, devprod: 10 }) });
+  app.click("start-scenario-exam");
+  assert.equal(app.store().snapshot().session, null);
+});
+
+/* ------------------------------------------------ two-panel exam screen */
+function scenarioPanel(html) {
+  const m = html.match(/<aside class="scn-panel"[\s\S]*?<\/aside>/);
+  return m ? m[0] : "";
+}
+
+test("the scenario text sits on the left, the question only on the right", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  const sid = sess.scenarioIds[0];
+  const html = app.html();
+  const panel = scenarioPanel(html);
+  assert.ok(panel.includes(`Background text for ${sid}.`), "scenario text in the left panel");
+  assert.ok(html.includes("Scenario 1 of 4"));
+  assert.ok(html.includes("Question 1 of 60"));
+  const qText = app.html().match(/Scenario question \S+ \d+\?/)[0];
+  assert.equal(html.split(qText).length - 1, 1, "question text appears once");
+  assert.ok(!panel.includes(qText), "question text is not in the scenario panel");
+  assert.ok(html.includes('data-action="comment"') && html.includes('data-action="toggle-flag"'));
+  assert.ok(html.includes('data-action="prev"') && html.includes('data-action="next"'));
+});
+
+test("a struck option renders crossed out and still selectable", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("strike", { opt: "3" });
+  const btn = app.html().match(/<button[^>]*data-opt="3"[^>]*>/)[0];
+  assert.match(btn, /class="[^"]*\bstruck\b/);
+  assert.ok(!/disabled/.test(btn));
+});
+
+test("the scenario label follows the question across blocks", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  app.click("jump", { index: "15" });
+  assert.ok(app.html().includes("Scenario 2 of 4"));
+  assert.ok(app.html().includes("Question 16 of 60"));
+  assert.ok(scenarioPanel(app.html()).includes(`Background text for ${sess.scenarioIds[1]}.`));
+});
+
+test("a comment and a flag show in the top bar", () => {
+  const app = launch({ prompt: () => "hmm" });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  app.click("toggle-flag");
+  const html = app.html();
+  assert.ok(html.includes("Flagged"));
+  assert.ok(html.includes("💬 Comment ✓") || html.includes("Edit comment"));
+});
+
+/* ------------------------------------------------ review before submit */
+function toLast(app) {
+  app.click("jump", { index: "59" });
+}
+
+test("Next on the last question opens the review screen", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  toLast(app);
+  app.click("next");
+  assert.ok(app.html().includes('class="scn-review"'), "review screen shown");
+  assert.ok(app.html().includes('data-action="submit"'));
+});
+
+test("the review screen groups tiles by scenario and filters flagged", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  app.click("toggle-flag");
+  app.click("jump", { index: "20" });
+  app.click("toggle-flag");
+  app.click("review-all");
+  let html = app.html();
+  for (const sid of sess.scenarioIds) assert.ok(html.includes(`Scenario ${sid}`));
+  assert.equal((html.match(/class="tile /g) || []).length, 60);
+  app.click("review-filter", { filter: "flagged" });
+  html = app.html();
+  assert.equal((html.match(/class="tile /g) || []).length, 2);
+  app.click("review-filter", { filter: "unanswered" });
+  assert.equal((app.html().match(/class="tile /g) || []).length, 60);
+});
+
+test("a tile jumps back to its question", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("review-all");
+  app.click("jump", { index: "17" });
+  assert.ok(app.html().includes("Question 18 of 60"));
+});
+
+test("submitting with unanswered questions asks first", () => {
+  let asked = "";
+  const app = launch({ confirm: (m) => { asked = m; return false; } });
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "0" });
+  app.click("review-all");
+  app.click("submit");
+  assert.match(asked, /59 unanswered/);
+  assert.ok(app.store().snapshot().session, "cancelled submit keeps the session");
+});
+
+test("the deadline on the review screen submits the exam", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const app = launch({ Date: FakeDate });
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "0" });
+  app.click("review-all");
+  now += 121 * 60 * 1000;
+  app.tick();
+  const snap = app.store().snapshot();
+  assert.equal(snap.session, null);
+  assert.equal(snap.history[0].correct, 1);
+  assert.equal(snap.history[0].total, 60);
+});
+
+/* ---------------------------------------------------- scenario results */
+function finishScenario(app, picks = (i) => (i % 3 === 0 ? 0 : 1)) {
+  app.click("start-scenario-exam");
+  for (let i = 0; i < 60; i++) {
+    app.click("jump", { index: String(i) });
+    app.click("select", { opt: String(picks(i)) });
+  }
+  app.click("submit");
+}
+
+test("scenario results show per-objective scores, weakest first", () => {
+  const bankQs = scenarioBank();
+  bankQs.forEach((q, i) => {
+    q.subdomain = i % 2
+      ? "4.5 Design efficient batch processing strategies"
+      : "1.1 Design and implement agentic loops for autonomous task execution";
+  });
+  const app = launch({ scenarioBank: bankQs });
+  finishScenario(app);
+  const html = app.html();
+  assert.ok(html.includes("By objective"));
+  assert.ok(html.includes("By scenario"));
+  const pcts = [...html.matchAll(/class="obj-row" data-pct="(\d+)"/g)].map((m) => Number(m[1]));
+  assert.ok(pcts.length >= 2);
+  assert.deepEqual(pcts, pcts.slice().sort((a, b) => a - b));
+  assert.ok(!html.includes('data-action="retry-failed"'), "no retry that would feed the weak set");
+});
+
+test("the scenario review puts each note under its own option", () => {
+  const app = launch({ prompt: () => "unsure here" });
+  app.click("start-scenario-exam");
+  app.click("comment");
+  for (let i = 0; i < 60; i++) { app.click("jump", { index: String(i) }); app.click("select", { opt: "1" }); }
+  app.click("submit");
+  app.click("show-review");
+  const html = app.html();
+  assert.ok(html.includes('class="scn-panel"'), "scenario text on the left");
+  for (const [opt, note] of [["Opt one", "Note one"], ["Opt two", "Note two"], ["Opt three", "Note three"], ["Opt four", "Note four"]]) {
+    const re = new RegExp(`${opt}(?:(?!class="option)[\\s\\S])*?<div class="opt-note[^"]*">${note}<`);
+    assert.match(html, re, `${note} sits with ${opt}`);
+  }
+  assert.ok(html.includes("Your comment") && html.includes("unsure here"));
+});
+
+test("a scenario attempt reopens from score history in the two-panel review", () => {
+  const app = launch();
+  finishScenario(app);
+  app.click("home");
+  const attempt = app.store().snapshot().history[0];
+  app.click("review-attempt", { date: attempt.date });
+  const html = app.html();
+  assert.ok(html.includes('class="scn-panel"'));
+  assert.ok(html.includes("Note two"));
+});
+
+test("a legacy history entry still opens the one-panel review", () => {
+  const app = launch();
+  app.click("start-exam");
+  completeSession(app);
+  app.click("home");
+  const attempt = app.store().snapshot().history[0];
+  app.click("review-attempt", { date: attempt.date });
+  assert.ok(!app.html().includes('class="scn-panel"'));
+  assert.ok(app.html().includes("correct answer"));
+});
+
+/* ------------------------------------------------- home + scenario practice */
+test("the home screen offers the scenario exam and practice by scenario", () => {
+  const app = launch();
+  const html = app.html();
+  assert.ok(html.includes("Scenario exam"));
+  assert.match(html, /data-action="start-scenario-exam"(?![^>]*disabled)/);
+  assert.ok(html.includes("Practice by scenario"));
+  assert.equal((html.match(/data-action="practice-scenario"/g) || []).length, 6);
+});
+
+test("the scenario exam button waits until every scenario has 15 questions", () => {
+  const app = launch({ scenarioBank: scenarioBank({ support: 16, ci: 16, research: 16, devprod: 16, codegen: 16, extraction: 10 }) });
+  assert.match(app.html(), /data-action="start-scenario-exam"[^>]*disabled/);
+  assert.ok(app.html().includes("Available once every scenario has 15 questions"));
+  assert.match(app.html(), /data-action="practice-scenario" data-scenario="extraction"(?![^>]*disabled)/);
+});
+
+test("an empty scenario cannot be practised", () => {
+  const app = launch({ scenarioBank: scenarioBank({ support: 3 }) });
+  assert.match(app.html(), /data-action="practice-scenario" data-scenario="ci"[^>]*disabled/);
+});
+
+test("scenario practice shows every option's note after answering", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "ci" });
+  let html = app.html();
+  assert.ok(html.includes('class="scn-panel"') && html.includes("Background text for ci."));
+  assert.ok(!html.includes("Note one"), "no notes before answering");
+  assert.ok(!html.includes('data-action="comment"'), "no comment button in practice");
+  app.click("select", { opt: "1" });
+  html = app.html();
+  for (const n of ["Note one", "Note two", "Note three", "Note four"]) assert.ok(html.includes(n));
+  assert.ok(html.includes("Incorrect."));
+  app.click("select", { opt: "0" });
+  assert.equal(app.store().snapshot().session.answers[app.store().snapshot().session.questions[0].id], 1, "answer locked after feedback");
+});
+
+test("scenario practice leaves the weak set and bank progress alone", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "support" });
+  for (let i = 0; i < 16; i++) {
+    app.click("select", { opt: "1" });
+    app.click(i === 15 ? "submit" : "next");
+  }
+  const snap = app.store().snapshot();
+  assert.equal(snap.session, null);
+  assert.deepEqual(snap.weak, []);
+  assert.deepEqual(snap.attempted, []);
+  assert.equal(snap.history.length, 0);
+});
+
+test("missed exam questions can be practised from the results", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "1" });
+  app.click("submit");
+  app.click("practice-missed");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario-practice");
+  assert.equal(sess.questions.length, 60);
+});
+
+/* Final review: the strike menu is position:fixed, so it must not sit inside
+ * the transformed .scn-screen (which would offset it from the cursor). */
+test("the strike menu sits outside the transformed scenario screen", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const html = app.html();
+  const at = html.indexOf('<div id="ctx-menu"');
+  assert.ok(at > 0, "menu rendered");
+  const before = html.slice(0, at);
+  const opens = (before.match(/<div\b/g) || []).length;
+  const closes = (before.match(/<\/div>/g) || []).length;
+  assert.equal(opens, closes, "every div before the menu is closed, so the menu is a sibling of .scn-screen");
 });
