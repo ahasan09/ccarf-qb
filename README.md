@@ -2,7 +2,9 @@
 
 Exam prep for the Claude Certified Architect (Foundations) certification —
 877 questions (including 40 select-two items) across the five exam domains, with
-realistic timed mock exams, scoring, review, and retry-failed drilling.
+realistic timed mock exams, scoring, review, and retry-failed drilling — plus a
+separate 360-question **scenario bank** and a **Scenario exam** that mirrors the
+real exam's format (see [Scenario exam](#scenario-exam)).
 
 ## Use
 
@@ -17,15 +19,10 @@ Modes:
   subdomain, 120-minute timer, flag-for-review, navigator grid.
   Scored out of 1000; pass at 720 (44+ correct), with per-domain breakdown
   and full answer review with explanations. Exit mid-exam and resume later.
-- **Scenario exam** — the real exam's format: four of the six official
-  scenarios, 15 questions each, with the scenario fixed on the left and the
-  question on the right. Flag, comment, right-click to strike out options,
-  review flagged/unanswered before submitting. Results show percent correct per
-  exam-guide objective, weakest first, and a review with a note under every
-  option. Drawn from the separate scenario bank, preferring questions you have
-  not met in earlier attempts.
-- **Practice by scenario** — untimed, every option's note shown after each
-  answer. Scenario questions never feed the weak drill or bank progress.
+- **Scenario exam** — the real exam's format: four scenarios × 15 questions,
+  120 minutes, pass at 720. Details below.
+- **Practice by scenario** — untimed practice on one scenario, with a note
+  for every option after each answer.
 - **Supplementary mock exam** — the same format drawn from the 300 questions
   not mapped to a subdomain, so the main mock stays exam-guide aligned.
 - **Retry failed** — after any session, re-quiz only the questions you got
@@ -50,9 +47,59 @@ Modes:
   any past attempt can be reopened and reviewed from score history.
 
 Keyboard shortcuts during a session: `1`–`4` (or `A`–`D`) answer, `←`/`→`
-navigate, `F` flag, `Enter` next.
+navigate, `F` flag, `Enter` next, `Esc` close the strike-through menu.
 
 Theme: use the toggle on the home screen (Auto / Light / Dark).
+
+## Scenario exam
+
+The real CCAR-F exam is scenario-based: it picks four of six official
+scenarios and asks 15 questions about each. Every question has exactly one
+correct answer out of four. The Scenario exam reproduces that.
+
+**The six scenarios** (60 questions each in the scenario bank):
+
+| Scenario | File |
+|---|---|
+| Customer Support Resolution Agent | `scenarios/support.js` |
+| Code Generation with Claude Code | `scenarios/codegen.js` |
+| Multi-Agent Research System | `scenarios/research.js` |
+| Developer Productivity with Claude | `scenarios/devprod.js` |
+| Claude Code for Continuous Integration | `scenarios/ci.js` |
+| Structured Data Extraction | `scenarios/extraction.js` |
+
+**During the exam**
+
+- The scenario's background text stays fixed on the left for all 15 of its
+  questions; the question (its own 3–5 sentence situation and the ask) is on
+  the right.
+- Top bar: scenario and question position, the 120-minute timer,
+  **💬 Comment** (a note kept with the attempt) and **⚑ Flag for review**.
+- **Strike through** an option you have ruled out: right-click it (or tap
+  ⊘ beside it on a touch screen). A struck option can still be selected;
+  strike it again to undo.
+- Bottom bar: **Previous**, answered/flagged counts, **Review all**, **Next**.
+  You can move freely back and forth for the whole exam.
+- After the last question, the review screen shows every question as a tile
+  grouped by scenario, filterable by **All / Flagged / Unanswered**. Click a
+  tile to go back to it — the clock keeps running — then **Submit exam**.
+  Time running out submits automatically; unanswered questions count wrong.
+- Exit at any point and resume later from the home screen.
+
+**After submitting**
+
+- Score out of 1000 and pass/fail (720).
+- **By objective**: percent correct per exam-guide task statement, weakest
+  first, like the official score report. **By scenario** as well.
+- A review grouped by scenario, with the scenario text on the left, your
+  answer, the correct answer, a note under every option explaining why that
+  option is right or wrong, the overall explanation, and your comment.
+- **Practise the N you missed** starts an untimed scenario practice on them.
+- The attempt is kept in Score history and can be reopened.
+
+Each new exam prefers questions you have not met in earlier scenario exams.
+Scenario questions are kept apart from the rest of the app: they never enter
+Drill weak questions, Saved questions or the Progress figures.
 
 ## Progress sync setup (optional)
 
@@ -117,12 +164,25 @@ clears it, and progress cached for one account is never folded into another.
   first time they are opened. Kept out of the practice bank: they never feed practice pools, custom quizzes, mastery or the
   weak drill, and are scored as standalone attempts
 - `scenarios/index.js` + `scenarios/<id>.js` — the scenario bank: the six
-  official scenarios and their single-answer questions, each with a note per
-  option. Kept separate from the practice bank.
+  official scenarios (`window.SCENARIOS`) and 60 single-answer questions per
+  scenario (`window.SCENARIO_BANK`). Each question carries `scenario`,
+  `domain`, `subdomain` (one of the 30 exam-guide task statements), four
+  `options`, one `answer` index, four `optionNotes`, an `explanation`, and
+  `source` when adapted from an imported exam. Options are never shuffled, so
+  notes always line up.
+- `scripts/scenario-candidates.mjs <scenarioId> [--json]` — lists existing
+  imported-exam questions that belong to a scenario, as raw material for new
+  scenario questions
 - `node --test test/logic.test.mjs test/sync.test.mjs test/ui.test.mjs test/scenario.test.mjs` — engine,
   cross-device sync, screen-flow and scenario tests
 - `node test/validate-bank.mjs` — structural validation of the question bank
-- `node test/validate-scenarios.mjs` — validation of the scenario bank
+- `node test/validate-scenarios.mjs` — validation of the scenario bank. It
+  rejects a question that repeats the scenario intro, is under 40 words, has
+  other than four options and four non-empty notes, has an unknown scenario or
+  subdomain, or whose notes/explanation refer to options by letter ("option
+  B", "(C)"); it also fails if the correct option is the longest in more than
+  40% of questions. Add any new `scenarios/*.js` file to `index.html` and to
+  `CORE` in `sw.js` (and bump `VERSION`).
 
 Design spec: `docs/superpowers/specs/2026-10-23-ccarf-question-bank-design.md`
 (scenario exam: `docs/superpowers/specs/2026-11-02-scenario-exam-design.md`)
