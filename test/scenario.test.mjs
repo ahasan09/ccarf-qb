@@ -160,3 +160,10 @@ test("breakdownBy groups, scores and sorts weakest first", () => {
     { key: "2.1 z", correct: 1, total: 1, pct: 100 },
   ]);
 });
+
+test("drawScenarioExam can draw a smaller exam, like the diagnostic", () => {
+  const r = drawScenarioExam(SIX, scnBank(all20), new Set(), rng, { count: 2, perScenario: 10 });
+  assert.equal(r.scenarioIds.length, 2);
+  assert.equal(r.questions.length, 20);
+  r.scenarioIds.forEach((sid, b) => assert.ok(r.questions.slice(b * 10, b * 10 + 10).every((q) => q.scenario === sid)));
+});

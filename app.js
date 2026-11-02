@@ -302,9 +302,10 @@ function scenarioPool(bank, scenarioId) {
 }
 
 /* Scenarios with enough questions to fill a block of the exam. */
-function eligibleScenarios(scenarios, bank) {
+function eligibleScenarios(scenarios, bank, perScenario) {
+  var need = perScenario || SCENARIO_BLOCK;
   return (scenarios || [])
-    .filter(function (s) { return scenarioPool(bank, s.id).length >= SCENARIO_BLOCK; })
+    .filter(function (s) { return scenarioPool(bank, s.id).length >= need; })
     .map(function (s) { return s.id; });
 }
 
@@ -320,17 +321,19 @@ function usedScenarioQuestionIds(history) {
 
 /* Like the real exam: four scenarios, 15 questions each, kept in contiguous
  * blocks. Questions not used in earlier attempts are taken first. */
-function drawScenarioExam(scenarios, bank, usedIds, rng) {
-  var eligible = eligibleScenarios(scenarios, bank);
-  if (eligible.length < SCENARIO_COUNT) return null;
+function drawScenarioExam(scenarios, bank, usedIds, rng, opts) {
+  var count = (opts && opts.count) || SCENARIO_COUNT;
+  var per = (opts && opts.perScenario) || SCENARIO_BLOCK;
+  var eligible = eligibleScenarios(scenarios, bank, per);
+  if (eligible.length < count) return null;
   usedIds = usedIds || new Set();
-  var picked = shuffle(eligible, rng).slice(0, SCENARIO_COUNT);
+  var picked = shuffle(eligible, rng).slice(0, count);
   var questions = [];
   picked.forEach(function (sid) {
     var pool = scenarioPool(bank, sid);
     var fresh = shuffle(pool.filter(function (q) { return !usedIds.has(q.id); }), rng);
     var seen = shuffle(pool.filter(function (q) { return usedIds.has(q.id); }), rng);
-    questions = questions.concat(fresh.concat(seen).slice(0, SCENARIO_BLOCK));
+    questions = questions.concat(fresh.concat(seen).slice(0, per));
   });
   return { scenarioIds: picked, questions: questions };
 }
@@ -364,7 +367,12 @@ function breakdownBy(questions, answers, keyFn) {
  * of a merge guessing what was deleted. */
 
 function emptyProgress() {
-  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null };
+  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null, review: {}, examDate: null };
+}
+
+function isReviewEntry(e) {
+  return !!e && typeof e === "object" && typeof e.due === "number" &&
+    typeof e.step === "number" && typeof e.updatedAt === "number";
 }
 
 function normalizeProgress(raw) {
@@ -386,6 +394,12 @@ function normalizeProgress(raw) {
   if (raw.session && typeof raw.session === "object" && Array.isArray(raw.session.questions)) {
     s.session = raw.session;
   }
+  if (raw.review && typeof raw.review === "object") {
+    Object.keys(raw.review).forEach(function (id) {
+      if (isReviewEntry(raw.review[id])) s.review[id] = raw.review[id];
+    });
+  }
+  if (typeof raw.examDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.examDate)) s.examDate = raw.examDate;
   return s;
 }
 
@@ -428,7 +442,121 @@ function mergeProgress(a, b) {
     session: !a.session ? b.session
       : !b.session ? a.session
       : (b.session.startedAt || 0) > (a.session.startedAt || 0) ? b.session : a.session,
+    review: mergeReview(a.review, b.review),
+    examDate: b.examDate || a.examDate,
   };
+}
+
+/* The newer write wins per question, so a reset or a finish is never undone
+ * by an older copy from another device. */
+function mergeReview(a, b) {
+  var out = {};
+  [a || {}, b || {}].forEach(function (src) {
+    Object.keys(src).forEach(function (id) {
+      if (!out[id] || src[id].updatedAt >= out[id].updatedAt) out[id] = src[id];
+    });
+  });
+  return out;
+}
+
+/* ------------------------------------------------------------ readiness */
+function examAttempts(history) {
+  return (history || []).filter(function (h) { return h && typeof h.score === "number"; });
+}
+
+/* Recent exams count most: the last five, weighted 5..1 newest first. */
+function predictedScore(history) {
+  var recent = examAttempts(history).slice(-5).reverse();
+  if (!recent.length) return null;
+  var sum = 0, weights = 0;
+  recent.forEach(function (h, i) { var w = 5 - i; sum += h.score * w; weights += w; });
+  var score = Math.round(sum / weights);
+  return {
+    score: score,
+    count: recent.length,
+    verdict: score >= 760 ? "pass" : score >= 680 ? "borderline" : "not-yet",
+  };
+}
+
+/* Percent correct per exam-guide task statement across exam attempts. */
+function objectiveAccuracy(history, lookup) {
+  var acc = {};
+  examAttempts(history).forEach(function (h) {
+    (h.items || []).forEach(function (it) {
+      var q = lookup(it.id);
+      if (!q || SUBDOMAINS.indexOf(q.subdomain) < 0) return;
+      var row = acc[q.subdomain] || (acc[q.subdomain] = { correct: 0, total: 0 });
+      row.total++;
+      if (sameChoice(it.given === undefined ? null : it.given, correctIndices(q))) row.correct++;
+    });
+  });
+  return acc;
+}
+
+function weakestObjectives(acc, limit, minAnswered) {
+  limit = limit || 3;
+  minAnswered = minAnswered || 3;
+  return Object.keys(acc || {})
+    .filter(function (k) { return acc[k].total >= minAnswered; })
+    .map(function (k) {
+      return { key: k, correct: acc[k].correct, total: acc[k].total, pct: Math.round((100 * acc[k].correct) / acc[k].total) };
+    })
+    .sort(function (a, b) { return a.pct - b.pct || a.total - b.total || (a.key < b.key ? -1 : 1); })
+    .slice(0, limit);
+}
+
+function objectiveDrillIds(scenarioBank, subdomain, usedIds, n, rng) {
+  n = n || 8;
+  usedIds = usedIds || new Set();
+  var pool = (scenarioBank || []).filter(function (q) { return q.subdomain === subdomain; });
+  var fresh = shuffle(pool.filter(function (q) { return !usedIds.has(q.id); }), rng);
+  var seen = shuffle(pool.filter(function (q) { return usedIds.has(q.id); }), rng);
+  return fresh.concat(seen).slice(0, n).map(function (q) { return q.id; });
+}
+
+/* Best percent per scenario over scenario exam attempts. */
+function bestScenarioScores(history, lookup) {
+  var best = {};
+  (history || []).forEach(function (h) {
+    if (!h || h.kind !== "scenario") return;
+    var per = {};
+    (h.items || []).forEach(function (it) {
+      var q = lookup(it.id);
+      if (!q || !q.scenario) return;
+      var row = per[q.scenario] || (per[q.scenario] = { c: 0, t: 0 });
+      row.t++;
+      if (sameChoice(it.given === undefined ? null : it.given, correctIndices(q))) row.c++;
+    });
+    Object.keys(per).forEach(function (sid) {
+      var pct = Math.round((100 * per[sid].c) / per[sid].t);
+      if (best[sid] === undefined || pct > best[sid]) best[sid] = pct;
+    });
+  });
+  return best;
+}
+
+/* ------------------------------------------------------- spaced review */
+var DAY_MS = 86400000;
+var REVIEW_STEPS_DAYS = [1, 3, 7, 14];
+
+/* A missed question comes back after 1 day, then 3, 7 and 14 days each time
+ * it is answered correctly once due; after the last step it is done. Returns
+ * the new entry, or null when nothing changes. */
+function reviewAfterAnswer(entry, correct, now) {
+  if (!correct) return { step: 0, due: now + DAY_MS, updatedAt: now };
+  if (!entry || entry.done || entry.due > now) return null;
+  if (entry.step >= REVIEW_STEPS_DAYS.length - 1) {
+    return { step: entry.step, due: entry.due, updatedAt: now, done: true };
+  }
+  var step = entry.step + 1;
+  return { step: step, due: now + REVIEW_STEPS_DAYS[step] * DAY_MS, updatedAt: now };
+}
+
+function dueReviewIds(review, now) {
+  return Object.keys(review || {}).filter(function (id) {
+    var e = review[id];
+    return e && !e.done && e.due <= now;
+  });
 }
 
 function unionIds(existing, added) {
@@ -472,6 +600,23 @@ var Mutations = {
     return { key: "clearHistory", apply: function (s) { s.history = []; } };
   },
   /* Bookmark a question to come back to, or clear the bookmark. */
+  recordReview: function (updates) {
+    return {
+      key: null,
+      apply: function (s) {
+        s.review = s.review || {};
+        /* Replayed after a sync, so an older queued update must not
+         * overwrite a newer entry written by another device. */
+        Object.keys(updates || {}).forEach(function (id) {
+          var cur = s.review[id];
+          if (updates[id] && !(cur && cur.updatedAt > updates[id].updatedAt)) s.review[id] = updates[id];
+        });
+      },
+    };
+  },
+  setExamDate: function (date) {
+    return { key: "examDate", apply: function (s) { s.examDate = date || null; } };
+  },
   toggleSaved: function (questionId) {
     return {
       key: null,
@@ -655,6 +800,16 @@ if (typeof module !== "undefined" && module.exports) {
     updateWeakSet: updateWeakSet,
     validateBank: validateBank,
     validateScenarioBank: validateScenarioBank,
+    reviewAfterAnswer: reviewAfterAnswer,
+    examAttempts: examAttempts,
+    predictedScore: predictedScore,
+    objectiveAccuracy: objectiveAccuracy,
+    weakestObjectives: weakestObjectives,
+    objectiveDrillIds: objectiveDrillIds,
+    bestScenarioScores: bestScenarioScores,
+    dueReviewIds: dueReviewIds,
+    REVIEW_STEPS_DAYS: REVIEW_STEPS_DAYS,
+    DAY_MS: DAY_MS,
     SUBDOMAINS: SUBDOMAINS,
     SCENARIO_MIN_WORDS: SCENARIO_MIN_WORDS,
     SCENARIO_BLOCK: SCENARIO_BLOCK,
@@ -880,17 +1035,17 @@ if (typeof document !== "undefined") {
       session = null;
       view = "home";
       var progress = Store.snapshot();
-      var weak = progress.weak;
       var history = progress.history;
       var saved = isUsableSession(progress.session) ? progress.session : null;
-
-      var S = window.CCARF_SYNC;
-      var acctChip = "";
-      if (S && S.enabled) {
-        acctChip = S.user()
-          ? '<span class="signed-chip" title="Progress syncs to this account"><span class="dot">●</span> ' + esc(S.user().email || "signed in") + "</span>"
-          : '<a class="btn ghost small" href="#acct">Sign in</a>';
-      }
+      var now = Date.now();
+      /* Objective figures come from the bank and the scenario bank only;
+       * imported tests count toward the predicted score alone. */
+      var lookup = function (id) {
+        var q = byId[id];
+        return q && (bankIds[id] || q.scenario) ? q : undefined;
+      };
+      var firstVisit = !history.length && !saved && !progress.saved.length && !progress.weak.length &&
+        !progress.attempted.length && !Object.keys(progress.review || {}).length;
 
       var html = "";
       if (BANK.length !== EXPECTED_BANK_SIZE) {
@@ -898,166 +1053,278 @@ if (typeof document !== "undefined") {
           EXPECTED_BANK_SIZE + " questions loaded — part of the bank failed to download. " +
           '<button class="btn small" data-action="hard-reload">Reload the bank</button></div>';
       }
-      html += '<div class="title-row">' +
-        '<h1><svg width="34" height="34" viewBox="0 0 128 128" aria-hidden="true">' +
+
+      var S = window.CCARF_SYNC;
+      var acctChip = "";
+      if (S && S.enabled) {
+        acctChip = S.user()
+          ? '<span class="signed-chip" title="Progress syncs to this account"><span class="dot">●</span> ' + esc(S.user().email || "signed in") + "</span>"
+          : '<button class="btn ghost small" data-action="open-section" data-id="h-acct">Sign in</button>';
+      }
+      html += '<div class="h-top"><div class="h-brand"><svg width="30" height="30" viewBox="0 0 128 128" aria-hidden="true">' +
         '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
         '<circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/>' +
-        '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Question Bank</h1>' +
+        '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Prep</div>' +
         '<span class="controls">' + acctChip +
         '<button class="btn icon" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="Switch theme">' +
         THEME_ICONS[currentTheme()] + "</button></span></div>";
 
-      html += '<header class="hero"><div class="intro"><div class="rule"></div>' +
-        "<p>Claude Certified Architect (Foundations) exam prep. Mark your answers, grade yourself against the real pass line, and drill what you miss.</p>" +
-        '<div class="facts"><span><b>' + BANK.length + "</b> questions</span>" +
-        "<span><b>" + MAPPED.length + "</b> exam-guide mapped</span>" +
-        "<span><b>" + UNMAPPED.length + "</b> supplementary</span>" +
-        "<span><b>30</b> subdomains</span></div></div>" +
-        '<div class="hero-cta">' +
-        '<button class="btn primary" data-action="start-exam" data-scope="mapped">Start mock exam</button>' +
-        (saved ? '<button class="btn" data-action="resume">Resume session</button>' : "") +
-        '<span class="sub">60 questions · 120 min · pass 720/1000<br>drawn from the ' +
-        MAPPED.length + " exam-guide questions</span>" +
-        "</div></header>";
-
-      if (saved) {
-        var savedDone = answeredCount(saved) >= saved.questions.length;
-        html += '<div class="card resume-card"><div><strong>' +
-          (saved.scope === "unmapped"
-            ? "Supplementary mock"
-            : Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
-          (saved.examName ? " — " + esc(saved.examName) : "") +
-          (savedDone ? " ready to grade" : " in progress") + "</strong>" +
-          "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
-          (savedDone ? " — finish to see your score" : "") + "</p></div>" +
-          '<div class="row">' +
-          (savedDone
-            ? '<button class="btn primary" data-action="finish-saved">Finish &amp; see results</button>' +
-              '<button class="btn" data-action="resume">Review answers</button>'
-            : '<button class="btn primary" data-action="resume">Resume</button>') +
-          '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
+      html += firstVisit ? homeFirstVisit(progress) : homeReadiness(progress, now);
+      if (saved) html += resumeCard(saved);
+      if (!firstVisit) {
+        html += homeNextStep(progress, lookup);
+        html += '<div class="h-cols">' + homeObjectives(progress, lookup) + homePractice(progress, now, lookup) + "</div>";
       }
+      html += homeCollapsed(progress);
+      html += '<footer class="site-footer">Practice material for personal study. ' +
+        "Not affiliated with Anthropic or Pearson VUE.</footer>";
+      app.innerHTML = html;
+    }
 
-      var scnEligible = eligibleScenarios(SCENARIOS, SCENARIO_BANK);
-      var scnReady = SCENARIOS.length > 0 && scnEligible.length === SCENARIOS.length;
-      html += '<div class="grid scn-cards"><div class="card scn-card"><h2>Scenario exam</h2>' +
-        "<p>The real exam's format: four of the six official scenarios, 15 questions each. The scenario stays on the left while you answer; flag, comment and strike out options, then review before you submit. 120 min · pass 720/1000.</p>" +
-        '<button class="btn primary" data-action="start-scenario-exam"' + (scnReady ? "" : " disabled") + ">Start scenario exam</button>" +
-        (scnReady ? "" : '<p class="muted">Available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>") +
-        '</div><div class="card"><h2>Practice by scenario</h2><p class="muted">Untimed, with a note for every option after each answer.</p>' +
-        '<div class="domain-list">';
-      SCENARIOS.forEach(function (sc) {
-        var n = SCENARIO_BANK.filter(function (q) { return q.scenario === sc.id; }).length;
-        html += '<button class="domain-row" data-action="practice-scenario" data-scenario="' + sc.id + '"' + (n ? "" : " disabled") + ">" +
-          "<span>" + esc(sc.name) + '</span><span class="muted">' + n + " question" + (n === 1 ? "" : "s") + "</span></button>";
+    function examDateLine(progress, now) {
+      if (!progress.examDate) return "";
+      var at = new Date(progress.examDate + "T00:00:00").getTime();
+      var days = Math.ceil((at - now) / DAY_MS);
+      if (!(days >= 0)) return "";
+      return "Exam on <b>" + esc(new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" })) +
+        "</b> · <b>" + days + " day" + (days === 1 ? "" : "s") + " left</b>";
+    }
+
+    /* The full exam needs every scenario to fill a block of 15. */
+    function scenarioExamReady() {
+      return SCENARIOS.length > 0 && eligibleScenarios(SCENARIOS, SCENARIO_BANK).length === SCENARIOS.length;
+    }
+    function scenarioExamGate() { return scenarioExamReady() ? "" : " disabled"; }
+    function scenarioExamNote() {
+      return scenarioExamReady() ? "" : '<p class="muted">The scenario exam is available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>";
+    }
+
+    function otherExamsMenu() {
+      return '<details class="h-menu"><summary class="btn">Other exams ▾</summary><div class="h-menu-list">' +
+        '<button class="btn ghost" data-action="start-exam" data-scope="mapped">Mock exam · exam-guide mapped, by domain weight</button>' +
+        '<button class="btn ghost" data-action="start-exam" data-scope="unmapped">Supplementary mock exam</button>' +
+        (EXAMS.length ? '<button class="btn ghost" data-action="open-section" data-id="h-imported">Imported practice tests ↓</button>' : "") +
+        "</div></details>";
+    }
+
+    function sparkline(attempts) {
+      var pts = attempts.slice(-6);
+      if (pts.length < 2) return "";
+      /* Scale to the scores shown (and the pass line) so changes are visible. */
+      var vals = pts.map(function (a) { return a.score; }).concat([PASS_SCORE]);
+      var lo = Math.max(0, Math.floor((Math.min.apply(null, vals) - 40) / 50) * 50);
+      var hi = Math.min(1000, Math.ceil((Math.max.apply(null, vals) + 40) / 50) * 50);
+      var w = 300, h = 90, y = function (v) { return Math.round(h - 8 - ((v - lo) / (hi - lo)) * (h - 18)); };
+      var step = (w - 20) / (pts.length - 1);
+      var coords = pts.map(function (a, i) { return Math.round(10 + i * step) + "," + y(a.score); });
+      return '<svg class="h-spark" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="Last ' + pts.length + ' exam scores">' +
+        '<line x1="0" x2="' + w + '" y1="' + y(PASS_SCORE) + '" y2="' + y(PASS_SCORE) + '" stroke="var(--pass)" stroke-dasharray="4 4" stroke-width="1.5"/>' +
+        '<text x="4" y="' + (y(PASS_SCORE) - 5) + '" font-size="10" fill="var(--pass)">pass ' + PASS_SCORE + "</text>" +
+        '<polyline fill="none" stroke="var(--pen)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="' + coords.join(" ") + '"/>' +
+        coords.map(function (c) { var p = c.split(","); return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="4" fill="var(--pen)"/>'; }).join("") +
+        '</svg><div class="h-spark-cap"><span>Last ' + pts.length + " exams</span><span>" + pts[pts.length - 1].score + "</span></div>";
+    }
+
+    function homeReadiness(progress, now) {
+      var attempts = examAttempts(progress.history);
+      var pred = predictedScore(progress.history);
+      var due = dueReviewIds(progress.review, now).filter(function (id) { return byId[id]; }).length;
+      var verdicts = { pass: ["Likely pass", "pass"], borderline: ["Borderline", "border"], "not-yet": ["Not yet", "fail"] };
+      var html = '<section class="card h-ready"><div>';
+      html += '<h1 class="h-eyebrow">Your readiness</h1>';
+      if (pred) {
+        var v = verdicts[pred.verdict];
+        html += '<div class="h-big">' + pred.score + '<small> / 1000 predicted</small></div>' +
+          '<span class="h-verdict ' + v[1] + '">' + v[0] + " · " + PASS_SCORE + " needed</span>";
+      }
+      var date = examDateLine(progress, now);
+      html += '<p class="h-meta">' + (date ? date + " · " : "") +
+        "<b>" + due + " due</b> for review today · " +
+        '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change exam date" : "set exam date") + "</button>" +
+        (pred ? "<br>Based on your last " + pred.count + " exam" + (pred.count === 1 ? "" : "s") + ", newest weighted most." : "") + "</p>";
+      html += '<div class="h-cta"><button class="btn primary h-cta-main" data-action="start-scenario-exam"' + scenarioExamGate() + ">Start scenario exam</button>" +
+        otherExamsMenu() + '<span class="muted">4 scenarios × 15 · 120 min</span></div>' + scenarioExamNote();
+      html += "</div><div>" + sparkline(attempts);
+      var last = null;
+      progress.history.forEach(function (h) { if (Array.isArray(h.items) && typeof h.score === "number") last = h; });
+      if (last) {
+        html += '<button class="h-row" data-action="review-attempt" data-date="' + esc(last.date) + '"><span>Last attempt · ' +
+          esc(last.examName || "Mock exam") + " · " + esc(new Date(last.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })) +
+          '</span><span class="muted">' + last.score + " · Review →</span></button>";
+      }
+      return html + "</div></section>";
+    }
+
+    function homeFirstVisit(progress) {
+      var html = '<section class="card h-ready h-first"><div>' +
+        '<h1 class="h-eyebrow">Welcome — find your starting point</h1>' +
+        '<div class="h-big h-big-sm">20-question diagnostic</div>' +
+        '<p class="h-meta">A short scenario exam (2 scenarios × 10, 40 min) in the real exam\'s layout gives you a predicted score and your weakest objectives straight away.</p>' +
+        '<div class="h-cta"><button class="btn primary h-cta-main" data-action="start-diagnostic"' +
+        (eligibleScenarios(SCENARIOS, SCENARIO_BANK, 10).length >= 2 ? "" : " disabled") + ">Start diagnostic</button>" +
+        '<button class="btn" data-action="start-scenario-exam"' + scenarioExamGate() + ">Skip — full scenario exam</button>" + otherExamsMenu() + "</div>" +
+        scenarioExamNote() +
+        '<div class="h-steps"><div class="h-step"><b>1 · Diagnose</b>20 questions in the real exam\'s layout.</div>' +
+        '<div class="h-step"><b>2 · Set your date</b>Get a countdown and a review queue.</div>' +
+        '<div class="h-step"><b>3 · Drill</b>Short drills on your weakest objectives.</div></div></div>' +
+        '<div><div class="h-step h-date"><b>Exam date</b>' +
+        (progress.examDate ? esc(progress.examDate) + "<br>" : "Optional — sets your countdown<br>") +
+        '<button class="btn small" data-action="edit-exam-date">' + (progress.examDate ? "Change" : "Set date") + "</button></div></div></section>";
+      html += '<section class="card h-col"><h2 class="h-h2">What\'s inside</h2><p class="h-sub">' +
+        SCENARIO_BANK.length + " scenario questions across the six official scenarios · " + BANK.length +
+        " domain questions" + (EXAMS.length ? " · " + EXAMS.length + " practice tests" : "") + "</p>" +
+        scenarioRows({}) + "</section>";
+      return html;
+    }
+
+    function resumeCard(saved) {
+      var savedDone = answeredCount(saved) >= saved.questions.length;
+      return '<div class="card resume-card"><div><strong>' +
+        (saved.scope === "unmapped"
+          ? "Supplementary mock"
+          : saved.diagnostic ? "Diagnostic"
+          : Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
+        (saved.examName ? " — " + esc(saved.examName) : "") +
+        (savedDone ? " ready to grade" : " in progress") + "</strong>" +
+        "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
+        (savedDone ? " — finish to see your score" : "") + "</p></div>" +
+        '<div class="row">' +
+        (savedDone
+          ? '<button class="btn primary" data-action="finish-saved">Finish &amp; see results</button>' +
+            '<button class="btn" data-action="resume">Review answers</button>'
+          : '<button class="btn primary" data-action="resume">Resume</button>') +
+        '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
+    }
+
+    function meter(pct) {
+      if (pct === null) return '<div class="h-meter"></div>';
+      var c = pct >= 72 ? "var(--pass)" : pct >= 50 ? "var(--flag)" : "var(--fail)";
+      return '<div class="h-meter"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
+    }
+
+    function homeNextStep(progress, lookup) {
+      var weak = weakestObjectives(objectiveAccuracy(progress.history, lookup));
+      if (!weak.length) return "";
+      var html = '<section class="card h-next"><h2 class="h-h2">Next best step</h2>' +
+        '<p class="h-sub">Your weakest objectives across your exams — each drill is up to 8 questions with a note on every option.</p>';
+      weak.forEach(function (w) {
+        html += '<div class="h-weak"><div>' + esc(w.key) + "<small>" + w.correct + " of " + w.total + " right</small></div>" +
+          meter(w.pct) + '<span class="h-pct">' + w.pct + "%</span>" +
+          '<button class="btn small" data-action="drill-objective" data-sub="' + esc(w.key) + '">Drill →</button></div>';
       });
-      html += "</div></div></div>";
+      return html + "</section>";
+    }
 
-      html += '<div class="grid">';
-      html += '<div class="card"><h2>Supplementary mock exam</h2>' +
-        "<p>Same 60-question format, drawn from the " + UNMAPPED.length +
-        " questions that are not mapped to an exam-guide subdomain. Extra practice once you have worked through the main pool.</p>" +
-        '<button class="btn" data-action="start-exam" data-scope="unmapped">Start supplementary</button></div>';
-      html += '<div class="card"><h2>Drill weak questions</h2><p>' +
-        (weak.length
-          ? weak.length + " question" + (weak.length === 1 ? "" : "s") + " you previously missed. Answer correctly to clear them."
-          : "Nothing here yet — questions you miss will collect here.") + "</p>" +
-        '<button class="btn" data-action="start-weak"' + (weak.length ? "" : " disabled") + ">Drill " + (weak.length || "") + "</button></div>";
-      var savedIds = progress.saved.filter(function (id) { return byId[id]; });
-      html += '<div class="card"><h2>Saved questions</h2><p>' +
-        (savedIds.length
-          ? savedIds.length + " question" + (savedIds.length === 1 ? "" : "s") + " kept for later. Star any question while answering to add it here."
-          : "Nothing saved yet — use ☆ Save on any question to keep it for later.") + "</p>" +
-        '<div class="row"><button class="btn" data-action="start-saved"' + (savedIds.length ? "" : " disabled") +
-        ">Study saved</button>" +
-        (savedIds.length ? '<button class="btn ghost small" data-action="clear-saved">Clear all</button>' : "") +
-        "</div></div>";
-
-      html += '<div class="card"><h2>Custom quiz</h2><p>Pick domains, length, and timing — e.g. a quick 20-question timed round on your weakest domain.</p>' +
-        '<button class="btn" data-action="custom-builder">Build quiz</button></div>';
-      html += "</div>";
-
-      var correctEver = progress.correctEver;
-      var attempted = progress.attempted;
-      var mastery = masteryByDomain(BANK, correctEver, attempted);
+    function homeObjectives(progress, lookup) {
+      var acc = objectiveAccuracy(progress.history, lookup);
+      var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted);
       var seenAll = 0, rightAll = 0, totalAll = 0;
       for (var sd = 1; sd <= 5; sd++) {
         var row = mastery[sd] || { correct: 0, attempted: 0, total: 0 };
         seenAll += row.attempted; rightAll += row.correct; totalAll += row.total;
       }
-      html += '<div class="card"><h2>Progress</h2>' +
-        '<div class="metric-row">' +
-        metricTile("Coverage", totalAll ? Math.round((seenAll / totalAll) * 100) : 0, seenAll + " of " + totalAll + " seen") +
-        metricTile("Accuracy", seenAll ? Math.round((rightAll / seenAll) * 100) : 0, rightAll + " of " + seenAll + " right") +
-        metricTile("Mastery", totalAll ? Math.round((rightAll / totalAll) * 100) : 0, rightAll + " of " + totalAll + " bank") +
-        "</div>" +
-        '<p class="muted">Coverage is how much of the bank you have tried; accuracy is how much of that you got right. Click a domain for its subdomains.</p>';
-      for (var md = 1; md <= 5; md++) {
-        var m = mastery[md] || { correct: 0, attempted: 0, total: 0 };
-        var pct = m.total ? Math.round((m.correct / m.total) * 100) : 0;
-        var seenPct = m.total ? Math.round((m.attempted / m.total) * 100) : 0;
-        var accPct = m.attempted ? Math.round((m.correct / m.attempted) * 100) : 0;
-        var open = expandedMastery === md;
-        html += '<div class="domain-score">' +
-          '<button class="domain-score-label expandable" data-action="toggle-mastery" data-domain="' + md + '" aria-expanded="' + open + '">' +
-          '<span class="domain-chip chip-d' + md + '">D' + md + "</span><span>" + esc(DOMAIN_NAMES[md]) + "</span>" +
-          '<span class="muted">' + m.attempted + "/" + m.total + " seen" +
-          (m.attempted ? " · " + accPct + "% right" : "") + "</span>" +
-          chev(open) + "</button>" +
-          '<div class="bar"><div class="bar-seen" style="width:' + seenPct + '%"></div>' +
-          '<div class="bar-fill ' + (accPct >= 72 || !m.attempted ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div>';
+      var pc = function (a, b) { return b ? Math.round((a / b) * 100) : 0; };
+      var html = '<section class="card h-col"><h2 class="h-h2">By objective</h2>' +
+        '<p class="h-sub">Bar = accuracy in your exams. Open a domain for its task statements.</p>' +
+        '<p class="h-bank">Question bank: Coverage ' + pc(seenAll, totalAll) + "% (" + seenAll + " of " + totalAll + " seen) · " +
+        "Accuracy " + pc(rightAll, seenAll) + "% (" + rightAll + " of " + seenAll + " right) · " +
+        "Mastery " + pc(rightAll, totalAll) + "%</p>";
+      for (var d = 1; d <= 5; d++) {
+        var c = 0, t = 0;
+        SUBDOMAINS.forEach(function (sub) { if (sub.indexOf(d + ".") === 0 && acc[sub]) { c += acc[sub].correct; t += acc[sub].total; } });
+        var pct = t ? Math.round((100 * c) / t) : null;
+        var m = mastery[d] || { attempted: 0, total: 0, correct: 0 };
+        var open = expandedMastery === d;
+        html += '<div class="h-dom"><button class="h-dom-head" data-action="toggle-mastery" data-domain="' + d + '" aria-expanded="' + open + '">' +
+          '<span class="domain-chip chip-d' + d + '">D' + d + "</span><span>" + esc(DOMAIN_NAMES[d]) +
+          '<small class="muted h-bank-seen">bank ' + m.attempted + "/" + m.total + " seen</small></span>" +
+          meter(pct) + '<span class="h-pct">' + (pct === null ? "—" : pct + "%") + "</span>" + chev(open) + "</button>";
         if (open) {
-          html += '<div class="sub-scores">';
-          masteryBySubdomain(BANK, correctEver, md, attempted).forEach(function (row) {
-            var spct = row.total ? Math.round((row.correct / row.total) * 100) : 0;
-            var sSeen = row.total ? Math.round((row.attempted / row.total) * 100) : 0;
-            var sAcc = row.attempted ? Math.round((row.correct / row.attempted) * 100) : 0;
-            html += '<div class="sub-score"><div class="sub-label">' +
-              (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
-              '<span class="sub-title">' + esc(row.title) + "</span>" +
-              '<span class="muted">' + row.attempted + "/" + row.total + " seen" +
-              (row.attempted ? " · " + sAcc + "%" : "") + "</span></div>" +
-              '<div class="bar thin"><div class="bar-seen" style="width:' + sSeen + '%"></div>' +
-              '<div class="bar-fill ' + (sAcc >= 72 || !row.attempted ? "ok" : "bad") + '" style="width:' + spct + '%"></div></div></div>';
+          html += '<div class="h-objs"><button class="h-row" data-action="practice" data-domain="' + d + '"><span>Practice all of D' + d +
+            ' (question bank)</span><span class="muted">' + m.correct + "/" + m.total + " right →</span></button>";
+          SUBDOMAINS.forEach(function (sub) {
+            if (sub.indexOf(d + ".") !== 0) return;
+            var a = acc[sub];
+            var p = a ? Math.round((100 * a.correct) / a.total) : null;
+            var code = sub.split(" ")[0];
+            html += '<div class="h-obj"><span>' + esc(sub) + "</span>" + meter(p) +
+              '<span class="h-pct">' + (p === null ? "—" : p + "%") + "</span>" +
+              '<span class="h-obj-act"><button class="btn small" data-action="drill-objective" data-sub="' + esc(sub) + '" title="Scenario questions with notes">Drill</button>' +
+              '<button class="btn small ghost" data-action="practice" data-domain="' + d + '" data-sub="' + esc(code) + '" title="Question-bank practice">Bank</button></span></div>';
           });
+          if (BANK.some(function (q) { return q.domain === d && !q.subdomain; })) {
+            html += '<button class="h-row" data-action="practice" data-domain="' + d + '" data-sub="general"><span>Untagged D' + d +
+              ' questions (question bank)</span><span class="muted">→</span></button>';
+          }
           html += "</div>";
         }
         html += "</div>";
       }
-      html += "</div>";
+      return html + "</section>";
+    }
 
-      html += '<div class="card"><h2>Practice by domain</h2>' +
-        '<p class="muted">Untimed, instant feedback. Click a domain to pick a subdomain, or practice all of it.</p>' +
-        '<div class="domain-list">';
-      for (var d = 1; d <= 5; d++) {
-        var count = BANK.filter(function (q) { return q.domain === d; }).length;
-        var pOpen = expandedPractice === d;
-        html += '<button class="domain-row" data-action="toggle-practice" data-domain="' + d + '" aria-expanded="' + pOpen + '">' +
-          '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
-          "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
-          '<span class="muted">' + count + " questions</span>" +
-          chev(pOpen) + "</button>";
-        if (pOpen) {
-          html += '<div class="sub-scores practice-subs">' +
-            '<button class="sub-row" data-action="practice" data-domain="' + d + '">' +
-            "<span><strong>Practice all</strong></span>" +
-            '<span class="muted">' + count + " questions</span></button>";
-          masteryBySubdomain(BANK, correctEver, d).forEach(function (row) {
-            html += '<button class="sub-row" data-action="practice" data-domain="' + d + '" data-sub="' + esc(row.key) +
-              '" title="' + esc(row.title || row.key) + '">' +
-              (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
-              '<span class="sub-title">' + esc(row.title) + "</span>" +
-              '<span class="muted">' + row.correct + "/" + row.total + "</span></button>";
-          });
-          html += "</div>";
-        }
+    function scenarioRows(best) {
+      return SCENARIOS.map(function (sc) {
+        var n = SCENARIO_BANK.filter(function (q) { return q.scenario === sc.id; }).length;
+        return '<button class="h-row" data-action="practice-scenario" data-scenario="' + sc.id + '"' + (n ? "" : " disabled") + ">" +
+          "<span>" + esc(sc.name) + '</span><span class="muted">' +
+          (best[sc.id] !== undefined ? "best " + best[sc.id] + "%" : n + " questions") + "</span></button>";
+      }).join("");
+    }
+
+    function homePractice(progress, now, lookup) {
+      var due = dueReviewIds(progress.review, now).filter(function (id) { return byId[id]; }).length;
+      var savedIds = progress.saved.filter(function (id) { return byId[id]; });
+      var html = '<section class="card h-col"><h2 class="h-h2">Practice</h2><p class="h-sub">Untimed, with feedback after each answer.</p>' +
+        '<button class="h-row' + (due ? " h-due" : "") + '" data-action="start-review"' + (due ? "" : " disabled") + ">" +
+        '<span>⟳ Due for review</span><span class="muted">' + (due ? due + " today" : "none due") + "</span></button>" +
+        '<button class="h-row" data-action="start-saved"' + (savedIds.length ? "" : " disabled") + ">" +
+        '<span>☆ Saved questions</span><span class="muted">' + savedIds.length + "</span></button>";
+      if (progress.weak.length) {
+        html += '<button class="h-row" data-action="start-weak"><span>Drill missed questions</span><span class="muted">' +
+          progress.weak.length + "</span></button>";
       }
-      html += "</div></div>";
+      html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
+        '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
+      return html + "</section>";
+    }
+
+    function homeCollapsed(progress) {
+      var history = progress.history;
+      var best = 0;
+      history.forEach(function (h) { if (h.score > best) best = h.score; });
+      var html = '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
+        (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span></summary>";
+      if (!history.length) {
+        html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
+      } else {
+        html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
+          "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
+        history.slice().reverse().forEach(function (h) {
+          var cells = "";
+          for (var d2 = 1; d2 <= 5; d2++) {
+            var pd = h.perDomain && h.perDomain[d2];
+            cells += "<td>" + (pd ? pd.correct + "/" + pd.total : "–") + "</td>";
+          }
+          html += "<tr><td>" + esc(new Date(h.date).toLocaleString()) +
+            (h.examName ? '<br><span class="muted">' + esc(h.examName) + "</span>" : "") + "</td>" +
+            "<td><strong>" + h.score + "</strong></td>" +
+            '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
+            "<td>" + h.correct + "/" + h.total + "</td>" + cells +
+            "<td>" + (Array.isArray(h.items)
+              ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
+              : "") + "</td></tr>";
+        });
+        html += "</tbody></table></div>" +
+          '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
+      }
+      html += "</details>";
 
       if (EXAMS.length) {
-        html += '<div class="card"><h2>Imported mock exams</h2>' +
-          '<p class="muted">Full exams from your own files, scored separately. They do not feed the ' +
-          "question bank, mastery or the weak drill.</p>" +
+        var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
+        html += '<details class="card h-fold" id="h-imported"><summary><b>Imported mock exams</b><span class="muted">' +
+          EXAMS.length + " tests · " + taken + " taken</span></summary>" +
+          '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
           '<div class="domain-list">';
         EXAMS.forEach(function (e) {
           var attempt = bestAttemptFor(e.id, history);
@@ -1068,41 +1335,14 @@ if (typeof document !== "undefined") {
             '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
             (attempt ? "Retake mock" : "Take mock") + "</button></div>";
         });
-        html += "</div></div>";
+        html += "</div></details>";
       }
 
-      html += accountCard();
-
-      html += '<div class="card"><h2>Score history</h2>';
-      if (!history.length) {
-        html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
-      } else {
-        html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
-          "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
-        history.slice().reverse().forEach(function (h) {
-          var cells = "";
-          for (var d2 = 1; d2 <= 5; d2++) {
-            var pd = h.perDomain[d2];
-            cells += "<td>" + (pd ? pd.correct + "/" + pd.total : "–") + "</td>";
-          }
-          html += "<tr><td>" + esc(new Date(h.date).toLocaleString()) +
-            (h.examName ? '<br><span class="muted">' + esc(h.examName) + "</span>" : "") + "</td>" +
-            "<td><strong>" + h.score + "</strong></td>" +
-            '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
-            "<td>" + h.correct + "/" + h.total + "</td>" + cells +
-            '<td>' + (Array.isArray(h.items)
-              ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
-              : "") + "</td></tr>";
-        });
-        html += "</tbody></table></div>" +
-          '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
-      }
-      html += "</div>";
-
-      html += '<footer class="site-footer">Practice material for personal study. ' +
-        "Not affiliated with Anthropic or Pearson VUE.</footer>";
-
-      app.innerHTML = html;
+      var S = window.CCARF_SYNC;
+      var signedIn = S && S.enabled && S.user();
+      html += '<details class="card h-fold" id="h-acct"><summary><b>Account &amp; sync</b><span class="muted">' +
+        (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span></summary>" + accountCard() + "</details>";
+      return html;
     }
 
     function answeredCount(sess) {
@@ -1313,16 +1553,19 @@ if (typeof document !== "undefined") {
       startTimer();
     }
 
-    function startScenarioExam() {
+    var DIAGNOSTIC = { count: 2, perScenario: 10, ms: 40 * 60 * 1000 };
+
+    function startScenarioExam(diagnostic) {
       if (!okToReplaceSaved()) return;
       var drawn = drawScenarioExam(SCENARIOS, SCENARIO_BANK,
-        usedScenarioQuestionIds(Store.snapshot().history));
+        usedScenarioQuestionIds(Store.snapshot().history), null, diagnostic ? DIAGNOSTIC : null);
       if (!drawn) {
         alert("The scenario exam needs at least four scenarios with " + SCENARIO_BLOCK + " questions each.");
         return;
       }
       reviewFilter = "all";
-      session = newSession("scenario", drawn.questions, EXAM_DURATION_MS);
+      session = newSession("scenario", drawn.questions, diagnostic ? DIAGNOSTIC.ms : EXAM_DURATION_MS);
+      if (diagnostic) session.diagnostic = true;
       session.scenarioIds = drawn.scenarioIds;
       session.strikes = {};
       session.comments = {};
@@ -1335,7 +1578,7 @@ if (typeof document !== "undefined") {
     /* Untimed, one scenario (or a set of missed questions), with every
      * option's note shown after each answer. Questions not yet met in a
      * scenario exam come first. */
-    function startScenarioPractice(scenarioId, ids) {
+    function startScenarioPractice(scenarioId, ids, title) {
       if (!okToReplaceSaved()) return;
       var pool = ids
         ? ids.map(function (id) { return byId[id]; }).filter(Boolean)
@@ -1347,11 +1590,51 @@ if (typeof document !== "undefined") {
       session = newSession("scenario-practice", pool, false);
       session.scenarioId = scenarioId || null;
       session.missed = !!ids;
+      session.practiceTitle = title || null;
       session.strikes = {};
       session.comments = {};
       session.separate = true;
       persistSession();
       renderQuestion();
+    }
+
+    /* Update the spaced-review schedule for a batch of graded answers. */
+    function scheduleReview(results) {
+      var review = Store.snapshot().review || {};
+      var now = Date.now();
+      var updates = {};
+      var any = false;
+      results.forEach(function (r) {
+        var next = reviewAfterAnswer(review[r.id], r.correct, now);
+        if (next) { updates[r.id] = next; any = true; }
+      });
+      if (any) Store.mutate(Mutations.recordReview(updates));
+    }
+
+    /* Due questions: scenario ones first (two-panel with notes), then the
+     * rest in ordinary practice. */
+    function startReview() {
+      var due = dueReviewIds(Store.snapshot().review, Date.now()).filter(function (id) { return byId[id]; });
+      var scn = due.filter(function (id) { return byId[id].scenario; });
+      if (scn.length) return startScenarioPractice(null, scn, "Due for review");
+      var rest = due.map(function (id) { return byId[id]; });
+      if (!rest.length) return;
+      if (!okToReplaceSaved()) return;
+      session = newSession("practice", shuffle(rest), false);
+      session.savedDrill = true;
+      session.reviewDrill = true;
+      persistSession();
+      renderQuestion();
+    }
+
+    /* Eight scenario questions on one task statement, unseen first; bank
+     * practice when the scenario bank has none for it. */
+    function drillObjective(sub) {
+      if (!sub) return;
+      var ids = objectiveDrillIds(SCENARIO_BANK, sub, usedScenarioQuestionIds(Store.snapshot().history));
+      if (ids.length) return startScenarioPractice(null, ids, "Drill — " + sub);
+      var code = sub.split(" ")[0];
+      return startPractice(Number(code.split(".")[0]), code);
     }
 
     function isScenarioMode(mode) {
@@ -1579,6 +1862,7 @@ if (typeof document !== "undefined") {
         case "retry": return "Retry Failed Questions";
         case "weak": return "Weak Questions Drill";
         case "practice":
+          if (session.reviewDrill) return "Due for review";
           if (session.savedDrill) return "Saved questions";
           if (session.examName) return "Practice — " + session.examName;
           return "Practice — " + (session.subKey && session.subKey !== "general"
@@ -1586,8 +1870,9 @@ if (typeof document !== "undefined") {
             : DOMAIN_NAMES[session.domain] + (session.subKey === "general" ? " (untagged)" : ""));
         case "custom": return "Custom Quiz";
         case "imported": return session.examName || "Imported exam";
-        case "scenario": return "Scenario Exam";
+        case "scenario": return session.diagnostic ? "Diagnostic" : "Scenario Exam";
         case "scenario-practice":
+          if (session.practiceTitle) return session.practiceTitle;
           return "Practice — " + (session.missed ? "missed scenario questions"
             : (scenarioById[session.scenarioId] || {}).name || "Scenario");
       }
@@ -1890,6 +2175,7 @@ if (typeof document !== "undefined") {
         if (right) session.tally.correct++;
         else session.tally.wrong++;
         if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right));
+        scheduleReview([{ id: q.id, correct: right }]);
       } else if (isMultiAnswer(byId[sq.id])) {
         session.answers[sq.id] = toggleChoice(session.answers[sq.id], optIdx);
       } else {
@@ -1924,7 +2210,7 @@ if (typeof document !== "undefined") {
         entry = {
           date: new Date().toISOString(),
           examId: session.examId || null,
-          examName: isScenarioExam ? "Scenario exam"
+          examName: isScenarioExam ? (session.diagnostic ? "Diagnostic" : "Scenario exam")
             : session.examName || (session.scope === "unmapped" ? "Supplementary mock" : null),
           /* The questions and answers are kept so the attempt can be
            * reviewed and broken down by subdomain later. */
@@ -1941,6 +2227,7 @@ if (typeof document !== "undefined") {
         };
         if (isScenarioExam) {
           entry.kind = "scenario";
+          if (session.diagnostic) entry.diagnostic = true;
           entry.scenarioIds = session.scenarioIds.slice();
         }
         finished.score = score;
@@ -1954,6 +2241,13 @@ if (typeof document !== "undefined") {
        * correctly, and records the attempt — so a later sync cannot bring
        * any of it back. */
       Store.mutate(Mutations.finishSession(grade, entry, { separate: separate }));
+      /* Practice modes scheduled each answer as it was given; everything
+       * else is graded here, and an unanswered question counts as wrong. */
+      if (session.mode !== "practice" && session.mode !== "scenario-practice") {
+        var right = {};
+        grade.correctIds.forEach(function (id) { right[id] = true; });
+        scheduleReview(questions.map(function (q) { return { id: q.id, correct: !!right[q.id] }; }));
+      }
 
       session = null;
       renderResults(finished);
@@ -2390,6 +2684,23 @@ if (typeof document !== "undefined") {
         case "start-scenario-exam": return startScenarioExam();
         case "review-all": return session && renderScenarioReview();
         case "practice-scenario": return startScenarioPractice(btn.dataset.scenario);
+        case "start-review": return startReview();
+        case "start-diagnostic": return startScenarioExam(true);
+        case "drill-objective": return drillObjective(btn.dataset.sub);
+        case "edit-exam-date": {
+          var cur = Store.snapshot().examDate || "";
+          var got = prompt("Exam date (YYYY-MM-DD). Leave empty to clear.", cur);
+          if (got === null) return;
+          got = String(got).trim();
+          if (got && !/^\d{4}-\d{2}-\d{2}$/.test(got)) { alert("Please use the format YYYY-MM-DD, e.g. 2026-12-14."); return; }
+          Store.mutate(Mutations.setExamDate(got || null));
+          return renderHome();
+        }
+        case "open-section": {
+          var sec = document.getElementById(btn.dataset.id);
+          if (sec) { sec.open = true; if (sec.scrollIntoView) sec.scrollIntoView({ behavior: "smooth" }); }
+          return;
+        }
         case "practice-missed": return lastFinished && startScenarioPractice(null, lastFinished.grade.wrongIds);
         case "review-filter": reviewFilter = btn.dataset.filter || "all"; return session && renderScenarioReview();
         case "strike": return session && toggleStrike(Number(btn.dataset.opt));
