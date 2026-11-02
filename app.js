@@ -1032,9 +1032,18 @@ if (typeof document !== "undefined") {
       session = null;
       view = "home";
       var progress = Store.snapshot();
-      var weak = progress.weak;
       var history = progress.history;
       var saved = isUsableSession(progress.session) ? progress.session : null;
+      var now = Date.now();
+      var lookup = function (id) { return byId[id]; };
+      var firstVisit = !history.length && !saved;
+
+      var html = "";
+      if (BANK.length !== EXPECTED_BANK_SIZE) {
+        html += '<div class="card load-warning" role="alert">⚠ Only ' + BANK.length + " of " +
+          EXPECTED_BANK_SIZE + " questions loaded — part of the bank failed to download. " +
+          '<button class="btn small" data-action="hard-reload">Reload the bank</button></div>';
+      }
 
       var S = window.CCARF_SYNC;
       var acctChip = "";
@@ -1043,173 +1052,264 @@ if (typeof document !== "undefined") {
           ? '<span class="signed-chip" title="Progress syncs to this account"><span class="dot">●</span> ' + esc(S.user().email || "signed in") + "</span>"
           : '<a class="btn ghost small" href="#acct">Sign in</a>';
       }
-
-      var html = "";
-      if (BANK.length !== EXPECTED_BANK_SIZE) {
-        html += '<div class="card load-warning" role="alert">⚠ Only ' + BANK.length + " of " +
-          EXPECTED_BANK_SIZE + " questions loaded — part of the bank failed to download. " +
-          '<button class="btn small" data-action="hard-reload">Reload the bank</button></div>';
-      }
-      html += '<div class="title-row">' +
-        '<h1><svg width="34" height="34" viewBox="0 0 128 128" aria-hidden="true">' +
+      html += '<div class="h-top"><div class="h-brand"><svg width="30" height="30" viewBox="0 0 128 128" aria-hidden="true">' +
         '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
         '<circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/>' +
-        '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Question Bank</h1>' +
+        '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Prep</div>' +
         '<span class="controls">' + acctChip +
         '<button class="btn icon" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="Switch theme">' +
         THEME_ICONS[currentTheme()] + "</button></span></div>";
 
-      html += '<header class="hero"><div class="intro"><div class="rule"></div>' +
-        "<p>Claude Certified Architect (Foundations) exam prep. Mark your answers, grade yourself against the real pass line, and drill what you miss.</p>" +
-        '<div class="facts"><span><b>' + BANK.length + "</b> questions</span>" +
-        "<span><b>" + MAPPED.length + "</b> exam-guide mapped</span>" +
-        "<span><b>" + UNMAPPED.length + "</b> supplementary</span>" +
-        "<span><b>30</b> subdomains</span></div></div>" +
-        '<div class="hero-cta">' +
-        '<button class="btn primary" data-action="start-exam" data-scope="mapped">Start mock exam</button>' +
-        (saved ? '<button class="btn" data-action="resume">Resume session</button>' : "") +
-        '<span class="sub">60 questions · 120 min · pass 720/1000<br>drawn from the ' +
-        MAPPED.length + " exam-guide questions</span>" +
-        "</div></header>";
-
-      if (saved) {
-        var savedDone = answeredCount(saved) >= saved.questions.length;
-        html += '<div class="card resume-card"><div><strong>' +
-          (saved.scope === "unmapped"
-            ? "Supplementary mock"
-            : Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
-          (saved.examName ? " — " + esc(saved.examName) : "") +
-          (savedDone ? " ready to grade" : " in progress") + "</strong>" +
-          "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
-          (savedDone ? " — finish to see your score" : "") + "</p></div>" +
-          '<div class="row">' +
-          (savedDone
-            ? '<button class="btn primary" data-action="finish-saved">Finish &amp; see results</button>' +
-              '<button class="btn" data-action="resume">Review answers</button>'
-            : '<button class="btn primary" data-action="resume">Resume</button>') +
-          '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
+      html += firstVisit ? homeFirstVisit(progress) : homeReadiness(progress, now);
+      if (saved) html += resumeCard(saved);
+      if (!firstVisit) {
+        html += homeNextStep(progress, lookup);
+        html += '<div class="h-cols">' + homeObjectives(progress, lookup) + homePractice(progress, now, lookup) + "</div>";
       }
+      html += homeCollapsed(progress);
+      html += '<footer class="site-footer">Practice material for personal study. ' +
+        "Not affiliated with Anthropic or Pearson VUE.</footer>";
+      app.innerHTML = html;
+    }
 
-      var scnEligible = eligibleScenarios(SCENARIOS, SCENARIO_BANK);
-      var scnReady = SCENARIOS.length > 0 && scnEligible.length === SCENARIOS.length;
-      html += '<div class="grid scn-cards"><div class="card scn-card"><h2>Scenario exam</h2>' +
-        "<p>The real exam's format: four of the six official scenarios, 15 questions each. The scenario stays on the left while you answer; flag, comment and strike out options, then review before you submit. 120 min · pass 720/1000.</p>" +
-        '<button class="btn primary" data-action="start-scenario-exam"' + (scnReady ? "" : " disabled") + ">Start scenario exam</button>" +
-        (scnReady ? "" : '<p class="muted">Available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>") +
-        '</div><div class="card"><h2>Practice by scenario</h2><p class="muted">Untimed, with a note for every option after each answer.</p>' +
-        '<div class="domain-list">';
-      SCENARIOS.forEach(function (sc) {
-        var n = SCENARIO_BANK.filter(function (q) { return q.scenario === sc.id; }).length;
-        html += '<button class="domain-row" data-action="practice-scenario" data-scenario="' + sc.id + '"' + (n ? "" : " disabled") + ">" +
-          "<span>" + esc(sc.name) + '</span><span class="muted">' + n + " question" + (n === 1 ? "" : "s") + "</span></button>";
+    function examDateLine(progress, now) {
+      if (!progress.examDate) return "";
+      var at = new Date(progress.examDate + "T00:00:00").getTime();
+      var days = Math.ceil((at - now) / DAY_MS);
+      if (!(days >= 0)) return "";
+      return "Exam on <b>" + esc(new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" })) +
+        "</b> · <b>" + days + " day" + (days === 1 ? "" : "s") + " left</b>";
+    }
+
+    /* The full exam needs every scenario to fill a block of 15. */
+    function scenarioExamReady() {
+      return SCENARIOS.length > 0 && eligibleScenarios(SCENARIOS, SCENARIO_BANK).length === SCENARIOS.length;
+    }
+    function scenarioExamGate() { return scenarioExamReady() ? "" : " disabled"; }
+    function scenarioExamNote() {
+      return scenarioExamReady() ? "" : '<p class="muted">The scenario exam is available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>";
+    }
+
+    function otherExamsMenu() {
+      return '<details class="h-menu"><summary class="btn">Other exams ▾</summary><div class="h-menu-list">' +
+        '<button class="btn ghost" data-action="start-exam" data-scope="mapped">Mock exam · exam-guide mapped, by domain weight</button>' +
+        '<button class="btn ghost" data-action="start-exam" data-scope="unmapped">Supplementary mock exam</button>' +
+        (EXAMS.length ? '<button class="btn ghost" data-action="open-section" data-id="h-imported">Imported practice tests ↓</button>' : "") +
+        "</div></details>";
+    }
+
+    function sparkline(attempts) {
+      var pts = attempts.slice(-6);
+      if (pts.length < 2) return "";
+      /* Scale to the scores shown (and the pass line) so changes are visible. */
+      var vals = pts.map(function (a) { return a.score; }).concat([PASS_SCORE]);
+      var lo = Math.max(0, Math.floor((Math.min.apply(null, vals) - 40) / 50) * 50);
+      var hi = Math.min(1000, Math.ceil((Math.max.apply(null, vals) + 40) / 50) * 50);
+      var w = 300, h = 90, y = function (v) { return Math.round(h - 8 - ((v - lo) / (hi - lo)) * (h - 18)); };
+      var step = (w - 20) / (pts.length - 1);
+      var coords = pts.map(function (a, i) { return Math.round(10 + i * step) + "," + y(a.score); });
+      return '<svg class="h-spark" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="Last ' + pts.length + ' exam scores">' +
+        '<line x1="0" x2="' + w + '" y1="' + y(PASS_SCORE) + '" y2="' + y(PASS_SCORE) + '" stroke="var(--pass)" stroke-dasharray="4 4" stroke-width="1.5"/>' +
+        '<text x="4" y="' + (y(PASS_SCORE) - 5) + '" font-size="10" fill="var(--pass)">pass ' + PASS_SCORE + "</text>" +
+        '<polyline fill="none" stroke="var(--pen)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="' + coords.join(" ") + '"/>' +
+        coords.map(function (c) { var p = c.split(","); return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="4" fill="var(--pen)"/>'; }).join("") +
+        '</svg><div class="h-spark-cap"><span>Last ' + pts.length + " exams</span><span>" + pts[pts.length - 1].score + "</span></div>";
+    }
+
+    function homeReadiness(progress, now) {
+      var attempts = examAttempts(progress.history);
+      var pred = predictedScore(progress.history);
+      var due = dueReviewIds(progress.review, now).filter(function (id) { return byId[id]; }).length;
+      var verdicts = { pass: ["Likely pass", "pass"], borderline: ["Borderline", "border"], "not-yet": ["Not yet", "fail"] };
+      var html = '<section class="card h-ready"><div>';
+      html += '<h1 class="h-eyebrow">Your readiness</h1>';
+      if (pred) {
+        var v = verdicts[pred.verdict];
+        html += '<div class="h-big">' + pred.score + '<small> / 1000 predicted</small></div>' +
+          '<span class="h-verdict ' + v[1] + '">' + v[0] + " · " + PASS_SCORE + " needed</span>";
+      }
+      var date = examDateLine(progress, now);
+      html += '<p class="h-meta">' + (date ? date + " · " : "") +
+        "<b>" + due + " due</b> for review today · " +
+        '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change exam date" : "set exam date") + "</button>" +
+        (pred ? "<br>Based on your last " + pred.count + " exam" + (pred.count === 1 ? "" : "s") + ", newest weighted most." : "") + "</p>";
+      html += '<div class="h-cta"><button class="btn primary h-cta-main" data-action="start-scenario-exam"' + scenarioExamGate() + ">Start scenario exam</button>" +
+        otherExamsMenu() + '<span class="muted">4 scenarios × 15 · 120 min</span></div>' + scenarioExamNote();
+      html += "</div><div>" + sparkline(attempts);
+      var last = null;
+      progress.history.forEach(function (h) { if (Array.isArray(h.items) && typeof h.score === "number") last = h; });
+      if (last) {
+        html += '<button class="h-row" data-action="review-attempt" data-date="' + esc(last.date) + '"><span>Last attempt · ' +
+          esc(last.examName || "Mock exam") + " · " + esc(new Date(last.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })) +
+          '</span><span class="muted">' + last.score + " · Review →</span></button>";
+      }
+      return html + "</div></section>";
+    }
+
+    function homeFirstVisit(progress) {
+      var html = '<section class="card h-ready h-first"><div>' +
+        '<h1 class="h-eyebrow">Welcome — find your starting point</h1>' +
+        '<div class="h-big h-big-sm">20-question diagnostic</div>' +
+        '<p class="h-meta">A short scenario exam (2 scenarios × 10, 40 min) in the real exam\'s layout gives you a predicted score and your weakest objectives straight away.</p>' +
+        '<div class="h-cta"><button class="btn primary h-cta-main" data-action="start-diagnostic"' +
+        (eligibleScenarios(SCENARIOS, SCENARIO_BANK, 10).length >= 2 ? "" : " disabled") + ">Start diagnostic</button>" +
+        '<button class="btn" data-action="start-scenario-exam"' + scenarioExamGate() + ">Skip — full scenario exam</button>" + otherExamsMenu() + "</div>" +
+        scenarioExamNote() +
+        '<div class="h-steps"><div class="h-step"><b>1 · Diagnose</b>20 questions in the real exam\'s layout.</div>' +
+        '<div class="h-step"><b>2 · Set your date</b>Get a countdown and a review queue.</div>' +
+        '<div class="h-step"><b>3 · Drill</b>Short drills on your weakest objectives.</div></div></div>' +
+        '<div><div class="h-step h-date"><b>Exam date</b>' +
+        (progress.examDate ? esc(progress.examDate) + "<br>" : "Optional — sets your countdown<br>") +
+        '<button class="btn small" data-action="edit-exam-date">' + (progress.examDate ? "Change" : "Set date") + "</button></div></div></section>";
+      html += '<section class="card h-col"><h2 class="h-h2">What\'s inside</h2><p class="h-sub">' +
+        SCENARIO_BANK.length + " scenario questions across the six official scenarios · " + BANK.length +
+        " domain questions" + (EXAMS.length ? " · " + EXAMS.length + " practice tests" : "") + "</p>" +
+        scenarioRows({}) + "</section>";
+      return html;
+    }
+
+    function resumeCard(saved) {
+      var savedDone = answeredCount(saved) >= saved.questions.length;
+      return '<div class="card resume-card"><div><strong>' +
+        (saved.scope === "unmapped"
+          ? "Supplementary mock"
+          : saved.diagnostic ? "Diagnostic"
+          : Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
+        (saved.examName ? " — " + esc(saved.examName) : "") +
+        (savedDone ? " ready to grade" : " in progress") + "</strong>" +
+        "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
+        (savedDone ? " — finish to see your score" : "") + "</p></div>" +
+        '<div class="row">' +
+        (savedDone
+          ? '<button class="btn primary" data-action="finish-saved">Finish &amp; see results</button>' +
+            '<button class="btn" data-action="resume">Review answers</button>'
+          : '<button class="btn primary" data-action="resume">Resume</button>') +
+        '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
+    }
+
+    function meter(pct) {
+      if (pct === null) return '<div class="h-meter"></div>';
+      var c = pct >= 72 ? "var(--pass)" : pct >= 50 ? "var(--flag)" : "var(--fail)";
+      return '<div class="h-meter"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
+    }
+
+    function homeNextStep(progress, lookup) {
+      var weak = weakestObjectives(objectiveAccuracy(progress.history, lookup));
+      if (!weak.length) return "";
+      var html = '<section class="card h-next"><h2 class="h-h2">Next best step</h2>' +
+        '<p class="h-sub">Your weakest objectives across your exams — each drill is up to 8 questions with a note on every option.</p>';
+      weak.forEach(function (w) {
+        html += '<div class="h-weak"><div>' + esc(w.key) + "<small>" + w.correct + " of " + w.total + " right</small></div>" +
+          meter(w.pct) + '<span class="h-pct">' + w.pct + "%</span>" +
+          '<button class="btn small" data-action="drill-objective" data-sub="' + esc(w.key) + '">Drill →</button></div>';
       });
-      html += "</div></div></div>";
+      return html + "</section>";
+    }
 
-      html += '<div class="grid">';
-      html += '<div class="card"><h2>Supplementary mock exam</h2>' +
-        "<p>Same 60-question format, drawn from the " + UNMAPPED.length +
-        " questions that are not mapped to an exam-guide subdomain. Extra practice once you have worked through the main pool.</p>" +
-        '<button class="btn" data-action="start-exam" data-scope="unmapped">Start supplementary</button></div>';
-      html += '<div class="card"><h2>Drill weak questions</h2><p>' +
-        (weak.length
-          ? weak.length + " question" + (weak.length === 1 ? "" : "s") + " you previously missed. Answer correctly to clear them."
-          : "Nothing here yet — questions you miss will collect here.") + "</p>" +
-        '<button class="btn" data-action="start-weak"' + (weak.length ? "" : " disabled") + ">Drill " + (weak.length || "") + "</button></div>";
-      var savedIds = progress.saved.filter(function (id) { return byId[id]; });
-      html += '<div class="card"><h2>Saved questions</h2><p>' +
-        (savedIds.length
-          ? savedIds.length + " question" + (savedIds.length === 1 ? "" : "s") + " kept for later. Star any question while answering to add it here."
-          : "Nothing saved yet — use ☆ Save on any question to keep it for later.") + "</p>" +
-        '<div class="row"><button class="btn" data-action="start-saved"' + (savedIds.length ? "" : " disabled") +
-        ">Study saved</button>" +
-        (savedIds.length ? '<button class="btn ghost small" data-action="clear-saved">Clear all</button>' : "") +
-        "</div></div>";
-
-      html += '<div class="card"><h2>Custom quiz</h2><p>Pick domains, length, and timing — e.g. a quick 20-question timed round on your weakest domain.</p>' +
-        '<button class="btn" data-action="custom-builder">Build quiz</button></div>';
-      html += "</div>";
-
-      var correctEver = progress.correctEver;
-      var attempted = progress.attempted;
-      var mastery = masteryByDomain(BANK, correctEver, attempted);
+    function homeObjectives(progress, lookup) {
+      var acc = objectiveAccuracy(progress.history, lookup);
+      var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted);
       var seenAll = 0, rightAll = 0, totalAll = 0;
       for (var sd = 1; sd <= 5; sd++) {
         var row = mastery[sd] || { correct: 0, attempted: 0, total: 0 };
         seenAll += row.attempted; rightAll += row.correct; totalAll += row.total;
       }
-      html += '<div class="card"><h2>Progress</h2>' +
-        '<div class="metric-row">' +
-        metricTile("Coverage", totalAll ? Math.round((seenAll / totalAll) * 100) : 0, seenAll + " of " + totalAll + " seen") +
-        metricTile("Accuracy", seenAll ? Math.round((rightAll / seenAll) * 100) : 0, rightAll + " of " + seenAll + " right") +
-        metricTile("Mastery", totalAll ? Math.round((rightAll / totalAll) * 100) : 0, rightAll + " of " + totalAll + " bank") +
-        "</div>" +
-        '<p class="muted">Coverage is how much of the bank you have tried; accuracy is how much of that you got right. Click a domain for its subdomains.</p>';
-      for (var md = 1; md <= 5; md++) {
-        var m = mastery[md] || { correct: 0, attempted: 0, total: 0 };
-        var pct = m.total ? Math.round((m.correct / m.total) * 100) : 0;
-        var seenPct = m.total ? Math.round((m.attempted / m.total) * 100) : 0;
-        var accPct = m.attempted ? Math.round((m.correct / m.attempted) * 100) : 0;
-        var open = expandedMastery === md;
-        html += '<div class="domain-score">' +
-          '<button class="domain-score-label expandable" data-action="toggle-mastery" data-domain="' + md + '" aria-expanded="' + open + '">' +
-          '<span class="domain-chip chip-d' + md + '">D' + md + "</span><span>" + esc(DOMAIN_NAMES[md]) + "</span>" +
-          '<span class="muted">' + m.attempted + "/" + m.total + " seen" +
-          (m.attempted ? " · " + accPct + "% right" : "") + "</span>" +
-          chev(open) + "</button>" +
-          '<div class="bar"><div class="bar-seen" style="width:' + seenPct + '%"></div>' +
-          '<div class="bar-fill ' + (accPct >= 72 || !m.attempted ? "ok" : "bad") + '" style="width:' + pct + '%"></div></div>';
+      var pc = function (a, b) { return b ? Math.round((a / b) * 100) : 0; };
+      var html = '<section class="card h-col"><h2 class="h-h2">By objective</h2>' +
+        '<p class="h-sub">Bar = accuracy in your exams. Open a domain for its task statements.</p>' +
+        '<p class="h-bank">Question bank: Coverage ' + pc(seenAll, totalAll) + "% (" + seenAll + " of " + totalAll + " seen) · " +
+        "Accuracy " + pc(rightAll, seenAll) + "% (" + rightAll + " of " + seenAll + " right) · " +
+        "Mastery " + pc(rightAll, totalAll) + "%</p>";
+      for (var d = 1; d <= 5; d++) {
+        var c = 0, t = 0;
+        SUBDOMAINS.forEach(function (sub) { if (sub.indexOf(d + ".") === 0 && acc[sub]) { c += acc[sub].correct; t += acc[sub].total; } });
+        var pct = t ? Math.round((100 * c) / t) : null;
+        var m = mastery[d] || { attempted: 0, total: 0, correct: 0 };
+        var open = expandedMastery === d;
+        html += '<div class="h-dom"><button class="h-dom-head" data-action="toggle-mastery" data-domain="' + d + '" aria-expanded="' + open + '">' +
+          '<span class="domain-chip chip-d' + d + '">D' + d + "</span><span>" + esc(DOMAIN_NAMES[d]) +
+          '<small class="muted h-bank-seen">bank ' + m.attempted + "/" + m.total + " seen</small></span>" +
+          meter(pct) + '<span class="h-pct">' + (pct === null ? "—" : pct + "%") + "</span>" + chev(open) + "</button>";
         if (open) {
-          html += '<div class="sub-scores">';
-          masteryBySubdomain(BANK, correctEver, md, attempted).forEach(function (row) {
-            var spct = row.total ? Math.round((row.correct / row.total) * 100) : 0;
-            var sSeen = row.total ? Math.round((row.attempted / row.total) * 100) : 0;
-            var sAcc = row.attempted ? Math.round((row.correct / row.attempted) * 100) : 0;
-            html += '<div class="sub-score"><div class="sub-label">' +
-              (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
-              '<span class="sub-title">' + esc(row.title) + "</span>" +
-              '<span class="muted">' + row.attempted + "/" + row.total + " seen" +
-              (row.attempted ? " · " + sAcc + "%" : "") + "</span></div>" +
-              '<div class="bar thin"><div class="bar-seen" style="width:' + sSeen + '%"></div>' +
-              '<div class="bar-fill ' + (sAcc >= 72 || !row.attempted ? "ok" : "bad") + '" style="width:' + spct + '%"></div></div></div>';
+          html += '<div class="h-objs"><button class="h-row" data-action="practice" data-domain="' + d + '"><span>Practice all of D' + d +
+            ' (question bank)</span><span class="muted">' + m.correct + "/" + m.total + " right →</span></button>";
+          SUBDOMAINS.forEach(function (sub) {
+            if (sub.indexOf(d + ".") !== 0) return;
+            var a = acc[sub];
+            var p = a ? Math.round((100 * a.correct) / a.total) : null;
+            html += '<div class="h-obj"><span>' + esc(sub) + "</span>" + meter(p) +
+              '<span class="h-pct">' + (p === null ? "—" : p + "%") + "</span>" +
+              '<button class="btn small" data-action="drill-objective" data-sub="' + esc(sub) + '">Drill</button></div>';
           });
           html += "</div>";
         }
         html += "</div>";
       }
-      html += "</div>";
+      return html + "</section>";
+    }
 
-      html += '<div class="card"><h2>Practice by domain</h2>' +
-        '<p class="muted">Untimed, instant feedback. Click a domain to pick a subdomain, or practice all of it.</p>' +
-        '<div class="domain-list">';
-      for (var d = 1; d <= 5; d++) {
-        var count = BANK.filter(function (q) { return q.domain === d; }).length;
-        var pOpen = expandedPractice === d;
-        html += '<button class="domain-row" data-action="toggle-practice" data-domain="' + d + '" aria-expanded="' + pOpen + '">' +
-          '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
-          "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
-          '<span class="muted">' + count + " questions</span>" +
-          chev(pOpen) + "</button>";
-        if (pOpen) {
-          html += '<div class="sub-scores practice-subs">' +
-            '<button class="sub-row" data-action="practice" data-domain="' + d + '">' +
-            "<span><strong>Practice all</strong></span>" +
-            '<span class="muted">' + count + " questions</span></button>";
-          masteryBySubdomain(BANK, correctEver, d).forEach(function (row) {
-            html += '<button class="sub-row" data-action="practice" data-domain="' + d + '" data-sub="' + esc(row.key) +
-              '" title="' + esc(row.title || row.key) + '">' +
-              (row.key === "general" ? "" : '<span class="sub-code">' + esc(row.key) + "</span>") +
-              '<span class="sub-title">' + esc(row.title) + "</span>" +
-              '<span class="muted">' + row.correct + "/" + row.total + "</span></button>";
-          });
-          html += "</div>";
-        }
+    function scenarioRows(best) {
+      return SCENARIOS.map(function (sc) {
+        var n = SCENARIO_BANK.filter(function (q) { return q.scenario === sc.id; }).length;
+        return '<button class="h-row" data-action="practice-scenario" data-scenario="' + sc.id + '"' + (n ? "" : " disabled") + ">" +
+          "<span>" + esc(sc.name) + '</span><span class="muted">' +
+          (best[sc.id] !== undefined ? "best " + best[sc.id] + "%" : n + " questions") + "</span></button>";
+      }).join("");
+    }
+
+    function homePractice(progress, now, lookup) {
+      var due = dueReviewIds(progress.review, now).filter(function (id) { return byId[id]; }).length;
+      var savedIds = progress.saved.filter(function (id) { return byId[id]; });
+      var html = '<section class="card h-col"><h2 class="h-h2">Practice</h2><p class="h-sub">Untimed, with feedback after each answer.</p>' +
+        '<button class="h-row' + (due ? " h-due" : "") + '" data-action="start-review"' + (due ? "" : " disabled") + ">" +
+        '<span>⟳ Due for review</span><span class="muted">' + (due ? due + " today" : "none due") + "</span></button>" +
+        '<button class="h-row" data-action="start-saved"' + (savedIds.length ? "" : " disabled") + ">" +
+        '<span>☆ Saved questions</span><span class="muted">' + savedIds.length + "</span></button>";
+      if (progress.weak.length) {
+        html += '<button class="h-row" data-action="start-weak"><span>Drill missed questions</span><span class="muted">' +
+          progress.weak.length + "</span></button>";
       }
-      html += "</div></div>";
+      html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
+        '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
+      return html + "</section>";
+    }
+
+    function homeCollapsed(progress) {
+      var history = progress.history;
+      var best = 0;
+      history.forEach(function (h) { if (h.score > best) best = h.score; });
+      var html = '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
+        (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span></summary>";
+      if (!history.length) {
+        html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
+      } else {
+        html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
+          "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
+        history.slice().reverse().forEach(function (h) {
+          var cells = "";
+          for (var d2 = 1; d2 <= 5; d2++) {
+            var pd = h.perDomain && h.perDomain[d2];
+            cells += "<td>" + (pd ? pd.correct + "/" + pd.total : "–") + "</td>";
+          }
+          html += "<tr><td>" + esc(new Date(h.date).toLocaleString()) +
+            (h.examName ? '<br><span class="muted">' + esc(h.examName) + "</span>" : "") + "</td>" +
+            "<td><strong>" + h.score + "</strong></td>" +
+            '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
+            "<td>" + h.correct + "/" + h.total + "</td>" + cells +
+            "<td>" + (Array.isArray(h.items)
+              ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
+              : "") + "</td></tr>";
+        });
+        html += "</tbody></table></div>" +
+          '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
+      }
+      html += "</details>";
 
       if (EXAMS.length) {
-        html += '<div class="card"><h2>Imported mock exams</h2>' +
-          '<p class="muted">Full exams from your own files, scored separately. They do not feed the ' +
-          "question bank, mastery or the weak drill.</p>" +
+        var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
+        html += '<details class="card h-fold" id="h-imported"><summary><b>Imported mock exams</b><span class="muted">' +
+          EXAMS.length + " tests · " + taken + " taken</span></summary>" +
+          '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
           '<div class="domain-list">';
         EXAMS.forEach(function (e) {
           var attempt = bestAttemptFor(e.id, history);
@@ -1220,41 +1320,14 @@ if (typeof document !== "undefined") {
             '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
             (attempt ? "Retake mock" : "Take mock") + "</button></div>";
         });
-        html += "</div></div>";
+        html += "</div></details>";
       }
 
-      html += accountCard();
-
-      html += '<div class="card"><h2>Score history</h2>';
-      if (!history.length) {
-        html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
-      } else {
-        html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
-          "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
-        history.slice().reverse().forEach(function (h) {
-          var cells = "";
-          for (var d2 = 1; d2 <= 5; d2++) {
-            var pd = h.perDomain[d2];
-            cells += "<td>" + (pd ? pd.correct + "/" + pd.total : "–") + "</td>";
-          }
-          html += "<tr><td>" + esc(new Date(h.date).toLocaleString()) +
-            (h.examName ? '<br><span class="muted">' + esc(h.examName) + "</span>" : "") + "</td>" +
-            "<td><strong>" + h.score + "</strong></td>" +
-            '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
-            "<td>" + h.correct + "/" + h.total + "</td>" + cells +
-            '<td>' + (Array.isArray(h.items)
-              ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
-              : "") + "</td></tr>";
-        });
-        html += "</tbody></table></div>" +
-          '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
-      }
-      html += "</div>";
-
-      html += '<footer class="site-footer">Practice material for personal study. ' +
-        "Not affiliated with Anthropic or Pearson VUE.</footer>";
-
-      app.innerHTML = html;
+      var S = window.CCARF_SYNC;
+      var signedIn = S && S.enabled && S.user();
+      html += '<details class="card h-fold" id="h-acct"' + (location.hash === "#acct" ? " open" : "") + '><summary><b>Account &amp; sync</b><span class="muted">' +
+        (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span></summary>" + accountCard() + "</details>";
+      return html;
     }
 
     function answeredCount(sess) {
@@ -2599,6 +2672,20 @@ if (typeof document !== "undefined") {
         case "start-review": return startReview();
         case "start-diagnostic": return startScenarioExam(true);
         case "drill-objective": return drillObjective(btn.dataset.sub);
+        case "edit-exam-date": {
+          var cur = Store.snapshot().examDate || "";
+          var got = prompt("Exam date (YYYY-MM-DD). Leave empty to clear.", cur);
+          if (got === null) return;
+          got = String(got).trim();
+          if (got && !/^\d{4}-\d{2}-\d{2}$/.test(got)) { alert("Please use the format YYYY-MM-DD, e.g. 2026-12-14."); return; }
+          Store.mutate(Mutations.setExamDate(got || null));
+          return renderHome();
+        }
+        case "open-section": {
+          var sec = document.getElementById(btn.dataset.id);
+          if (sec) { sec.open = true; if (sec.scrollIntoView) sec.scrollIntoView({ behavior: "smooth" }); }
+          return;
+        }
         case "practice-missed": return lastFinished && startScenarioPractice(null, lastFinished.grade.wrongIds);
         case "review-filter": reviewFilter = btn.dataset.filter || "all"; return session && renderScenarioReview();
         case "strike": return session && toggleStrike(Number(btn.dataset.opt));

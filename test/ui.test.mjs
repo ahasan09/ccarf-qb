@@ -379,7 +379,7 @@ test("imported exams are listed separately and never enter the question bank", (
   assert.ok(app.html().includes("Practice Test 1"));
   assert.ok(app.html().includes('data-action="start-imported"'));
   // bank totals must be untouched by the imported questions
-  assert.ok(app.html().includes("0/20"), "domain mastery still counts only bank questions");
+  assert.ok(app.html().includes("100 domain questions"), "the bank count excludes imported questions");
 });
 
 test("a multi-answer question lets you pick several options and says how many", () => {
@@ -529,7 +529,7 @@ test("a question can be saved and later studied from the home screen", () => {
   assert.equal(app.store().snapshot().saved.length, 1);
 
   app.click("quit");
-  assert.ok(app.html().includes("1 question kept for later"));
+  assert.match(app.html(), /data-action="start-saved"(?![^>]*disabled)/);
   app.click("start-saved");
   assert.ok(app.html().includes("Saved questions"), "the drill opens");
   assert.ok(app.html().includes('data-action="select"'));
@@ -982,16 +982,15 @@ test("a legacy history entry still opens the one-panel review", () => {
 test("the home screen offers the scenario exam and practice by scenario", () => {
   const app = launch();
   const html = app.html();
-  assert.ok(html.includes("Scenario exam"));
+  assert.ok(html.includes("scenario exam"));
   assert.match(html, /data-action="start-scenario-exam"(?![^>]*disabled)/);
-  assert.ok(html.includes("Practice by scenario"));
   assert.equal((html.match(/data-action="practice-scenario"/g) || []).length, 6);
 });
 
 test("the scenario exam button waits until every scenario has 15 questions", () => {
   const app = launch({ scenarioBank: scenarioBank({ support: 16, ci: 16, research: 16, devprod: 16, codegen: 16, extraction: 10 }) });
   assert.match(app.html(), /data-action="start-scenario-exam"[^>]*disabled/);
-  assert.ok(app.html().includes("Available once every scenario has 15 questions"));
+  assert.ok(app.html().includes("available once every scenario has 15 questions"));
   assert.match(app.html(), /data-action="practice-scenario" data-scenario="extraction"(?![^>]*disabled)/);
 });
 
@@ -1194,4 +1193,110 @@ test("an objective with no scenario questions falls back to bank practice", () =
   const sess = app.store().snapshot().session;
   assert.equal(sess.mode, "practice");
   assert.ok(sess.questions.length > 0);
+});
+
+/* ------------------------------------------------------- home redesign */
+function seedHistory(app, scores, opts = {}) {
+  app.store().mutate({ key: null, apply: (s) => {
+    s.history = scores.map((score, i) => ({
+      date: `2026-10-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`, score, pass: score >= 720,
+      correct: 0, total: 60, perDomain: {}, examName: opts.name || "Scenario exam",
+      kind: opts.kind === undefined ? "scenario" : opts.kind,
+      items: opts.items || [],
+    }));
+  } });
+  app.click("home");
+}
+
+test("a fresh visitor gets the diagnostic and no readiness number", () => {
+  const app = launch();
+  const html = app.html();
+  assert.ok(html.includes('data-action="start-diagnostic"'));
+  assert.ok(html.includes('data-action="start-scenario-exam"'), "can skip to the full exam");
+  assert.ok(!html.includes("/ 1000 predicted"), "no prediction without data");
+  assert.ok(html.includes('data-action="edit-exam-date"'));
+});
+
+test("after an exam the readiness panel shows a weighted predicted score and verdict", () => {
+  const app = launch();
+  seedHistory(app, [600, 700, 800]);
+  const html = app.html();
+  assert.ok(!html.includes('data-action="start-diagnostic"'), "returning layout");
+  assert.ok(html.includes(">717<"), "weighted score shown");
+  assert.ok(html.includes("Borderline"));
+  assert.ok(html.includes("last 3 exams"));
+  assert.ok(html.includes("<polyline"), "trend chart drawn");
+  assert.ok(html.includes('data-action="review-attempt"'), "last attempt can be reviewed");
+});
+
+test("imported-only history shows a score but no next step", () => {
+  const app = launch();
+  seedHistory(app, [800], { kind: null, name: "Practice Test 1", items: [{ id: "pt1-q001", given: 0 }] });
+  const html = app.html();
+  assert.ok(html.includes(">800<"));
+  assert.ok(!html.includes("Next best step"));
+});
+
+test("the weakest objectives get drill buttons", () => {
+  const app = launch();
+  const items = [];
+  for (let i = 1; i <= 5; i++) items.push({ id: `sc-ci-${i}`, given: 1 }); // all wrong, subdomain 1.1
+  seedHistory(app, [500], { items });
+  const html = app.html();
+  assert.ok(html.includes("Next best step"));
+  assert.match(html, /data-action="drill-objective" data-sub="1\.1 Design and implement agentic loops/);
+});
+
+test("a past exam date hides the countdown; a future one shows days left", () => {
+  const app = launch();
+  seedHistory(app, [700]);
+  app.store().mutate({ key: "examDate", apply: (s) => { s.examDate = "2001-01-01"; } });
+  app.click("home");
+  assert.ok(!app.html().includes("days left"));
+  const d = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+  app.store().mutate({ key: "examDate", apply: (s) => { s.examDate = d; } });
+  app.click("home");
+  assert.match(app.html(), /(10|11) days left/);
+});
+
+test("the exam date can be set from the home page", () => {
+  const d = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  const app = launch({ prompt: () => d });
+  app.click("edit-exam-date");
+  assert.equal(app.store().snapshot().examDate, d);
+  const bad = launch({ prompt: () => "next week" });
+  bad.click("edit-exam-date");
+  assert.equal(bad.store().snapshot().examDate, null);
+});
+
+test("the returning home keeps every way in", () => {
+  const app = launch();
+  seedHistory(app, [700]);
+  const html = app.html();
+  for (const a of ['data-action="start-scenario-exam"', 'data-scope="mapped"', 'data-scope="unmapped"',
+    'data-action="custom-builder"', 'data-action="practice-scenario"', 'data-action="start-review"',
+    'data-action="start-saved"', 'data-action="toggle-mastery"']) assert.ok(html.includes(a), a);
+  assert.ok(html.includes("By objective") && html.includes("Score history") && html.includes("Account"));
+  app.click("toggle-mastery", { domain: "2" });
+  assert.ok(app.html().includes('data-action="practice" data-domain="2"'), "practice all is reachable");
+  assert.ok(app.html().includes('data-action="drill-objective" data-sub="2.'), "objectives listed");
+});
+
+test("missed questions to drill appear only when there are some", () => {
+  const app = launch();
+  seedHistory(app, [700]);
+  assert.ok(!app.html().includes('data-action="start-weak"'));
+  app.store().mutate({ key: null, apply: (s) => { s.weak = ["d1-q1"]; } });
+  app.click("home");
+  assert.ok(app.html().includes('data-action="start-weak"'));
+});
+
+test("the due count reflects questions due for review", () => {
+  const app = launch();
+  seedHistory(app, [700]);
+  app.store().mutate({ key: null, apply: (s) => {
+    s.review = { "sc-ci-1": { step: 0, due: Date.now() - 1, updatedAt: 1 }, "sc-ci-2": { step: 0, due: Date.now() + 1e9, updatedAt: 1 } };
+  } });
+  app.click("home");
+  assert.match(app.html(), /1 due/);
 });
