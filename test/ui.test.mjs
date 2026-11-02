@@ -1158,3 +1158,40 @@ test("start-review runs a session over exactly the due questions", () => {
   assert.equal(sess.mode, "scenario-practice", "scenario questions first");
   assert.deepEqual(sess.questions.map((q) => q.id).sort(), ["sc-ci-1", "sc-support-2"]);
 });
+
+/* ------------------------------------------------ diagnostic and drills */
+test("the diagnostic is 2 scenarios x 10 with 40 minutes and is recorded as such", () => {
+  const app = launch();
+  const before = Date.now();
+  app.click("start-diagnostic");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.questions.length, 20);
+  assert.equal(sess.scenarioIds.length, 2);
+  assert.ok(sess.deadline - before >= 40 * 60 * 1000 - 1000 && sess.deadline - before <= 40 * 60 * 1000 + 1000);
+  assert.ok(app.html().includes("Scenario 1 of 2"));
+  app.click("submit");
+  const h = app.store().snapshot().history[0];
+  assert.equal(h.diagnostic, true);
+  assert.equal(h.kind, "scenario");
+  assert.equal(h.examName, "Diagnostic");
+  assert.equal(h.total, 20);
+});
+
+test("an objective drill is up to 8 scenario questions on that objective", () => {
+  const bankQs = scenarioBank();
+  bankQs.slice(0, 5).forEach((q) => { q.subdomain = "4.5 Design efficient batch processing strategies"; });
+  const app = launch({ scenarioBank: bankQs });
+  app.click("drill-objective", { sub: "4.5 Design efficient batch processing strategies" });
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario-practice");
+  assert.equal(sess.questions.length, 5);
+  assert.ok(app.html().includes("4.5"));
+});
+
+test("an objective with no scenario questions falls back to bank practice", () => {
+  const app = launch();
+  app.click("drill-objective", { sub: "3.1 Sample subdomain" });
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "practice");
+  assert.ok(sess.questions.length > 0);
+});

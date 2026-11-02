@@ -302,9 +302,10 @@ function scenarioPool(bank, scenarioId) {
 }
 
 /* Scenarios with enough questions to fill a block of the exam. */
-function eligibleScenarios(scenarios, bank) {
+function eligibleScenarios(scenarios, bank, perScenario) {
+  var need = perScenario || SCENARIO_BLOCK;
   return (scenarios || [])
-    .filter(function (s) { return scenarioPool(bank, s.id).length >= SCENARIO_BLOCK; })
+    .filter(function (s) { return scenarioPool(bank, s.id).length >= need; })
     .map(function (s) { return s.id; });
 }
 
@@ -320,17 +321,19 @@ function usedScenarioQuestionIds(history) {
 
 /* Like the real exam: four scenarios, 15 questions each, kept in contiguous
  * blocks. Questions not used in earlier attempts are taken first. */
-function drawScenarioExam(scenarios, bank, usedIds, rng) {
-  var eligible = eligibleScenarios(scenarios, bank);
-  if (eligible.length < SCENARIO_COUNT) return null;
+function drawScenarioExam(scenarios, bank, usedIds, rng, opts) {
+  var count = (opts && opts.count) || SCENARIO_COUNT;
+  var per = (opts && opts.perScenario) || SCENARIO_BLOCK;
+  var eligible = eligibleScenarios(scenarios, bank, per);
+  if (eligible.length < count) return null;
   usedIds = usedIds || new Set();
-  var picked = shuffle(eligible, rng).slice(0, SCENARIO_COUNT);
+  var picked = shuffle(eligible, rng).slice(0, count);
   var questions = [];
   picked.forEach(function (sid) {
     var pool = scenarioPool(bank, sid);
     var fresh = shuffle(pool.filter(function (q) { return !usedIds.has(q.id); }), rng);
     var seen = shuffle(pool.filter(function (q) { return usedIds.has(q.id); }), rng);
-    questions = questions.concat(fresh.concat(seen).slice(0, SCENARIO_BLOCK));
+    questions = questions.concat(fresh.concat(seen).slice(0, per));
   });
   return { scenarioIds: picked, questions: questions };
 }
@@ -1462,16 +1465,19 @@ if (typeof document !== "undefined") {
       startTimer();
     }
 
-    function startScenarioExam() {
+    var DIAGNOSTIC = { count: 2, perScenario: 10, ms: 40 * 60 * 1000 };
+
+    function startScenarioExam(diagnostic) {
       if (!okToReplaceSaved()) return;
       var drawn = drawScenarioExam(SCENARIOS, SCENARIO_BANK,
-        usedScenarioQuestionIds(Store.snapshot().history));
+        usedScenarioQuestionIds(Store.snapshot().history), null, diagnostic ? DIAGNOSTIC : null);
       if (!drawn) {
         alert("The scenario exam needs at least four scenarios with " + SCENARIO_BLOCK + " questions each.");
         return;
       }
       reviewFilter = "all";
-      session = newSession("scenario", drawn.questions, EXAM_DURATION_MS);
+      session = newSession("scenario", drawn.questions, diagnostic ? DIAGNOSTIC.ms : EXAM_DURATION_MS);
+      if (diagnostic) session.diagnostic = true;
       session.scenarioIds = drawn.scenarioIds;
       session.strikes = {};
       session.comments = {};
@@ -1531,6 +1537,16 @@ if (typeof document !== "undefined") {
       session.reviewDrill = true;
       persistSession();
       renderQuestion();
+    }
+
+    /* Eight scenario questions on one task statement, unseen first; bank
+     * practice when the scenario bank has none for it. */
+    function drillObjective(sub) {
+      if (!sub) return;
+      var ids = objectiveDrillIds(SCENARIO_BANK, sub, usedScenarioQuestionIds(Store.snapshot().history));
+      if (ids.length) return startScenarioPractice(null, ids, "Drill — " + sub);
+      var code = sub.split(" ")[0];
+      return startPractice(Number(code.split(".")[0]), code);
     }
 
     function isScenarioMode(mode) {
@@ -1766,7 +1782,7 @@ if (typeof document !== "undefined") {
             : DOMAIN_NAMES[session.domain] + (session.subKey === "general" ? " (untagged)" : ""));
         case "custom": return "Custom Quiz";
         case "imported": return session.examName || "Imported exam";
-        case "scenario": return "Scenario Exam";
+        case "scenario": return session.diagnostic ? "Diagnostic" : "Scenario Exam";
         case "scenario-practice":
           if (session.practiceTitle) return session.practiceTitle;
           return "Practice — " + (session.missed ? "missed scenario questions"
@@ -2106,7 +2122,7 @@ if (typeof document !== "undefined") {
         entry = {
           date: new Date().toISOString(),
           examId: session.examId || null,
-          examName: isScenarioExam ? "Scenario exam"
+          examName: isScenarioExam ? (session.diagnostic ? "Diagnostic" : "Scenario exam")
             : session.examName || (session.scope === "unmapped" ? "Supplementary mock" : null),
           /* The questions and answers are kept so the attempt can be
            * reviewed and broken down by subdomain later. */
@@ -2123,6 +2139,7 @@ if (typeof document !== "undefined") {
         };
         if (isScenarioExam) {
           entry.kind = "scenario";
+          if (session.diagnostic) entry.diagnostic = true;
           entry.scenarioIds = session.scenarioIds.slice();
         }
         finished.score = score;
@@ -2580,6 +2597,8 @@ if (typeof document !== "undefined") {
         case "review-all": return session && renderScenarioReview();
         case "practice-scenario": return startScenarioPractice(btn.dataset.scenario);
         case "start-review": return startReview();
+        case "start-diagnostic": return startScenarioExam(true);
+        case "drill-objective": return drillObjective(btn.dataset.sub);
         case "practice-missed": return lastFinished && startScenarioPractice(null, lastFinished.grade.wrongIds);
         case "review-filter": reviewFilter = btn.dataset.filter || "all"; return session && renderScenarioReview();
         case "strike": return session && toggleStrike(Number(btn.dataset.opt));
