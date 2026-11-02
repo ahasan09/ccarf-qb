@@ -4,10 +4,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { createRequire } from "node:module";
+import app from "./engine.mjs";
 
-const require = createRequire(import.meta.url);
-const { validateScenarioBank } = require("../app.js");
+const { validateScenarioBank } = app;
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "scenarios");
 const ctx = { window: {} };

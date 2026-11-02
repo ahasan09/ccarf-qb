@@ -1,0 +1,430 @@
+/* DOM app — the home screen: readiness, next step, objectives, practice,
+ * score history and the account card. */
+
+"use strict";
+
+/* ------------------------------------------------------------- home */
+function renderHome() {
+  stopTimer();
+  session = null;
+  view = "home";
+  var progress = Store.snapshot();
+  var history = progress.history;
+  var saved = isUsableSession(progress.session) ? progress.session : null;
+  var now = Date.now();
+  /* Objective figures come from the bank and the scenario bank only;
+   * imported tests count toward the predicted score alone. */
+  var lookup = function (id) {
+    var q = byId[id];
+    return q && (bankIds[id] || q.scenario) ? q : undefined;
+  };
+  var firstVisit = !history.length && !saved && !progress.saved.length && !progress.weak.length &&
+    !progress.attempted.length && !Object.keys(progress.review || {}).length;
+
+  var html = "";
+  if (BANK.length !== EXPECTED_BANK_SIZE) {
+    html += '<div class="card load-warning" role="alert">⚠ Only ' + BANK.length + " of " +
+      EXPECTED_BANK_SIZE + " questions loaded — part of the bank failed to download. " +
+      '<button class="btn small" data-action="hard-reload">Reload the bank</button></div>';
+  }
+
+  var S = window.CCARF_SYNC;
+  var acctChip = "";
+  if (S && S.enabled) {
+    acctChip = S.user()
+      ? '<span class="signed-chip" title="Progress syncs to this account"><span class="dot">●</span> ' + esc(S.user().email || "signed in") + "</span>"
+      : '<button class="btn ghost small" data-action="open-section" data-id="h-acct">Sign in</button>';
+  }
+  html += '<div class="h-top"><div class="h-brand"><svg width="30" height="30" viewBox="0 0 128 128" aria-hidden="true">' +
+    '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
+    '<circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/>' +
+    '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Prep</div>' +
+    '<span class="controls">' + acctChip +
+    '<button class="btn icon" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="Switch theme">' +
+    THEME_ICONS[currentTheme()] + "</button></span></div>";
+
+  html += firstVisit ? homeFirstVisit(progress) : homeReadiness(progress, now);
+  if (saved) html += resumeCard(saved);
+  if (!firstVisit) {
+    var acc = objectiveAccuracy(progress.history, lookup);
+    html += homeNextStep(acc);
+    html += '<div class="h-cols">' + homeObjectives(progress, acc) + homePractice(progress, now, lookup) + "</div>";
+  }
+  html += homeCollapsed(progress);
+  html += '<footer class="site-footer">Practice material for personal study. ' +
+    "Not affiliated with Anthropic or Pearson VUE.</footer>";
+  app.innerHTML = html;
+}
+
+function examDateLine(progress, now) {
+  var days = daysUntil(progress.examDate, now);
+  if (days === null || days < 0) return "";
+  var at = new Date(progress.examDate + "T00:00:00").getTime();
+  return "Exam on <b>" + esc(new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" })) +
+    "</b> · <b>" + days + " day" + (days === 1 ? "" : "s") + " left</b>";
+}
+
+/* The full exam needs every scenario to fill a block of 15. */
+function scenarioExamReady() {
+  return SCENARIOS.length > 0 && eligibleScenarios(SCENARIOS, SCENARIO_BANK).length === SCENARIOS.length;
+}
+function scenarioExamGate() { return scenarioExamReady() ? "" : " disabled"; }
+function scenarioExamNote() {
+  return scenarioExamReady() ? "" : '<p class="muted">The scenario exam is available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>";
+}
+
+function otherExamsMenu() {
+  return '<details class="h-menu"><summary class="btn">Other exams ▾</summary><div class="h-menu-list">' +
+    '<button class="btn ghost" data-action="start-exam" data-scope="mapped">Mock exam<small>exam-guide mapped, by domain weight</small></button>' +
+    '<button class="btn ghost" data-action="start-exam" data-scope="unmapped">Supplementary mock exam<small>the unmapped questions</small></button>' +
+    (EXAMS.length ? '<button class="btn ghost" data-action="open-section" data-id="h-imported">Imported practice tests ↓</button>' : "") +
+    "</div></details>";
+}
+
+function sparkline(attempts) {
+  var pts = attempts.slice(-6);
+  if (pts.length < 2) return "";
+  /* Scale to the scores shown (and the pass line) so changes are visible. */
+  var vals = pts.map(function (a) { return a.score; }).concat([PASS_SCORE]);
+  var lo = Math.max(0, Math.floor((Math.min.apply(null, vals) - 40) / 50) * 50);
+  var hi = Math.min(1000, Math.ceil((Math.max.apply(null, vals) + 40) / 50) * 50);
+  var w = 300, h = 90, y = function (v) { return Math.round(h - 8 - ((v - lo) / (hi - lo)) * (h - 18)); };
+  var step = (w - 20) / (pts.length - 1);
+  var coords = pts.map(function (a, i) { return Math.round(10 + i * step) + "," + y(a.score); });
+  return '<svg class="h-spark" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="Last ' + pts.length + ' exam scores">' +
+    '<line x1="0" x2="' + w + '" y1="' + y(PASS_SCORE) + '" y2="' + y(PASS_SCORE) + '" stroke="var(--pass)" stroke-dasharray="4 4" stroke-width="1.5"/>' +
+    '<text x="4" y="' + (y(PASS_SCORE) - 5) + '" font-size="10" fill="var(--pass)">pass ' + PASS_SCORE + "</text>" +
+    '<polyline fill="none" stroke="var(--pen)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="' + coords.join(" ") + '"/>' +
+    coords.map(function (c) { var p = c.split(","); return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="4" fill="var(--pen)"/>'; }).join("") +
+    '</svg><div class="h-spark-cap"><span>Last ' + pts.length + " exams</span><span>" + pts[pts.length - 1].score + "</span></div>";
+}
+
+function homeReadiness(progress, now) {
+  var attempts = examAttempts(progress.history);
+  var pred = predictedScore(progress.history);
+  var due = dueReviewIds(progress.review, now).filter(function (id) { return byId[id]; }).length;
+  var verdicts = { pass: ["Likely pass", "pass"], borderline: ["Borderline", "border"], "not-yet": ["Not yet", "fail"] };
+  var html = '<section class="card h-ready"><div>';
+  html += '<h1 class="h-eyebrow">Your readiness</h1>';
+  if (pred) {
+    var v = verdicts[pred.verdict];
+    html += '<div class="h-big">' + pred.score + '<small> / 1000 predicted</small></div>' +
+      '<span class="h-verdict ' + v[1] + '">' + v[0] + " · " + PASS_SCORE + " needed</span>";
+  }
+  var date = examDateLine(progress, now);
+  html += '<p class="h-meta">' + (date ? date + " · " : "") +
+    "<b>" + due + " due</b> for review today · " +
+    '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change exam date" : "set exam date") + "</button>" +
+    (pred ? "<br>Based on your last " + pred.count + " exam" + (pred.count === 1 ? "" : "s") + ", newest weighted most." : "") + "</p>";
+  html += '<div class="h-cta"><button class="btn primary h-cta-main" data-action="start-scenario-exam"' + scenarioExamGate() + ">Start scenario exam</button>" +
+    otherExamsMenu() + '<span class="muted">4 scenarios × 15 · 120 min</span></div>' + scenarioExamNote();
+  html += "</div><div>" + sparkline(attempts);
+  var last = null;
+  progress.history.forEach(function (h) { if (Array.isArray(h.items) && typeof h.score === "number") last = h; });
+  if (last) {
+    html += '<button class="h-row" data-action="review-attempt" data-date="' + esc(last.date) + '"><span>Last attempt · ' +
+      esc(last.examName || "Mock exam") + " · " + esc(new Date(last.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })) +
+      '</span><span class="muted">' + last.score + " · Review →</span></button>";
+  }
+  return html + "</div></section>";
+}
+
+function homeFirstVisit(progress) {
+  var html = '<section class="card h-ready h-first"><div>' +
+    '<h1 class="h-eyebrow">Welcome — find your starting point</h1>' +
+    '<div class="h-big h-big-sm">20-question diagnostic</div>' +
+    '<p class="h-meta">A short scenario exam (2 scenarios × 10, 40 min) in the real exam\'s layout gives you a predicted score and your weakest objectives straight away.</p>' +
+    '<div class="h-cta"><button class="btn primary h-cta-main" data-action="start-diagnostic"' +
+    (eligibleScenarios(SCENARIOS, SCENARIO_BANK, 10).length >= 2 ? "" : " disabled") + ">Start diagnostic</button>" +
+    '<button class="btn" data-action="start-scenario-exam"' + scenarioExamGate() + ">Skip — full scenario exam</button>" + otherExamsMenu() + "</div>" +
+    scenarioExamNote() +
+    '<div class="h-steps"><div class="h-step"><b>1 · Diagnose</b>20 questions in the real exam\'s layout.</div>' +
+    '<div class="h-step"><b>2 · Set your date</b>Get a countdown and a review queue.</div>' +
+    '<div class="h-step"><b>3 · Drill</b>Short drills on your weakest objectives.</div></div></div>' +
+    '<div><div class="h-step h-date"><b>Exam date</b>' +
+    (progress.examDate ? esc(progress.examDate) + "<br>" : "Optional — sets your countdown<br>") +
+    '<button class="btn small" data-action="edit-exam-date">' + (progress.examDate ? "Change" : "Set date") + "</button></div></div></section>";
+  html += '<section class="card h-col"><h2 class="h-h2">What\'s inside</h2><p class="h-sub">' +
+    SCENARIO_BANK.length + " scenario questions across the six official scenarios · " + BANK.length +
+    " domain questions" + (EXAMS.length ? " · " + EXAMS.length + " practice tests" : "") + "</p>" +
+    scenarioRows({}) + "</section>";
+  return html;
+}
+
+function resumeCard(saved) {
+  var savedDone = answeredCount(saved) >= saved.questions.length;
+  return '<div class="card resume-card"><div><strong>' +
+    (saved.scope === "unmapped"
+      ? "Supplementary mock"
+      : saved.diagnostic ? "Diagnostic"
+      : Object.prototype.hasOwnProperty.call(MODE_NAMES, saved.mode) ? MODE_NAMES[saved.mode] : "Session") +
+    (saved.examName ? " — " + esc(saved.examName) : "") +
+    (savedDone ? " ready to grade" : " in progress") + "</strong>" +
+    "<p>" + answeredCount(saved) + "/" + saved.questions.length + " answered" +
+    (savedDone ? " — finish to see your score" : "") + "</p></div>" +
+    '<div class="row">' +
+    (savedDone
+      ? '<button class="btn primary" data-action="finish-saved">Finish &amp; see results</button>' +
+        '<button class="btn" data-action="resume">Review answers</button>'
+      : '<button class="btn primary" data-action="resume">Resume</button>') +
+    '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
+}
+
+function meter(pct) {
+  if (pct === null) return '<div class="h-meter"></div>';
+  var c = pct >= 72 ? "var(--pass)" : pct >= 50 ? "var(--flag)" : "var(--fail)";
+  return '<div class="h-meter"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
+}
+
+function homeNextStep(acc) {
+  var weak = weakestObjectives(acc);
+  if (!weak.length) return "";
+  var html = '<section class="card h-next"><h2 class="h-h2">Next best step</h2>' +
+    '<p class="h-sub">Your weakest objectives across your exams — each drill is up to 8 questions with a note on every option.</p>';
+  weak.forEach(function (w) {
+    html += '<div class="h-weak"><div>' + esc(w.key) + "<small>" + w.correct + " of " + w.total + " right</small></div>" +
+      meter(w.pct) + '<span class="h-pct">' + w.pct + "%</span>" +
+      '<button class="btn small" data-action="drill-objective" data-sub="' + esc(w.key) + '">Drill →</button></div>';
+  });
+  return html + "</section>";
+}
+
+function homeObjectives(progress, acc) {
+  var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted);
+  var seenAll = 0, rightAll = 0, totalAll = 0;
+  for (var sd = 1; sd <= 5; sd++) {
+    var row = mastery[sd] || { correct: 0, attempted: 0, total: 0 };
+    seenAll += row.attempted; rightAll += row.correct; totalAll += row.total;
+  }
+  var pc = function (a, b) { return b ? Math.round((a / b) * 100) : 0; };
+  var html = '<section class="card h-col"><h2 class="h-h2">By objective</h2>' +
+    '<p class="h-sub">Bar = accuracy in your exams. Open a domain for its task statements.</p>' +
+    '<p class="h-bank">Question bank: Coverage ' + pc(seenAll, totalAll) + "% (" + seenAll + " of " + totalAll + " seen) · " +
+    "Accuracy " + pc(rightAll, seenAll) + "% (" + rightAll + " of " + seenAll + " right) · " +
+    "Mastery " + pc(rightAll, totalAll) + "%</p>";
+  for (var d = 1; d <= 5; d++) {
+    var c = 0, t = 0;
+    SUBDOMAINS.forEach(function (sub) { if (sub.indexOf(d + ".") === 0 && acc[sub]) { c += acc[sub].correct; t += acc[sub].total; } });
+    var pct = t ? Math.round((100 * c) / t) : null;
+    var m = mastery[d] || { attempted: 0, total: 0, correct: 0 };
+    var open = expandedMastery === d;
+    html += '<div class="h-dom"><button class="h-dom-head" data-action="toggle-mastery" data-domain="' + d + '" aria-expanded="' + open + '">' +
+      '<span class="domain-chip chip-d' + d + '">D' + d + "</span><span>" + esc(DOMAIN_NAMES[d]) +
+      '<small class="muted h-bank-seen">bank ' + m.attempted + "/" + m.total + " seen</small></span>" +
+      meter(pct) + '<span class="h-pct">' + (pct === null ? "—" : pct + "%") + "</span>" + chev(open) + "</button>";
+    if (open) {
+      html += '<div class="h-objs"><button class="h-row" data-action="practice" data-domain="' + d + '"><span>Practice all of D' + d +
+        ' (question bank)</span><span class="muted">' + m.correct + "/" + m.total + " right →</span></button>";
+      SUBDOMAINS.forEach(function (sub) {
+        if (sub.indexOf(d + ".") !== 0) return;
+        var a = acc[sub];
+        var p = a ? Math.round((100 * a.correct) / a.total) : null;
+        var code = sub.split(" ")[0];
+        html += '<div class="h-obj"><span>' + esc(sub) + "</span>" + meter(p) +
+          '<span class="h-pct">' + (p === null ? "—" : p + "%") + "</span>" +
+          '<span class="h-obj-act"><button class="btn small" data-action="drill-objective" data-sub="' + esc(sub) + '" title="Scenario questions with notes">Drill</button>' +
+          '<button class="btn small ghost" data-action="practice" data-domain="' + d + '" data-sub="' + esc(code) + '" title="Question-bank practice">Bank</button></span></div>';
+      });
+      if (BANK.some(function (q) { return q.domain === d && !q.subdomain; })) {
+        html += '<button class="h-row" data-action="practice" data-domain="' + d + '" data-sub="general"><span>Untagged D' + d +
+          ' questions (question bank)</span><span class="muted">→</span></button>';
+      }
+      html += "</div>";
+    }
+    html += "</div>";
+  }
+  return html + "</section>";
+}
+
+function scenarioRows(best) {
+  return SCENARIOS.map(function (sc) {
+    var n = SCENARIO_BANK.filter(function (q) { return q.scenario === sc.id; }).length;
+    return '<button class="h-row" data-action="practice-scenario" data-scenario="' + sc.id + '"' + (n ? "" : " disabled") + ">" +
+      "<span>" + esc(sc.name) + '</span><span class="muted">' +
+      (best[sc.id] !== undefined ? "best " + best[sc.id] + "%" : n + " questions") + "</span></button>";
+  }).join("");
+}
+
+function homePractice(progress, now, lookup) {
+  var due = dueReviewIds(progress.review, now).filter(function (id) { return byId[id]; }).length;
+  var savedIds = progress.saved.filter(function (id) { return byId[id]; });
+  var html = '<section class="card h-col"><h2 class="h-h2">Practice</h2><p class="h-sub">Untimed, with feedback after each answer.</p>' +
+    '<button class="h-row' + (due ? " h-due" : "") + '" data-action="start-review"' + (due ? "" : " disabled") + ">" +
+    '<span>⟳ Due for review</span><span class="muted">' + (due ? due + " today" : "none due") + "</span></button>" +
+    '<button class="h-row" data-action="start-saved"' + (savedIds.length ? "" : " disabled") + ">" +
+    '<span>☆ Saved questions</span><span class="muted">' + savedIds.length + "</span></button>";
+  if (progress.weak.length) {
+    html += '<button class="h-row" data-action="start-weak"><span>Drill missed questions</span><span class="muted">' +
+      progress.weak.length + "</span></button>";
+  }
+  html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
+    '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
+  return html + "</section>";
+}
+
+function homeCollapsed(progress) {
+  var history = progress.history;
+  var best = 0;
+  history.forEach(function (h) { if (h.score > best) best = h.score; });
+  var html = '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
+    (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span></summary>";
+  if (!history.length) {
+    html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
+  } else {
+    html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
+      "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
+    history.slice().reverse().forEach(function (h) {
+      var cells = "";
+      for (var d2 = 1; d2 <= 5; d2++) {
+        var pd = h.perDomain && h.perDomain[d2];
+        cells += "<td>" + (pd ? pd.correct + "/" + pd.total : "–") + "</td>";
+      }
+      html += "<tr><td>" + esc(new Date(h.date).toLocaleString()) +
+        (h.examName ? '<br><span class="muted">' + esc(h.examName) + "</span>" : "") + "</td>" +
+        "<td><strong>" + h.score + "</strong></td>" +
+        '<td><span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></td>" +
+        "<td>" + h.correct + "/" + h.total + "</td>" + cells +
+        "<td>" + (Array.isArray(h.items)
+          ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
+          : "") + "</td></tr>";
+    });
+    html += "</tbody></table></div>" +
+      '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
+  }
+  html += "</details>";
+
+  if (EXAMS.length) {
+    var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
+    html += '<details class="card h-fold" id="h-imported"><summary><b>Imported mock exams</b><span class="muted">' +
+      EXAMS.length + " tests · " + taken + " taken</span></summary>" +
+      '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
+      '<div class="domain-list">';
+    EXAMS.forEach(function (e) {
+      var attempt = bestAttemptFor(e.id, history);
+      html += '<div class="domain-row exam-row"><span>' + esc(e.name) + "</span>" +
+        '<span class="muted">' + (e.count || (e.questions ? e.questions.length : 0)) + " questions" +
+        (attempt ? " · best " + attempt.score + (attempt.pass ? " · passed" : "") : "") + "</span>" +
+        '<button class="btn small" data-action="practice-imported" data-exam="' + esc(e.id) + '">Practice</button>' +
+        '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
+        (attempt ? "Retake mock" : "Take mock") + "</button></div>";
+    });
+    html += "</div></details>";
+  }
+
+  var S = window.CCARF_SYNC;
+  var signedIn = S && S.enabled && S.user();
+  html += '<details class="card h-fold" id="h-acct"><summary><b>Account &amp; sync</b><span class="muted">' +
+    (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span></summary>" + accountCard() + "</details>";
+  return html;
+}
+
+function answeredCount(sess) {
+  var answers = (sess && sess.answers) || {};
+  return Object.keys(answers).filter(function (k) {
+    var a = answers[k];
+    return a !== null && a !== undefined && !(Array.isArray(a) && !a.length);
+  }).length;
+}
+
+/* A stored session is only offered for resume if it still lines up with
+ * the loaded bank — otherwise the question screen would crash on it. */
+function isUsableSession(sess) {
+  return !!(sess && Array.isArray(sess.questions) &&
+    sess.questions.some(function (s) { return s && byId[s.id]; }));
+}
+
+function timeAgo(ms) {
+  var secs = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (secs < 60) return "just now";
+  var mins = Math.round(secs / 60);
+  if (mins < 60) return mins + " minute" + (mins === 1 ? "" : "s") + " ago";
+  var hours = Math.round(mins / 60);
+  if (hours < 24) return hours + " hour" + (hours === 1 ? "" : "s") + " ago";
+  return new Date(ms).toLocaleString();
+}
+
+/* Imported exam questions carry no domain tag, so label them by their
+ * exam instead of rendering an empty domain chip. */
+function questionMeta(q) {
+  var bits = "";
+  if (DOMAIN_NAMES[q.domain]) {
+    bits += '<span class="domain-chip chip-d' + esc(q.domain) + '">D' + esc(q.domain) + "</span>" +
+      '<span class="muted">' + esc(DOMAIN_NAMES[q.domain]) + "</span>";
+  } else if (q.exam && examById[q.exam]) {
+    bits += '<span class="muted">' + esc(examById[q.exam].name) + "</span>";
+  }
+  if (q.subdomain) bits += '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>";
+  if (q.scenario) bits += '<span class="scenario-tag">' + esc(q.scenario) + "</span>";
+  return bits;
+}
+
+function chev(open) {
+  return '<span class="chev' + (open ? " open" : "") + '">' +
+    '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+    "</svg></span>";
+}
+
+function metricTile(label, pct, detail) {
+  return '<div class="metric"><div class="metric-value">' + pct + '<span class="metric-pct">%</span></div>' +
+    '<div class="metric-label">' + esc(label) + "</div>" +
+    '<div class="metric-detail">' + esc(detail) + "</div></div>";
+}
+
+function bestAttemptFor(examId, history) {
+  var best = null;
+  (history || []).forEach(function (h) {
+    if (h.examId === examId && (!best || h.score > best.score)) best = h;
+  });
+  return best;
+}
+
+function accountCard() {
+  var S = window.CCARF_SYNC;
+  var html = '<div class="card" id="acct"><h2>Account &amp; sync</h2>';
+  if (!S || !S.enabled) {
+    html += '<p class="muted auth-note">Progress is stored in this browser. To sign in and sync across devices, ' +
+      "enable sync in <code>config.js</code> (see the README).</p>";
+  } else if (S.unavailable) {
+    html += '<p class="muted auth-note">' + esc(S.error()) + "</p>";
+  } else if (S.user()) {
+    var st = S.status();
+    var waiting = S.pendingCount ? S.pendingCount() : 0;
+    var stLabel = st === "syncing" ? "syncing…"
+      : st === "offline" ? "offline — changes will sync when you reconnect"
+      : st === "error" ? "sync failed"
+      : waiting ? waiting + " change" + (waiting === 1 ? "" : "s") + " waiting to sync"
+      : st === "synced" ? "progress synced" : "sync ready";
+    html += "<p>Signed in as <strong>" + esc(S.user().email || "account") + "</strong> " +
+      '<span class="muted">· ' + stLabel + "</span></p>";
+    if (st === "error" && S.error && S.error()) {
+      html += '<p class="muted auth-note">' + esc(S.error()) + "</p>";
+    }
+    var syncedAt = S.syncedAt ? S.syncedAt() : 0;
+    if (syncedAt) {
+      html += '<p class="muted auth-note">Last synced ' + esc(timeAgo(syncedAt)) +
+        ". Your progress is kept on the server, so any signed-in device shows the latest.</p>";
+    }
+    html += '<div class="row"><button class="btn small" data-action="sync-now"' +
+      (st === "syncing" ? " disabled" : "") + ">" + (st === "syncing" ? "Syncing…" : "Sync now") + "</button>" +
+      '<button class="btn ghost small" data-action="auth-signout">Sign out</button></div>';
+  } else {
+    html += '<p class="muted auth-note">Sign in with your e-mail to back up progress and resume from any device.</p>' +
+      '<div class="row"><input class="input" id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(pendingEmail || "") + '">' +
+      '<button class="btn primary" data-action="auth-send">' + (pendingEmail ? "Resend code" : "Send login code") + "</button></div>";
+    if (pendingEmail) {
+      html += '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">' +
+        '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>' +
+        '<p class="muted auth-note">Check your inbox — enter the code here, or just click the link in the e-mail.</p>';
+    }
+  }
+  var backup = LS.get(BACKUP_KEY, null);
+  var extra = progressSize(backup) - progressSize(Store.snapshot());
+  if (extra > 0) {
+    html += '<p class="muted auth-note">This device has a backup copy with ' + extra +
+      " more item" + (extra === 1 ? "" : "s") + " than your current progress.</p>" +
+      '<div class="row"><button class="btn" data-action="restore-backup">Restore backup</button></div>';
+  }
+
+  return html + "</div>";
+}

@@ -2,12 +2,8 @@
  * bugs that only show up once rendering and storage interact. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+import { APP_SCRIPTS, runScripts } from "./engine.mjs";
 
 function bank() {
   const qs = [];
@@ -111,7 +107,7 @@ function launch(opts = {}) {
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
-  vm.runInContext(readFileSync(join(root, "app.js"), "utf8"), ctx, { filename: "app.js" });
+  runScripts(APP_SCRIPTS, ctx);
 
   const click = (action, data = {}, extra = {}) => {
     const btn = Object.assign(

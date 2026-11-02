@@ -174,7 +174,14 @@ clears it, and progress cached for one account is never folded into another.
 
 ## Development
 
-- `app.js` — quiz engine; pure logic functions are exported for tests
+- `js/logic.js` — pure logic: drawing, grading, progress, readiness, spaced
+  review, bank and scenario validation (no DOM)
+- `js/store.js` — the progress store and the cross-device sync engine (no DOM)
+- `js/app/` — the DOM app, in load order: `state.js` (banks, storage, shared
+  state, helpers), `home.js`, `sessions.js`, `question.js`, `results.js`,
+  `events.js` (input handling and boot). These are classic scripts sharing
+  globals, not ES modules, so `index.html` still opens from `file://`; keep
+  the order in `index.html`, `sw.js` and `test/engine.mjs` in step.
 - `questions/domain1.js` … `domain5.js` — original question sets (49/32/36/36/27)
 - `questions/domain1-set2.js` … `domain5-set2.js` — harder expansion sets
   (32/22/24/24/18)

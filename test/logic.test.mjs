@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+import app from "./engine.mjs";
 
-const require = createRequire(import.meta.url);
 const {
   EXAM_DRAW_COUNTS,
   PASS_SCORE,
@@ -27,7 +26,7 @@ const {
   toggleChoice,
   selectCustomQuestions,
   filterByTagging,
-} = require("../app.js");
+} = app;
 
 function makeBank(countsPerDomain) {
   const bank = [];

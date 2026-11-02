@@ -4,10 +4,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { createRequire } from "node:module";
+import app from "./engine.mjs";
 
-const require = createRequire(import.meta.url);
-const { validateBank, EXAM_DRAW_COUNTS, EXPECTED_BANK_SIZE } = require("../app.js");
+const { validateBank, EXAM_DRAW_COUNTS, EXPECTED_BANK_SIZE } = app;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = join(root, "questions");
@@ -32,7 +31,7 @@ for (const [d, want] of Object.entries(expected)) {
 }
 
 if (bank.length !== EXPECTED_BANK_SIZE)
-  errors.push(`app.js EXPECTED_BANK_SIZE is ${EXPECTED_BANK_SIZE} but bank has ${bank.length} — update the constant`);
+  errors.push(`js/logic.js EXPECTED_BANK_SIZE is ${EXPECTED_BANK_SIZE} but bank has ${bank.length} — update the constant`);
 
 console.log(`Bank: ${bank.length} questions`, perDomain);
 if (errors.length) {

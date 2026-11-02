@@ -1,10 +1,17 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v19";
+const VERSION = "v20";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
   "index.html",
-  "app.js",
+  "js/logic.js",
+  "js/store.js",
+  "js/app/state.js",
+  "js/app/home.js",
+  "js/app/sessions.js",
+  "js/app/question.js",
+  "js/app/results.js",
+  "js/app/events.js",
   "config.js",
   "sync.js",
   "icon.svg",

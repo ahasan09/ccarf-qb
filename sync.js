@@ -2,7 +2,7 @@
  * Loaded as a module; exposes window.CCARF_SYNC when configured.
  *
  * This file is only the network adapter. The read → replay → compare-and-swap
- * algorithm lives in createSyncEngine() in app.js, where it is unit-tested. */
+ * algorithm lives in createSyncEngine() in js/store.js, where it is unit-tested. */
 
 const cfg = window.CCARF_CONFIG;
 
