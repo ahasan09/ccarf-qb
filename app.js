@@ -484,7 +484,7 @@ function objectiveAccuracy(history, lookup) {
   examAttempts(history).forEach(function (h) {
     (h.items || []).forEach(function (it) {
       var q = lookup(it.id);
-      if (!q || !q.subdomain) return;
+      if (!q || SUBDOMAINS.indexOf(q.subdomain) < 0) return;
       var row = acc[q.subdomain] || (acc[q.subdomain] = { correct: 0, total: 0 });
       row.total++;
       if (sameChoice(it.given === undefined ? null : it.given, correctIndices(q))) row.correct++;
@@ -605,8 +605,11 @@ var Mutations = {
       key: null,
       apply: function (s) {
         s.review = s.review || {};
+        /* Replayed after a sync, so an older queued update must not
+         * overwrite a newer entry written by another device. */
         Object.keys(updates || {}).forEach(function (id) {
-          if (updates[id]) s.review[id] = updates[id];
+          var cur = s.review[id];
+          if (updates[id] && !(cur && cur.updatedAt > updates[id].updatedAt)) s.review[id] = updates[id];
         });
       },
     };
@@ -1035,8 +1038,14 @@ if (typeof document !== "undefined") {
       var history = progress.history;
       var saved = isUsableSession(progress.session) ? progress.session : null;
       var now = Date.now();
-      var lookup = function (id) { return byId[id]; };
-      var firstVisit = !history.length && !saved;
+      /* Objective figures come from the bank and the scenario bank only;
+       * imported tests count toward the predicted score alone. */
+      var lookup = function (id) {
+        var q = byId[id];
+        return q && (bankIds[id] || q.scenario) ? q : undefined;
+      };
+      var firstVisit = !history.length && !saved && !progress.saved.length && !progress.weak.length &&
+        !progress.attempted.length && !Object.keys(progress.review || {}).length;
 
       var html = "";
       if (BANK.length !== EXPECTED_BANK_SIZE) {
@@ -1050,7 +1059,7 @@ if (typeof document !== "undefined") {
       if (S && S.enabled) {
         acctChip = S.user()
           ? '<span class="signed-chip" title="Progress syncs to this account"><span class="dot">●</span> ' + esc(S.user().email || "signed in") + "</span>"
-          : '<a class="btn ghost small" href="#acct">Sign in</a>';
+          : '<button class="btn ghost small" data-action="open-section" data-id="h-acct">Sign in</button>';
       }
       html += '<div class="h-top"><div class="h-brand"><svg width="30" height="30" viewBox="0 0 128 128" aria-hidden="true">' +
         '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
@@ -1237,10 +1246,16 @@ if (typeof document !== "undefined") {
             if (sub.indexOf(d + ".") !== 0) return;
             var a = acc[sub];
             var p = a ? Math.round((100 * a.correct) / a.total) : null;
+            var code = sub.split(" ")[0];
             html += '<div class="h-obj"><span>' + esc(sub) + "</span>" + meter(p) +
               '<span class="h-pct">' + (p === null ? "—" : p + "%") + "</span>" +
-              '<button class="btn small" data-action="drill-objective" data-sub="' + esc(sub) + '">Drill</button></div>';
+              '<span class="h-obj-act"><button class="btn small" data-action="drill-objective" data-sub="' + esc(sub) + '" title="Scenario questions with notes">Drill</button>' +
+              '<button class="btn small ghost" data-action="practice" data-domain="' + d + '" data-sub="' + esc(code) + '" title="Question-bank practice">Bank</button></span></div>';
           });
+          if (BANK.some(function (q) { return q.domain === d && !q.subdomain; })) {
+            html += '<button class="h-row" data-action="practice" data-domain="' + d + '" data-sub="general"><span>Untagged D' + d +
+              ' questions (question bank)</span><span class="muted">→</span></button>';
+          }
           html += "</div>";
         }
         html += "</div>";
@@ -1325,7 +1340,7 @@ if (typeof document !== "undefined") {
 
       var S = window.CCARF_SYNC;
       var signedIn = S && S.enabled && S.user();
-      html += '<details class="card h-fold" id="h-acct"' + (location.hash === "#acct" ? " open" : "") + '><summary><b>Account &amp; sync</b><span class="muted">' +
+      html += '<details class="card h-fold" id="h-acct"><summary><b>Account &amp; sync</b><span class="muted">' +
         (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span></summary>" + accountCard() + "</details>";
       return html;
     }

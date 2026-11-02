@@ -114,9 +114,9 @@ test("predictedScore weights the last five newest-first 5..1", () => {
 });
 
 const Q = {
-  a: { id: "a", subdomain: "4.5 Batch", options: [1, 2, 3, 4], answer: 0, scenario: "ci" },
-  b: { id: "b", subdomain: "4.5 Batch", options: [1, 2, 3, 4], answer: 0, scenario: "ci" },
-  c: { id: "c", subdomain: "1.1 Loops", options: [1, 2, 3, 4], answer: 0, scenario: "support" },
+  a: { id: "a", subdomain: "4.5 Design efficient batch processing strategies", options: [1, 2, 3, 4], answer: 0, scenario: "ci" },
+  b: { id: "b", subdomain: "4.5 Design efficient batch processing strategies", options: [1, 2, 3, 4], answer: 0, scenario: "ci" },
+  c: { id: "c", subdomain: "1.1 Design and implement agentic loops for autonomous task execution", options: [1, 2, 3, 4], answer: 0, scenario: "support" },
   d: { id: "d", options: [1, 2, 3, 4], answer: 0 },
 };
 const lookup = (id) => Q[id];
@@ -127,8 +127,8 @@ test("objectiveAccuracy skips unknown ids", () => {
     { date: "2", score: 500, items: [{ id: "a", given: null }, { id: "c", given: 0 }] },
   ];
   assert.deepEqual(objectiveAccuracy(h, lookup), {
-    "4.5 Batch": { correct: 1, total: 3 },
-    "1.1 Loops": { correct: 1, total: 1 },
+    "4.5 Design efficient batch processing strategies": { correct: 1, total: 3 },
+    "1.1 Design and implement agentic loops for autonomous task execution": { correct: 1, total: 1 },
   });
 });
 
@@ -164,4 +164,18 @@ test("bestScenarioScores takes the best per scenario from scenario attempts", ()
     { date: "3", score: 1, items: [{ id: "c", given: 1 }] },
   ];
   assert.deepEqual(bestScenarioScores(h, lookup), { ci: 100, support: 100 });
+});
+
+/* --------------------------------------------------- final review fixes */
+test("replaying an older review update never overwrites a newer entry", () => {
+  let s = emptyProgress();
+  s.review = { q: { step: 3, due: 5, updatedAt: 300, done: true } };
+  s = applyMutations(s, [Mutations.recordReview({ q: { step: 0, due: 9, updatedAt: 100 }, r: { step: 0, due: 9, updatedAt: 100 } })]);
+  assert.equal(s.review.q.done, true, "the newer finish survives an older queued reset");
+  assert.ok(s.review.r, "new ids are still added");
+});
+
+test("objectiveAccuracy ignores subdomains outside the exam guide", () => {
+  const look = (id) => ({ x: { id: "x", subdomain: "1.10", options: [1, 2, 3, 4], answer: 0 } })[id];
+  assert.deepEqual(objectiveAccuracy([{ date: "1", score: 1, items: [{ id: "x", given: 1 }] }], look), {});
 });

@@ -76,6 +76,7 @@ function launch(opts = {}) {
     MOCK_EXAMS: opts.exams || [],
     SCENARIOS: opts.scenarios || SCENARIOS,
     SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
+    CCARF_SYNC: opts.sync,
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -1299,4 +1300,40 @@ test("the due count reflects questions due for review", () => {
   } });
   app.click("home");
   assert.match(app.html(), /1 due/);
+});
+
+/* ------------------------------------------- home review follow-ups */
+test("imported attempts never feed the weakest objectives", () => {
+  const sub = "1.1 Design and implement agentic loops for autonomous task execution";
+  const questions = [];
+  for (let i = 1; i <= 6; i++) {
+    questions.push({ id: `imp-${i}`, exam: "imp", subdomain: sub, question: `Imported ${i}?`,
+      options: ["A", "B", "C", "D"], answer: 0, explanation: "x" });
+  }
+  const app = launch({ exams: [{ id: "imp", name: "Imported", questions }] });
+  const items = questions.slice(0, 5).map((q) => ({ id: q.id, given: 1 }));
+  seedHistory(app, [500], { kind: null, name: "Imported", items });
+  assert.ok(app.html().includes(">500<"), "the score still counts");
+  assert.ok(!app.html().includes("Next best step"));
+});
+
+test("someone who has only practised still gets the full home", () => {
+  const app = launch();
+  app.store().mutate({ key: null, apply: (s) => { s.saved = ["d1-q1"]; } });
+  app.click("home");
+  assert.ok(app.html().includes('data-action="start-saved"'));
+  assert.ok(app.html().includes('data-action="custom-builder"'));
+});
+
+test("each objective also offers question-bank practice", () => {
+  const app = launch();
+  app.store().mutate({ key: null, apply: (s) => { s.saved = ["d1-q1"]; } });
+  app.click("toggle-mastery", { domain: "2" });
+  assert.ok(app.html().includes('data-action="practice" data-domain="2" data-sub="2.1"'));
+});
+
+test("the sign-in chip opens the account section", () => {
+  const app = launch({ sync: { enabled: true, user: () => null } });
+  assert.ok(app.html().includes('data-action="open-section" data-id="h-acct"'));
+  assert.ok(!app.html().includes('href="#acct"'));
 });
