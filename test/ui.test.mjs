@@ -1022,3 +1022,17 @@ test("missed exam questions can be practised from the results", () => {
   assert.equal(sess.mode, "scenario-practice");
   assert.equal(sess.questions.length, 60);
 });
+
+/* Final review: the strike menu is position:fixed, so it must not sit inside
+ * the transformed .scn-screen (which would offset it from the cursor). */
+test("the strike menu sits outside the transformed scenario screen", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const html = app.html();
+  const at = html.indexOf('<div id="ctx-menu"');
+  assert.ok(at > 0, "menu rendered");
+  const before = html.slice(0, at);
+  const opens = (before.match(/<div\b/g) || []).length;
+  const closes = (before.match(/<\/div>/g) || []).length;
+  assert.equal(opens, closes, "every div before the menu is closed, so the menu is a sibling of .scn-screen");
+});

@@ -1684,7 +1684,9 @@ if (typeof document !== "undefined") {
           (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
       }
       html += "</div>";
-      html += '<div id="ctx-menu" class="ctx-menu" hidden></div></div>';
+      /* The menu is position:fixed, so it lives outside .scn-screen: a
+       * transformed ancestor would offset it from the cursor. */
+      html += '</div><div id="ctx-menu" class="ctx-menu" hidden></div>';
 
       app.innerHTML = html;
       window.scrollTo(0, 0);
