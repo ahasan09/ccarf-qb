@@ -237,8 +237,8 @@ function renderCustomBuilder() {
       '<span class="domain-chip chip-d' + d + '">D' + d + "</span>" +
       "<span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
       '<span class="muted">' + (chosenSubs ? chosenSubs + " subdomains" : count + " questions") + "</span>" +
-      '<button class="btn ghost small" data-action="cq-open-subs" data-domain="' + d + '"' +
-      (on ? "" : " disabled") + ">" + (subsOpen ? "Hide" : "Subdomains") + "</button></label>";
+      '<button class="btn ghost small cq-subs-btn" data-action="cq-open-subs" data-domain="' + d + '"' +
+      ' aria-expanded="' + subsOpen + '"' + (on ? "" : " disabled") + ">Subdomains " + chev(subsOpen, true) + "</button></label>";
 
     if (on && subsOpen) {
       html += '<div class="sub-scores practice-subs">';

@@ -74,7 +74,7 @@ function scenarioExamNote() {
 }
 
 function otherExamsMenu() {
-  return '<details class="h-menu"><summary class="btn">Other exams ▾</summary><div class="h-menu-list">' +
+  return '<details class="h-menu"><summary class="btn">Other exams ' + chev(false, true) + '</summary><div class="h-menu-list">' +
     '<button class="btn ghost" data-action="start-exam" data-scope="mapped">Mock exam<small>exam-guide mapped, by domain weight</small></button>' +
     '<button class="btn ghost" data-action="start-exam" data-scope="unmapped">Supplementary mock exam<small>the unmapped questions</small></button>' +
     (EXAMS.length ? '<button class="btn ghost" data-action="open-section" data-id="h-imported">Imported practice tests ↓</button>' : "") +
@@ -267,7 +267,7 @@ function homeCollapsed(progress) {
   var best = 0;
   history.forEach(function (h) { if (h.score > best) best = h.score; });
   var html = '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
-    (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span></summary>";
+    (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span>" + chev() + "</summary>";
   if (!history.length) {
     html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
   } else {
@@ -296,7 +296,7 @@ function homeCollapsed(progress) {
   if (EXAMS.length) {
     var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
     html += '<details class="card h-fold" id="h-imported"><summary><b>Imported mock exams</b><span class="muted">' +
-      EXAMS.length + " tests · " + taken + " taken</span></summary>" +
+      EXAMS.length + " tests · " + taken + " taken</span>" + chev() + "</summary>" +
       '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
       '<div class="domain-list">';
     EXAMS.forEach(function (e) {
@@ -314,7 +314,7 @@ function homeCollapsed(progress) {
   var S = window.CCARF_SYNC;
   var signedIn = S && S.enabled && S.user();
   html += '<details class="card h-fold" id="h-acct"><summary><b>Account &amp; sync</b><span class="muted">' +
-    (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span></summary>" + accountCard() + "</details>";
+    (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span>" + chev() + "</summary>" + accountCard() + "</details>";
   return html;
 }
 
@@ -356,13 +356,6 @@ function questionMeta(q) {
   if (q.subdomain) bits += '<span class="muted sub-tag">§ ' + esc(q.subdomain) + "</span>";
   if (q.scenario) bits += '<span class="scenario-tag">' + esc(q.scenario) + "</span>";
   return bits;
-}
-
-function chev(open) {
-  return '<span class="chev' + (open ? " open" : "") + '">' +
-    '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
-    '<path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
-    "</svg></span>";
 }
 
 function metricTile(label, pct, detail) {

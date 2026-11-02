@@ -38,7 +38,7 @@ function renderScenarioQuestion() {
     "</div></div>";
 
   html += '<div class="scn-body">' +
-    '<aside class="scn-panel"><details open><summary>' + esc(scn.name) + "</summary>" +
+    '<aside class="scn-panel"><details open><summary><span>' + esc(scn.name) + "</span>" + chev() + "</summary>" +
     '<div class="scn-text">' + esc(scn.text) + "</div></details></aside>";
 
   html += '<section class="scn-question">' +
