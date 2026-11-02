@@ -294,6 +294,68 @@ function validateScenarioBank(scenarios, bank) {
   return errors;
 }
 
+var SCENARIO_BLOCK = 15;
+var SCENARIO_COUNT = 4;
+
+function scenarioPool(bank, scenarioId) {
+  return (bank || []).filter(function (q) { return q.scenario === scenarioId; });
+}
+
+/* Scenarios with enough questions to fill a block of the exam. */
+function eligibleScenarios(scenarios, bank) {
+  return (scenarios || [])
+    .filter(function (s) { return scenarioPool(bank, s.id).length >= SCENARIO_BLOCK; })
+    .map(function (s) { return s.id; });
+}
+
+/* Ids of every question that appeared in an earlier scenario exam. */
+function usedScenarioQuestionIds(history) {
+  var used = new Set();
+  (history || []).forEach(function (h) {
+    if (h && h.kind === "scenario" && Array.isArray(h.items))
+      h.items.forEach(function (it) { used.add(it.id); });
+  });
+  return used;
+}
+
+/* Like the real exam: four scenarios, 15 questions each, kept in contiguous
+ * blocks. Questions not used in earlier attempts are taken first. */
+function drawScenarioExam(scenarios, bank, usedIds, rng) {
+  var eligible = eligibleScenarios(scenarios, bank);
+  if (eligible.length < SCENARIO_COUNT) return null;
+  usedIds = usedIds || new Set();
+  var picked = shuffle(eligible, rng).slice(0, SCENARIO_COUNT);
+  var questions = [];
+  picked.forEach(function (sid) {
+    var pool = scenarioPool(bank, sid);
+    var fresh = shuffle(pool.filter(function (q) { return !usedIds.has(q.id); }), rng);
+    var seen = shuffle(pool.filter(function (q) { return usedIds.has(q.id); }), rng);
+    questions = questions.concat(fresh.concat(seen).slice(0, SCENARIO_BLOCK));
+  });
+  return { scenarioIds: picked, questions: questions };
+}
+
+/* Percent correct per group (objective, scenario...), weakest first. */
+function breakdownBy(questions, answers, keyFn) {
+  var rows = {};
+  var order = [];
+  questions.forEach(function (q) {
+    var key = keyFn(q);
+    if (!rows[key]) { rows[key] = { key: key, correct: 0, total: 0, pct: 0 }; order.push(key); }
+    rows[key].total++;
+    if (sameChoice(answers[q.id], correctIndices(q))) rows[key].correct++;
+  });
+  return order
+    .map(function (k) {
+      var r = rows[k];
+      r.pct = Math.round((100 * r.correct) / r.total);
+      return r;
+    })
+    .sort(function (a, b) {
+      return a.pct - b.pct || String(a.key).localeCompare(String(b.key), undefined, { numeric: true });
+    });
+}
+
 /* --------------------------------------------------------- progress state */
 /* One object holds all synced progress. Changes are expressed as named
  * mutations rather than whole-blob writes so that removals (a finished
@@ -595,6 +657,12 @@ if (typeof module !== "undefined" && module.exports) {
     validateScenarioBank: validateScenarioBank,
     SUBDOMAINS: SUBDOMAINS,
     SCENARIO_MIN_WORDS: SCENARIO_MIN_WORDS,
+    SCENARIO_BLOCK: SCENARIO_BLOCK,
+    SCENARIO_COUNT: SCENARIO_COUNT,
+    eligibleScenarios: eligibleScenarios,
+    usedScenarioQuestionIds: usedScenarioQuestionIds,
+    drawScenarioExam: drawScenarioExam,
+    breakdownBy: breakdownBy,
     sampleQuiz: sampleQuiz,
     selectCustomQuestions: selectCustomQuestions,
     filterByTagging: filterByTagging,
