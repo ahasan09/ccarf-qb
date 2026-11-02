@@ -63,7 +63,13 @@ function launch(opts = {}) {
     querySelectorAll: () => [],
   };
   let clickHandler = null;
-  appEl.addEventListener = (type, fn) => { if (type === "click") clickHandler = fn; };
+  const appListeners = {};
+  const docListeners = {};
+  const menuEl = { hidden: true, innerHTML: "", style: {} };
+  appEl.addEventListener = (type, fn) => {
+    if (type === "click") clickHandler = fn;
+    (appListeners[type] = appListeners[type] || []).push(fn);
+  };
 
   const win = {
     QUESTION_BANK: opts.bank || bank(),
@@ -96,8 +102,8 @@ function launch(opts = {}) {
     setTimeout: () => 1,
     clearTimeout: () => {},
     document: {
-      getElementById: (id) => (id === "app" ? appEl : null),
-      addEventListener: () => {},
+      getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl : null),
+      addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
       hidden: false,
     },
@@ -124,6 +130,17 @@ function launch(opts = {}) {
     bank: () => win.QUESTION_BANK,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
+    menu: () => menuEl,
+    /* Right-click: on an option (opt given) or on something else. */
+    rightClick: (opt) => {
+      const optEl = opt === undefined ? null : { dataset: { opt: String(opt) } };
+      const ev = { clientX: 10, clientY: 20, preventDefault() {}, target: { closest: () => optEl } };
+      (appListeners.contextmenu || []).forEach((fn) => fn(ev));
+    },
+    key: (key) => {
+      const ev = { key, preventDefault() {}, target: { tagName: "BODY", closest: () => null } };
+      (docListeners.keydown || []).forEach((fn) => fn(ev));
+    },
   };
 }
 
@@ -1035,4 +1052,53 @@ test("the strike menu sits outside the transformed scenario screen", () => {
   const opens = (before.match(/<div\b/g) || []).length;
   const closes = (before.match(/<\/div>/g) || []).length;
   assert.equal(opens, closes, "every div before the menu is closed, so the menu is a sibling of .scn-screen");
+});
+
+/* ------------------------------------------------------- polish fixes */
+test("right-click opens the strike menu; Escape or a right-click elsewhere closes it", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.rightClick(2);
+  assert.equal(app.menu().hidden, false);
+  assert.ok(app.menu().innerHTML.includes('data-opt="2"'));
+  app.key("Escape");
+  assert.equal(app.menu().hidden, true, "Escape closes it");
+  app.rightClick(1);
+  app.rightClick();
+  assert.equal(app.menu().hidden, true, "right-click off an option closes it");
+});
+
+test("the review filter starts at All again after resuming", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("review-all");
+  app.click("review-filter", { filter: "flagged" });
+  app.click("quit");
+  app.click("resume");
+  app.click("review-all");
+  assert.equal((app.html().match(/class="tile /g) || []).length, 60);
+});
+
+test("scenario labels follow each question's scenario after a question is dropped", () => {
+  const storage = {};
+  const app = launch({ storage });
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  const dropped = sess.questions[0].id;
+  const second = sess.questions[15].id;
+  const again = launch({ storage, scenarioBank: scenarioBank().filter((q) => q.id !== dropped) });
+  again.click("resume");
+  const idx = again.store().snapshot().session.questions.findIndex((q) => q.id === second);
+  again.click("jump", { index: String(idx) });
+  assert.ok(again.html().includes("Scenario 2 of 4"), "first question of block two still says scenario 2");
+  again.click("review-all");
+  const firstGroup = again.html().split('<h3 class="review-scn">')[1];
+  assert.equal((firstGroup.match(/class="tile /g) || []).length, 14);
+});
+
+test("each option has a strike button for touch screens", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const btns = app.html().match(/<button class="strike-btn"[^>]*data-action="strike"[^>]*>/g) || [];
+  assert.equal(btns.length, 4);
 });

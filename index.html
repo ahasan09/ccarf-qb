@@ -460,7 +460,13 @@
   .scn-text { white-space: pre-line; }
   .scn-question { padding: 22px 24px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
   .scn-screen .q-text { font-weight: 500; font-size: 1.04rem; line-height: 1.65; }
-  .scn-screen .opt-wrap > .option { width: 100%; }
+  .opt-row { display: flex; gap: 6px; align-items: stretch; }
+  .opt-row > .option { flex: 1; min-width: 0; }
+  .strike-btn {
+    flex: none; width: 40px; border: 1.5px solid var(--line); border-radius: 11px;
+    background: var(--card); color: var(--graphite); font-size: 1.1rem; cursor: pointer;
+  }
+  @media (pointer: fine) { .strike-btn { display: none; } }
   .scn-screen .opt-note { border-top: 0; padding-top: 0; }
   .opt-wrap + .opt-wrap { margin-top: 8px; }
   .scn-question .options { display: flex; flex-direction: column; }
