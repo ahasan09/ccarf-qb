@@ -474,6 +474,17 @@
   }
   .ctx-item { display: block; border: 0; background: none; color: var(--ink); font: inherit; padding: 7px 12px; border-radius: 6px; cursor: pointer; }
   .ctx-item:hover, .ctx-item:focus-visible { background: var(--pen-soft); }
+  .scn-review { display: flex; flex-direction: column; gap: 10px; }
+  .review-filters { gap: 8px; flex-wrap: wrap; }
+  .review-scn { margin: 10px 0 2px; font-size: 1rem; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tile {
+    min-width: 48px; height: 36px; padding: 0 8px; font-family: var(--mono); font-size: 0.8rem;
+    border: 1.5px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--ink); cursor: pointer;
+  }
+  .tile.answered { background: var(--pen-soft); color: var(--pen); border-color: var(--pen); }
+  .tile.unanswered { border-style: dashed; border-color: var(--fail); }
+  .tile.flagged { border-color: var(--flag); box-shadow: inset 0 -3px 0 var(--flag); }
   @media (max-width: 680px) {
     .scn-screen { width: 100%; left: 0; transform: none; }
     .scn-body { grid-template-columns: 1fr; }

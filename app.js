@@ -1652,6 +1652,51 @@ if (typeof document !== "undefined") {
       window.scrollTo(0, 0);
     }
 
+    var reviewFilter = "all";
+
+    /* Before submitting: every question as a tile, grouped by scenario, so
+     * flagged and unanswered ones are easy to revisit. The clock keeps going. */
+    function renderScenarioReview() {
+      view = "scenario-review";
+      var total = session.questions.length;
+      var unanswered = session.questions.filter(function (s) { return session.answers[s.id] === null; }).length;
+      var flagged = session.questions.filter(function (s) { return session.flagged[s.id]; }).length;
+      var html = '<div class="scn-screen"><div class="scn-top"><div><strong>Review your answers</strong>' +
+        '<span class="muted"> · ' + (total - unanswered) + " of " + total + " answered</span></div>" +
+        '<div class="row">' +
+        (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
+        '<button class="btn exit small" data-action="quit">Exit ↩</button></div></div>';
+      html += '<div class="scn-review">';
+      html += '<div class="row review-filters">' +
+        [["all", "All (" + total + ")"], ["flagged", "⚑ Flagged (" + flagged + ")"], ["unanswered", "Unanswered (" + unanswered + ")"]]
+          .map(function (f) {
+            return '<button class="btn small' + (reviewFilter === f[0] ? " primary" : "") +
+              '" data-action="review-filter" data-filter="' + f[0] + '">' + f[1] + "</button>";
+          }).join("") + "</div>";
+      session.scenarioIds.forEach(function (sid, b) {
+        var tiles = "";
+        session.questions.slice(b * SCENARIO_BLOCK, (b + 1) * SCENARIO_BLOCK).forEach(function (s, k) {
+          var i = b * SCENARIO_BLOCK + k;
+          var isAnswered = session.answers[s.id] !== null;
+          if (reviewFilter === "flagged" && !session.flagged[s.id]) return;
+          if (reviewFilter === "unanswered" && isAnswered) return;
+          var cls = "tile " + (isAnswered ? "answered" : "unanswered") +
+            (session.flagged[s.id] ? " flagged" : "") + (session.comments[s.id] ? " commented" : "");
+          tiles += '<button class="' + cls + '" data-action="jump" data-index="' + i + '" aria-label="Question ' + (i + 1) +
+            (isAnswered ? ", answered" : ", not answered") + (session.flagged[s.id] ? ", flagged" : "") + '">' +
+            (i + 1) + (session.flagged[s.id] ? " ⚑" : "") + (session.comments[s.id] ? " 💬" : "") + "</button>";
+        });
+        html += '<h3 class="review-scn">Scenario ' + (b + 1) + ": " + esc((scenarioById[sid] || {}).name || sid) + "</h3>" +
+          '<div class="tiles">' + (tiles || '<span class="muted">Nothing here.</span>') + "</div>";
+      });
+      html += '<div class="scn-bottom"><button class="btn" data-action="jump" data-index="' + session.current +
+        '">← Back to question ' + (session.current + 1) + "</button>" +
+        '<button class="btn primary" data-action="submit">Submit exam</button></div>';
+      html += "</div></div>";
+      app.innerHTML = html;
+      window.scrollTo(0, 0);
+    }
+
     function renderQuestion() {
       if (isScenarioMode(session.mode)) return renderScenarioQuestion();
       view = "quiz";
@@ -2047,7 +2092,7 @@ if (typeof document !== "undefined") {
 
     /* ------------------------------------------------------------ events */
     function inQuestionScreen() {
-      return !!(session && session.questions && session.questions[session.current]);
+      return view === "quiz" && !!(session && session.questions && session.questions[session.current]);
     }
 
     function goPrev() {
@@ -2064,6 +2109,7 @@ if (typeof document !== "undefined") {
         if (session.feedback !== sq.id) return; // must answer first
         if (session.current + 1 >= session.questions.length) return submitSession();
       } else if (session.current + 1 >= session.questions.length) {
+        if (session.mode === "scenario") return renderScenarioReview();
         return;
       }
       session.current++;
@@ -2195,7 +2241,9 @@ if (typeof document !== "undefined") {
           return renderQuestion();
         }
         case "start-saved": return startSaved();
-        case "start-scenario-exam": return startScenarioExam();
+        case "start-scenario-exam": reviewFilter = "all"; return startScenarioExam();
+        case "review-all": return session && renderScenarioReview();
+        case "review-filter": reviewFilter = btn.dataset.filter || "all"; return session && renderScenarioReview();
         case "strike": return session && toggleStrike(Number(btn.dataset.opt));
         case "comment": {
           if (!session) return;

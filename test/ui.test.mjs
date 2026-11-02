@@ -54,6 +54,7 @@ function scenarioBank(perScenario = 16) {
 
 function launch(opts = {}) {
   const storage = opts.storage || {};
+  const timers = [];
   const listeners = {};
   const appEl = {
     innerHTML: "",
@@ -78,7 +79,7 @@ function launch(opts = {}) {
   const ctx = {
     window: win,
     console,
-    Date, Math, JSON, Object, Array, Number, String, Boolean, Promise,
+    Date: opts.Date || Date, Math, JSON, Object, Array, Number, String, Boolean, Promise,
     navigator: {},
     location: { protocol: "file:", hostname: "" },
     CustomEvent: class { constructor(type) { this.type = type; } },
@@ -90,7 +91,7 @@ function launch(opts = {}) {
     alert: () => {},
     confirm: opts.confirm || (() => true),
     prompt: opts.prompt || (() => null),
-    setInterval: () => 1,
+    setInterval: (fn) => { timers.push(fn); return timers.length; },
     clearInterval: () => {},
     setTimeout: () => 1,
     clearTimeout: () => {},
@@ -116,6 +117,7 @@ function launch(opts = {}) {
 
   return {
     html: () => appEl.innerHTML,
+    tick: () => timers.slice().forEach((fn) => fn()),
     click,
     storage,
     store: () => win.CCARF_STORE,
@@ -825,4 +827,70 @@ test("a comment and a flag show in the top bar", () => {
   const html = app.html();
   assert.ok(html.includes("Flagged"));
   assert.ok(html.includes("💬 Comment ✓") || html.includes("Edit comment"));
+});
+
+/* ------------------------------------------------ review before submit */
+function toLast(app) {
+  app.click("jump", { index: "59" });
+}
+
+test("Next on the last question opens the review screen", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  toLast(app);
+  app.click("next");
+  assert.ok(app.html().includes('class="scn-review"'), "review screen shown");
+  assert.ok(app.html().includes('data-action="submit"'));
+});
+
+test("the review screen groups tiles by scenario and filters flagged", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const sess = app.store().snapshot().session;
+  app.click("toggle-flag");
+  app.click("jump", { index: "20" });
+  app.click("toggle-flag");
+  app.click("review-all");
+  let html = app.html();
+  for (const sid of sess.scenarioIds) assert.ok(html.includes(`Scenario ${sid}`));
+  assert.equal((html.match(/class="tile /g) || []).length, 60);
+  app.click("review-filter", { filter: "flagged" });
+  html = app.html();
+  assert.equal((html.match(/class="tile /g) || []).length, 2);
+  app.click("review-filter", { filter: "unanswered" });
+  assert.equal((app.html().match(/class="tile /g) || []).length, 60);
+});
+
+test("a tile jumps back to its question", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("review-all");
+  app.click("jump", { index: "17" });
+  assert.ok(app.html().includes("Question 18 of 60"));
+});
+
+test("submitting with unanswered questions asks first", () => {
+  let asked = "";
+  const app = launch({ confirm: (m) => { asked = m; return false; } });
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "0" });
+  app.click("review-all");
+  app.click("submit");
+  assert.match(asked, /59 unanswered/);
+  assert.ok(app.store().snapshot().session, "cancelled submit keeps the session");
+});
+
+test("the deadline on the review screen submits the exam", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const app = launch({ Date: FakeDate });
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "0" });
+  app.click("review-all");
+  now += 121 * 60 * 1000;
+  app.tick();
+  const snap = app.store().snapshot();
+  assert.equal(snap.session, null);
+  assert.equal(snap.history[0].correct, 1);
+  assert.equal(snap.history[0].total, 60);
 });
