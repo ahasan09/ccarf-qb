@@ -887,13 +887,13 @@ window.SCENARIO_BANK.push(
       "Implement response validation that detects incomplete responses and automatically re-prompts the agent to address any missed concerns.",
       "Implement a preprocessing layer that uses a separate model call to decompose multi-concern messages into individual requests, process each independently, then combine the results.",
       "Add few-shot examples to your prompt demonstrating the correct reasoning and tool sequence for multi-concern requests.",
-      "Consolidate related tools into fewer, more general-purpose tools."
+      "Consolidate the refund, address and order tools into one general-purpose account tool so each request needs fewer tool choices."
     ],
     answer: 2,
     optionNotes: [
       "Validation plus re-prompting catches the missed concern after the fact but leaves the decomposition failure intact, and it does nothing about the parameter mixing between order #1234 and #5678 that the question describes. Each retry adds a round trip while the underlying pattern gap persists.",
       "A separate decomposition model call adds an extra inference hop, latency and cost to solve a gap that in-prompt examples close, since the agent already resolves individual concerns at 94%. It also discards cross-concern context that may matter when both requests touch the same customer.",
-      "Adding few-shot examples demonstrating correct reasoning and tool sequencing for multi-concern requests is the most effective approach because the agent already handles individual concerns well at 94% accuracy—it simply needs pattern guidance for handling multiple concerns in one message. This is a low-cost, proven technique that directly addresses the root cause of the agent failing to decompose and properly route parameters across multiple requests.",
+      "The agent already handles each concern well at 94%; what it lacks is a pattern for splitting one message into several requests and keeping each order's parameters separate. Few-shot examples showing that reasoning and tool sequence teach exactly that, at low cost.",
       "Tool granularity is not the failure mode: single-concern selection already works at 94%, so the tools are fine. Folding refunds and address updates into broader general-purpose tools makes parameter confusion between orders #1234 and #5678 more likely, not less."
     ],
     explanation: "The agent already handles each concern well on its own, so it needs to see the pattern for combining them. A few worked examples showing how to split the message and keep parameters with the right order address the gap cheaply.",

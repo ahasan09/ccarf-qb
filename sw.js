@@ -1,5 +1,5 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v14";
+const VERSION = "v15";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",

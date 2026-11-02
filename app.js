@@ -1321,6 +1321,7 @@ if (typeof document !== "undefined") {
         alert("The scenario exam needs at least four scenarios with " + SCENARIO_BLOCK + " questions each.");
         return;
       }
+      reviewFilter = "all";
       session = newSession("scenario", drawn.questions, EXAM_DURATION_MS);
       session.scenarioIds = drawn.scenarioIds;
       session.strikes = {};
@@ -1524,6 +1525,7 @@ if (typeof document !== "undefined") {
     }
 
     function resumeSession() {
+      reviewFilter = "all";
       if (!loadSavedSession()) return renderHome();
       if (session.deadline && Date.now() >= session.deadline) {
         submitSession();
@@ -1592,9 +1594,12 @@ if (typeof document !== "undefined") {
     }
 
     /* Which scenario block the current question is in (0-based). */
+    /* Blocks follow each question's own scenario, so dropping a question
+     * that left the bank never shifts the labels. */
     function scenarioBlockOf(sess, index) {
       if (sess.mode !== "scenario") return 0;
-      return Math.min(Math.floor(index / SCENARIO_BLOCK), (sess.scenarioIds || []).length - 1);
+      var q = byId[sess.questions[index].id];
+      return Math.max(0, (sess.scenarioIds || []).indexOf(q && q.scenario));
     }
 
     /* The real exam's layout: the scenario stays put on the left while its
@@ -1647,9 +1652,12 @@ if (typeof document !== "undefined") {
           if (correct.indexOf(optIdx) !== -1) cls += " correct";
           else if (picked) cls += " wrong";
         }
-        html += '<div class="opt-wrap"><button class="' + cls + '" role="radio" aria-checked="' + picked +
+        html += '<div class="opt-wrap"><div class="opt-row"><button class="' + cls + '" role="radio" aria-checked="' + picked +
           '" data-action="select" data-opt="' + optIdx + '"' + (showFeedback ? " disabled" : "") + ">" +
-          '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>";
+          '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>" +
+          /* Touch screens have no right-click, so they get a small button. */
+          '<button class="strike-btn" data-action="strike" data-opt="' + optIdx + '" aria-label="' +
+          (struck.indexOf(optIdx) !== -1 ? "Remove strike-through" : "Strike through") + '">⊘</button></div>';
         if (showFeedback && q.optionNotes) {
           html += '<div class="opt-note ' + (correct.indexOf(optIdx) !== -1 ? "ok" : "bad") + '">' +
             esc(q.optionNotes[optIdx]) + "</div>";
@@ -1715,8 +1723,8 @@ if (typeof document !== "undefined") {
           }).join("") + "</div>";
       session.scenarioIds.forEach(function (sid, b) {
         var tiles = "";
-        session.questions.slice(b * SCENARIO_BLOCK, (b + 1) * SCENARIO_BLOCK).forEach(function (s, k) {
-          var i = b * SCENARIO_BLOCK + k;
+        session.questions.forEach(function (s, i) {
+          if ((byId[s.id] || {}).scenario !== sid) return;
           var isAnswered = session.answers[s.id] !== null;
           if (reviewFilter === "flagged" && !session.flagged[s.id]) return;
           if (reviewFilter === "unanswered" && isAnswered) return;
@@ -2265,6 +2273,7 @@ if (typeof document !== "undefined") {
     }
 
     document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") hideCtxMenu();
       if (!inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
       var tag = ev.target && ev.target.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -2298,7 +2307,7 @@ if (typeof document !== "undefined") {
       if (!session || !isScenarioMode(session.mode) || view !== "quiz") return;
       var opt = ev.target.closest && ev.target.closest(".option[data-opt]");
       var menu = document.getElementById("ctx-menu");
-      if (!opt || !menu) return;
+      if (!opt || !menu) return hideCtxMenu();
       ev.preventDefault();
       var optIdx = Number(opt.dataset.opt);
       var id = session.questions[session.current].id;
@@ -2378,7 +2387,7 @@ if (typeof document !== "undefined") {
           return renderQuestion();
         }
         case "start-saved": return startSaved();
-        case "start-scenario-exam": reviewFilter = "all"; return startScenarioExam();
+        case "start-scenario-exam": return startScenarioExam();
         case "review-all": return session && renderScenarioReview();
         case "practice-scenario": return startScenarioPractice(btn.dataset.scenario);
         case "practice-missed": return lastFinished && startScenarioPractice(null, lastFinished.grade.wrongIds);
