@@ -938,6 +938,21 @@ if (typeof document !== "undefined") {
           '<button class="btn ghost" data-action="discard">Discard</button></div></div>';
       }
 
+      var scnEligible = eligibleScenarios(SCENARIOS, SCENARIO_BANK);
+      var scnReady = SCENARIOS.length > 0 && scnEligible.length === SCENARIOS.length;
+      html += '<div class="grid scn-cards"><div class="card scn-card"><h2>Scenario exam</h2>' +
+        "<p>The real exam's format: four of the six official scenarios, 15 questions each. The scenario stays on the left while you answer; flag, comment and strike out options, then review before you submit. 120 min · pass 720/1000.</p>" +
+        '<button class="btn primary" data-action="start-scenario-exam"' + (scnReady ? "" : " disabled") + ">Start scenario exam</button>" +
+        (scnReady ? "" : '<p class="muted">Available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>") +
+        '</div><div class="card"><h2>Practice by scenario</h2><p class="muted">Untimed, with a note for every option after each answer.</p>' +
+        '<div class="domain-list">';
+      SCENARIOS.forEach(function (sc) {
+        var n = SCENARIO_BANK.filter(function (q) { return q.scenario === sc.id; }).length;
+        html += '<button class="domain-row" data-action="practice-scenario" data-scenario="' + sc.id + '"' + (n ? "" : " disabled") + ">" +
+          "<span>" + esc(sc.name) + '</span><span class="muted">' + n + " question" + (n === 1 ? "" : "s") + "</span></button>";
+      });
+      html += "</div></div></div>";
+
       html += '<div class="grid">';
       html += '<div class="card"><h2>Supplementary mock exam</h2>' +
         "<p>Same 60-question format, drawn from the " + UNMAPPED.length +
@@ -1316,6 +1331,28 @@ if (typeof document !== "undefined") {
       startTimer();
     }
 
+    /* Untimed, one scenario (or a set of missed questions), with every
+     * option's note shown after each answer. Questions not yet met in a
+     * scenario exam come first. */
+    function startScenarioPractice(scenarioId, ids) {
+      if (!okToReplaceSaved()) return;
+      var pool = ids
+        ? ids.map(function (id) { return byId[id]; }).filter(Boolean)
+        : SCENARIO_BANK.filter(function (q) { return q.scenario === scenarioId; });
+      if (!pool.length) return;
+      var used = usedScenarioQuestionIds(Store.snapshot().history);
+      pool = shuffle(pool.filter(function (q) { return !used.has(q.id); }))
+        .concat(shuffle(pool.filter(function (q) { return used.has(q.id); })));
+      session = newSession("scenario-practice", pool, false);
+      session.scenarioId = scenarioId || null;
+      session.missed = !!ids;
+      session.strikes = {};
+      session.comments = {};
+      session.separate = true;
+      persistSession();
+      renderQuestion();
+    }
+
     function isScenarioMode(mode) {
       return mode === "scenario" || mode === "scenario-practice";
     }
@@ -1549,7 +1586,8 @@ if (typeof document !== "undefined") {
         case "imported": return session.examName || "Imported exam";
         case "scenario": return "Scenario Exam";
         case "scenario-practice":
-          return "Practice — " + ((scenarioById[session.scenarioId] || {}).name || "Scenario");
+          return "Practice — " + (session.missed ? "missed scenario questions"
+            : (scenarioById[session.scenarioId] || {}).name || "Scenario");
       }
     }
 
@@ -1821,7 +1859,7 @@ if (typeof document !== "undefined") {
 
     function selectOption(optIdx) {
       var sq = session.questions[session.current];
-      if (session.mode === "practice") {
+      if ((session.mode === "practice" || session.mode === "scenario-practice")) {
         if (session.feedback === sq.id) return; // already answered
         var q = byId[sq.id];
         var wanted = correctIndices(q);
@@ -2002,6 +2040,7 @@ if (typeof document !== "undefined") {
         case "weak": return "Weak questions drill";
         case "practice": return "Practice session complete";
         case "custom": return "Custom quiz complete";
+        case "scenario-practice": return "Scenario practice complete";
         default: return "";
       }
     }
@@ -2074,9 +2113,10 @@ if (typeof document !== "undefined") {
         if (isCorrect) cls += " correct";
         if (wasPicked && !isCorrect) cls += " wrong";
         var note = q.optionNotes && q.optionNotes[optIdx];
-        html += '<div class="' + cls + '"><span class="opt-letter"></span>' + esc(q.options[optIdx]) +
+        /* The note goes under its own option, never beside or after another. */
+        html += '<div class="opt-wrap"><div class="' + cls + '"><span class="opt-letter"></span><span>' + esc(q.options[optIdx]) +
           (isCorrect ? ' <span class="tag">correct answer</span>' : "") +
-          (wasPicked ? ' <span class="tag">your answer</span>' : "") +
+          (wasPicked ? ' <span class="tag">your answer</span>' : "") + "</span></div>" +
           (note ? '<div class="opt-note ' + (isCorrect ? "ok" : "bad") + '">' + esc(note) + "</div>" : "") +
           "</div>";
       });
@@ -2200,7 +2240,7 @@ if (typeof document !== "undefined") {
 
     function goNext() {
       var sq = session.questions[session.current];
-      if (session.mode === "practice") {
+      if ((session.mode === "practice" || session.mode === "scenario-practice")) {
         if (session.feedback !== sq.id) return; // must answer first
         if (session.current + 1 >= session.questions.length) return submitSession();
       } else if (session.current + 1 >= session.questions.length) {
@@ -2232,7 +2272,7 @@ if (typeof document !== "undefined") {
       else if (key.length === 1 && key >= "a" && key <= "d") optPos = key.charCodeAt(0) - 97;
       if (optPos >= 0) {
         var sq = session.questions[session.current];
-        if (session.mode === "practice" && session.feedback === sq.id) return;
+        if ((session.mode === "practice" || session.mode === "scenario-practice") && session.feedback === sq.id) return;
         return selectOption(sq.order[optPos]);
       }
       if (ev.key === "ArrowLeft") { ev.preventDefault(); return goPrev(); }
@@ -2338,6 +2378,8 @@ if (typeof document !== "undefined") {
         case "start-saved": return startSaved();
         case "start-scenario-exam": reviewFilter = "all"; return startScenarioExam();
         case "review-all": return session && renderScenarioReview();
+        case "practice-scenario": return startScenarioPractice(btn.dataset.scenario);
+        case "practice-missed": return lastFinished && startScenarioPractice(null, lastFinished.grade.wrongIds);
         case "review-filter": reviewFilter = btn.dataset.filter || "all"; return session && renderScenarioReview();
         case "strike": return session && toggleStrike(Number(btn.dataset.opt));
         case "comment": {

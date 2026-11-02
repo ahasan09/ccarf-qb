@@ -960,3 +960,65 @@ test("a legacy history entry still opens the one-panel review", () => {
   assert.ok(!app.html().includes('class="scn-panel"'));
   assert.ok(app.html().includes("correct answer"));
 });
+
+/* ------------------------------------------------- home + scenario practice */
+test("the home screen offers the scenario exam and practice by scenario", () => {
+  const app = launch();
+  const html = app.html();
+  assert.ok(html.includes("Scenario exam"));
+  assert.match(html, /data-action="start-scenario-exam"(?![^>]*disabled)/);
+  assert.ok(html.includes("Practice by scenario"));
+  assert.equal((html.match(/data-action="practice-scenario"/g) || []).length, 6);
+});
+
+test("the scenario exam button waits until every scenario has 15 questions", () => {
+  const app = launch({ scenarioBank: scenarioBank({ support: 16, ci: 16, research: 16, devprod: 16, codegen: 16, extraction: 10 }) });
+  assert.match(app.html(), /data-action="start-scenario-exam"[^>]*disabled/);
+  assert.ok(app.html().includes("Available once every scenario has 15 questions"));
+  assert.match(app.html(), /data-action="practice-scenario" data-scenario="extraction"(?![^>]*disabled)/);
+});
+
+test("an empty scenario cannot be practised", () => {
+  const app = launch({ scenarioBank: scenarioBank({ support: 3 }) });
+  assert.match(app.html(), /data-action="practice-scenario" data-scenario="ci"[^>]*disabled/);
+});
+
+test("scenario practice shows every option's note after answering", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "ci" });
+  let html = app.html();
+  assert.ok(html.includes('class="scn-panel"') && html.includes("Background text for ci."));
+  assert.ok(!html.includes("Note one"), "no notes before answering");
+  assert.ok(!html.includes('data-action="comment"'), "no comment button in practice");
+  app.click("select", { opt: "1" });
+  html = app.html();
+  for (const n of ["Note one", "Note two", "Note three", "Note four"]) assert.ok(html.includes(n));
+  assert.ok(html.includes("Incorrect."));
+  app.click("select", { opt: "0" });
+  assert.equal(app.store().snapshot().session.answers[app.store().snapshot().session.questions[0].id], 1, "answer locked after feedback");
+});
+
+test("scenario practice leaves the weak set and bank progress alone", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "support" });
+  for (let i = 0; i < 16; i++) {
+    app.click("select", { opt: "1" });
+    app.click(i === 15 ? "submit" : "next");
+  }
+  const snap = app.store().snapshot();
+  assert.equal(snap.session, null);
+  assert.deepEqual(snap.weak, []);
+  assert.deepEqual(snap.attempted, []);
+  assert.equal(snap.history.length, 0);
+});
+
+test("missed exam questions can be practised from the results", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  app.click("select", { opt: "1" });
+  app.click("submit");
+  app.click("practice-missed");
+  const sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario-practice");
+  assert.equal(sess.questions.length, 60);
+});

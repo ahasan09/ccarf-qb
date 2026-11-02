@@ -449,6 +449,7 @@
   .scn-top { position: sticky; top: 0; z-index: 10; }
   .scn-bottom { position: sticky; bottom: 0; z-index: 10; }
   .btn.flag-on { color: var(--flag); border-color: var(--flag); background: var(--flag-soft); }
+  .scn-screen, .scn-body, .scn-question { min-width: 0; }
   .scn-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
   .scn-panel {
     position: sticky; top: 64px; max-height: calc(100vh - 150px); overflow-y: auto;
@@ -458,7 +459,9 @@
   .scn-panel summary { font-family: var(--display); font-weight: 700; font-size: 1.05rem; cursor: pointer; margin-bottom: 8px; }
   .scn-text { white-space: pre-line; }
   .scn-question { padding: 22px 24px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
-  .scn-question .q-text { line-height: 1.6; }
+  .scn-screen .q-text { font-weight: 500; font-size: 1.04rem; line-height: 1.65; }
+  .scn-screen .opt-wrap > .option { width: 100%; }
+  .scn-screen .opt-note { border-top: 0; padding-top: 0; }
   .opt-wrap + .opt-wrap { margin-top: 8px; }
   .scn-question .options { display: flex; flex-direction: column; }
   .option.struck { text-decoration: line-through; opacity: 0.5; }
@@ -490,7 +493,9 @@
   .scn-review-list .review-card { margin: 0; }
   @media (max-width: 680px) {
     .scn-screen { width: 100%; left: 0; transform: none; }
-    .scn-body { grid-template-columns: 1fr; }
+    .scn-body { grid-template-columns: minmax(0, 1fr); }
+    .scn-question { padding: 16px; }
+    .scn-top, .scn-bottom { padding: 8px 10px; }
     .scn-panel { position: static; max-height: none; }
     .scn-hint { display: none; }
   }

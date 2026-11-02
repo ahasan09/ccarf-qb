@@ -17,6 +17,15 @@ Modes:
   subdomain, 120-minute timer, flag-for-review, navigator grid.
   Scored out of 1000; pass at 720 (44+ correct), with per-domain breakdown
   and full answer review with explanations. Exit mid-exam and resume later.
+- **Scenario exam** — the real exam's format: four of the six official
+  scenarios, 15 questions each, with the scenario fixed on the left and the
+  question on the right. Flag, comment, right-click to strike out options,
+  review flagged/unanswered before submitting. Results show percent correct per
+  exam-guide objective, weakest first, and a review with a note under every
+  option. Drawn from the separate scenario bank, preferring questions you have
+  not met in earlier attempts.
+- **Practice by scenario** — untimed, every option's note shown after each
+  answer. Scenario questions never feed the weak drill or bank progress.
 - **Supplementary mock exam** — the same format drawn from the 300 questions
   not mapped to a subdomain, so the main mock stays exam-guide aligned.
 - **Retry failed** — after any session, re-quiz only the questions you got
