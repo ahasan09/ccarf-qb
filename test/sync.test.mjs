@@ -3,10 +3,9 @@
  * be checked from a single in-memory state. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+import app from "./engine.mjs";
 
-const require = createRequire(import.meta.url);
-const { createStore, createSyncEngine, Mutations } = require("../app.js");
+const { createStore, createSyncEngine, Mutations } = app;
 
 /* A Postgres row with compare-and-swap on updated_at, like the real table. */
 function makeServer() {
