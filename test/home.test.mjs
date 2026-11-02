@@ -179,3 +179,31 @@ test("objectiveAccuracy ignores subdomains outside the exam guide", () => {
   const look = (id) => ({ x: { id: "x", subdomain: "1.10", options: [1, 2, 3, 4], answer: 0 } })[id];
   assert.deepEqual(objectiveAccuracy([{ date: "1", score: 1, items: [{ id: "x", given: 1 }] }], look), {});
 });
+
+/* ------------------------------------------------------- polish fixes */
+const { daysUntil, isValidDate } = app;
+
+test("only real calendar dates are accepted", () => {
+  assert.equal(isValidDate("2026-12-14"), true);
+  assert.equal(isValidDate("2026-13-45"), false);
+  assert.equal(isValidDate("2026-02-30"), false);
+  assert.equal(isValidDate("2028-02-29"), true);
+  assert.equal(isValidDate("next week"), false);
+  assert.equal(normalizeProgress({ examDate: "2026-02-30" }).examDate, null);
+});
+
+test("daysUntil counts calendar days, unaffected by daylight saving", () => {
+  const now = new Date(2026, 2, 1, 23, 30).getTime(); // 1 Mar, late evening local time
+  assert.equal(daysUntil("2026-03-01", now), 0);
+  assert.equal(daysUntil("2026-03-02", now), 1);
+  assert.equal(daysUntil("2026-04-10", now), 40, "spans the March DST change");
+  assert.equal(daysUntil("2026-02-27", now), -2);
+  assert.equal(daysUntil("bogus", now), null);
+});
+
+test("a null review update removes the entry", () => {
+  let s = emptyProgress();
+  s.review = { q: { step: 0, due: 1, updatedAt: 1 } };
+  s = applyMutations(s, [Mutations.recordReview({ q: null })]);
+  assert.equal(s.review.q, undefined);
+});
