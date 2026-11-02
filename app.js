@@ -364,7 +364,12 @@ function breakdownBy(questions, answers, keyFn) {
  * of a merge guessing what was deleted. */
 
 function emptyProgress() {
-  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null };
+  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null, review: {}, examDate: null };
+}
+
+function isReviewEntry(e) {
+  return !!e && typeof e === "object" && typeof e.due === "number" &&
+    typeof e.step === "number" && typeof e.updatedAt === "number";
 }
 
 function normalizeProgress(raw) {
@@ -386,6 +391,12 @@ function normalizeProgress(raw) {
   if (raw.session && typeof raw.session === "object" && Array.isArray(raw.session.questions)) {
     s.session = raw.session;
   }
+  if (raw.review && typeof raw.review === "object") {
+    Object.keys(raw.review).forEach(function (id) {
+      if (isReviewEntry(raw.review[id])) s.review[id] = raw.review[id];
+    });
+  }
+  if (typeof raw.examDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.examDate)) s.examDate = raw.examDate;
   return s;
 }
 
@@ -428,7 +439,45 @@ function mergeProgress(a, b) {
     session: !a.session ? b.session
       : !b.session ? a.session
       : (b.session.startedAt || 0) > (a.session.startedAt || 0) ? b.session : a.session,
+    review: mergeReview(a.review, b.review),
+    examDate: b.examDate || a.examDate,
   };
+}
+
+/* The newer write wins per question, so a reset or a finish is never undone
+ * by an older copy from another device. */
+function mergeReview(a, b) {
+  var out = {};
+  [a || {}, b || {}].forEach(function (src) {
+    Object.keys(src).forEach(function (id) {
+      if (!out[id] || src[id].updatedAt >= out[id].updatedAt) out[id] = src[id];
+    });
+  });
+  return out;
+}
+
+/* ------------------------------------------------------- spaced review */
+var DAY_MS = 86400000;
+var REVIEW_STEPS_DAYS = [1, 3, 7, 14];
+
+/* A missed question comes back after 1 day, then 3, 7 and 14 days each time
+ * it is answered correctly once due; after the last step it is done. Returns
+ * the new entry, or null when nothing changes. */
+function reviewAfterAnswer(entry, correct, now) {
+  if (!correct) return { step: 0, due: now + DAY_MS, updatedAt: now };
+  if (!entry || entry.done || entry.due > now) return null;
+  if (entry.step >= REVIEW_STEPS_DAYS.length - 1) {
+    return { step: entry.step, due: entry.due, updatedAt: now, done: true };
+  }
+  var step = entry.step + 1;
+  return { step: step, due: now + REVIEW_STEPS_DAYS[step] * DAY_MS, updatedAt: now };
+}
+
+function dueReviewIds(review, now) {
+  return Object.keys(review || {}).filter(function (id) {
+    var e = review[id];
+    return e && !e.done && e.due <= now;
+  });
 }
 
 function unionIds(existing, added) {
@@ -472,6 +521,20 @@ var Mutations = {
     return { key: "clearHistory", apply: function (s) { s.history = []; } };
   },
   /* Bookmark a question to come back to, or clear the bookmark. */
+  recordReview: function (updates) {
+    return {
+      key: null,
+      apply: function (s) {
+        s.review = s.review || {};
+        Object.keys(updates || {}).forEach(function (id) {
+          if (updates[id]) s.review[id] = updates[id];
+        });
+      },
+    };
+  },
+  setExamDate: function (date) {
+    return { key: "examDate", apply: function (s) { s.examDate = date || null; } };
+  },
   toggleSaved: function (questionId) {
     return {
       key: null,
@@ -655,6 +718,10 @@ if (typeof module !== "undefined" && module.exports) {
     updateWeakSet: updateWeakSet,
     validateBank: validateBank,
     validateScenarioBank: validateScenarioBank,
+    reviewAfterAnswer: reviewAfterAnswer,
+    dueReviewIds: dueReviewIds,
+    REVIEW_STEPS_DAYS: REVIEW_STEPS_DAYS,
+    DAY_MS: DAY_MS,
     SUBDOMAINS: SUBDOMAINS,
     SCENARIO_MIN_WORDS: SCENARIO_MIN_WORDS,
     SCENARIO_BLOCK: SCENARIO_BLOCK,
