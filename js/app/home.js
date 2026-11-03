@@ -268,7 +268,7 @@ function homeCollapsed(progress) {
   var best = 0;
   history.forEach(function (h) { if (h.score > best) best = h.score; });
   var html = homeResources();
-  html += '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
+  html += '<details class="card h-fold"' + foldAttrs("h-history") + '><summary><b>Score history</b><span class="muted">' +
     (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span>" + chev() + "</summary>";
   if (!history.length) {
     html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
@@ -297,7 +297,7 @@ function homeCollapsed(progress) {
 
   if (EXAMS.length) {
     var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
-    html += '<details class="card h-fold" id="h-imported"><summary><b>Imported mock exams</b><span class="muted">' +
+    html += '<details class="card h-fold"' + foldAttrs("h-imported") + '><summary><b>Imported mock exams</b><span class="muted">' +
       EXAMS.length + " tests · " + taken + " taken</span>" + chev() + "</summary>" +
       '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
       '<div class="domain-list">';
@@ -317,7 +317,7 @@ function homeCollapsed(progress) {
 
   var S = window.CCARF_SYNC;
   var signedIn = S && S.enabled && S.user();
-  html += '<details class="card h-fold" id="h-acct"><summary><b>Account &amp; sync</b><span class="muted">' +
+  html += '<details class="card h-fold"' + foldAttrs("h-acct") + '><summary><b>Account &amp; sync</b><span class="muted">' +
     (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span>" + chev() + "</summary>" + accountCard() + "</details>";
   return html;
 }
@@ -385,7 +385,7 @@ function resourceLink(r, cls, text) {
 
 function homeResources() {
   if (!RESOURCES.length) return "";
-  var html = '<details class="card h-fold" id="h-resources"><summary><b>Study resources</b><span class="muted">' +
+  var html = '<details class="card h-fold"' + foldAttrs("h-resources") + '><summary><b>Study resources</b><span class="muted">' +
     RESOURCES.length + " link" + (RESOURCES.length === 1 ? "" : "s") + " · exam guide, courses, practice</span>" + chev() + "</summary>" +
     '<p class="muted">Material outside this app — links open in a new tab and need an internet connection.</p>';
   RESOURCE_GROUPS.forEach(function (g) {

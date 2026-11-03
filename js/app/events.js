@@ -152,6 +152,13 @@ function runSlow(btn) {
   });
 }
 
+/* Remember sections the user opens or closes so redraws keep them that way.
+ * "toggle" doesn't bubble, hence the capture listener. */
+app.addEventListener("toggle", function (ev) {
+  var el = ev.target;
+  if (el && el.tagName === "DETAILS" && el.id) foldState[el.id] = el.open;
+}, true);
+
 app.addEventListener("click", function (ev) {
   var btn = ev.target.closest("[data-action]");
   if (!btn || btn.disabled) return;

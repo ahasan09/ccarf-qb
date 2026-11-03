@@ -143,6 +143,11 @@ function launch(opts = {}) {
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
     menu: () => menuEl,
+    /* The user opening or closing a <details> section. */
+    toggle: (id, open) => {
+      const ev = { target: { tagName: "DETAILS", id, open } };
+      (appListeners.toggle || []).forEach((fn) => fn(ev));
+    },
     appEl,
     win,
     scripts,
@@ -1482,4 +1487,41 @@ test("both question layouts render inside a full-height screen with the action b
   app.click("practice-scenario", { scenario: "support" });
   html = app.html();
   assert.ok(html.startsWith('<div class="q-screen scn-screen">'), "scenario layout shares the screen class");
+});
+
+/* ---- sections stay as the user left them ---------------------------------- */
+const RETURNING = { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) };
+const isOpen = (html, id) => new RegExp('<details class="card h-fold" id="' + id + '" open>').test(html);
+
+test("an opened home section stays open when the page redraws", () => {
+  const app = launch({ storage: RETURNING, resources: RESOURCES });
+  assert.ok(!isOpen(app.html(), "h-resources"), "closed by default");
+  app.toggle("h-resources", true);
+  app.click("toggle-mastery", { domain: "2" });      // any redraw
+  assert.ok(isOpen(app.html(), "h-resources"), "still open after a redraw");
+  app.fireSyncEvent();                               // background sync redraw
+  assert.ok(isOpen(app.html(), "h-resources"), "still open after a sync");
+  assert.ok(!isOpen(app.html(), "h-history"), "other sections untouched");
+});
+
+test("closing a section is remembered too, and it survives a trip into a quiz", () => {
+  const app = launch({ storage: RETURNING });
+  app.toggle("h-history", true);
+  app.toggle("h-acct", true);
+  app.toggle("h-history", false);
+  app.click("practice", { domain: "3", sub: "3.1" });
+  app.click("quit");
+  assert.ok(!isOpen(app.html(), "h-history"));
+  assert.ok(isOpen(app.html(), "h-acct"));
+});
+
+test("a collapsed scenario panel stays collapsed on the next question", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "support" });
+  assert.ok(app.html().includes('<details id="scn-brief" open>'), "open by default");
+  app.toggle("scn-brief", false);
+  app.click("select", { opt: "0" });
+  assert.ok(app.html().includes('<details id="scn-brief">'), "stays collapsed after answering");
+  app.click("next");
+  assert.ok(app.html().includes('<details id="scn-brief">'), "and on the next question");
 });
