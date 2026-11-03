@@ -679,3 +679,23 @@ function reportIssueUrl(q, base) {
   return base + "?title=" + encodeURIComponent("Question " + q.id + ": ") +
     "&labels=bug&body=" + encodeURIComponent(body);
 }
+
+/* ------------------------------------------------------------ search */
+/* Questions containing every word of `query` (any case) in their text,
+ * options, explanation, objective or id. Matches in the question text come
+ * first. Fewer than 2 characters matches nothing. */
+function searchQuestions(list, query) {
+  var words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.join("").length < 2) return [];
+  var hits = [];
+  (list || []).forEach(function (q) {
+    var stem = String(q.question || "").toLowerCase();
+    var all = [stem, q.id, q.subdomain || "", q.explanation || ""]
+      .concat(q.options || [], q.optionNotes || []).join("\n").toLowerCase();
+    if (!words.every(function (w) { return all.indexOf(w) !== -1; })) return;
+    hits.push({ q: q, inStem: words.every(function (w) { return stem.indexOf(w) !== -1; }) });
+  });
+  return hits.filter(function (h) { return h.inStem; })
+    .concat(hits.filter(function (h) { return !h.inStem; }))
+    .map(function (h) { return h.q; });
+}

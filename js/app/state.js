@@ -161,7 +161,8 @@ var Store = createStore({
 window.CCARF_STORE = Store;
 
 var app = document.getElementById("app");
-var view = "home"; // home | quiz | results | review | custom
+var view = "home"; // home | quiz | results | review | custom | search
+var searchQuery = ""; // the search screen's last query
 var timerHandle = null;
 var session = null; // active session object
 var pendingEmail = null; // login code sent, awaiting verification

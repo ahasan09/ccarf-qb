@@ -99,7 +99,7 @@ var SLOW_ACTIONS = {
   "resume": 1, "finish-saved": 1, "start-custom": 1, "start-saved": 1, "start-scenario-exam": 1,
   "practice-scenario": 1, "start-review": 1, "start-diagnostic": 1, "drill-objective": 1,
   "practice-missed": 1, "retry-failed": 1, "review-attempt": 1, "submit": 1, "show-review": 1,
-  "review-all": 1, "back-results": 1, "custom-builder": 1,
+  "review-all": 1, "back-results": 1, "custom-builder": 1, "practice-search": 1,
 };
 var busyAction = null;
 
@@ -138,6 +138,11 @@ function runSlow(btn) {
     else done();
   });
 }
+
+/* The search box: results follow as the user types. */
+app.addEventListener("input", function (ev) {
+  if (view === "search" && ev.target && ev.target.id === "search-q") updateSearch(ev.target.value);
+});
 
 /* Remember sections the user opens or closes so redraws keep them that way.
  * "toggle" doesn't bubble, hence the capture listener. */
@@ -187,6 +192,8 @@ function handleAction(btn) {
       }
       return;
     case "custom-builder": return renderCustomBuilder();
+    case "search": return renderSearch();
+    case "practice-search": return startSearchPractice(btn.dataset.pool);
     case "cq-domain":
       customState.domains[Number(btn.dataset.domain)] = btn.checked;
       return renderCustomBuilder();

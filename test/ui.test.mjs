@@ -159,6 +159,10 @@ function launch(opts = {}) {
       const ev = { clientX: 10, clientY: 20, preventDefault() {}, target: { closest: () => optEl } };
       (appListeners.contextmenu || []).forEach((fn) => fn(ev));
     },
+    /* Typing into a text box: fires the app's input listener. */
+    type: (id, value) => {
+      (appListeners.input || []).forEach((fn) => fn({ target: { id, value } }));
+    },
     key: (key) => {
       const ev = { key, preventDefault() {}, target: { tagName: "BODY", closest: () => null } };
       (docListeners.keydown || []).forEach((fn) => fn(ev));
@@ -1647,4 +1651,39 @@ test("scenario practice has the report link too", () => {
   app.click("practice-scenario", { scenario: "ci" });
   app.click("select", { opt: "1" });
   assert.ok(app.html().includes("report-link"));
+});
+
+/* ------------------------------------------------------------ search */
+test("search lists matching bank and scenario questions as you type", () => {
+  const app = launch();
+  app.click("search");
+  assert.ok(app.html().includes('id="search-q"'));
+  app.type("search-q", "Question 2-1");
+  const html = app.html();
+  assert.match(html, /Question bank <span class="muted">\(11\)<\/span>/); // 2-1, 2-10 … 2-19
+  assert.ok(!html.includes("Scenario questions"), "no scenario hits, no empty group");
+  app.type("search-q", "ci 3");
+  assert.match(app.html(), /Scenario questions <span class="muted">\(\d+\)/);
+  app.type("search-q", "zzzz");
+  assert.ok(app.html().includes("No questions match"));
+});
+
+test("practice the search matches: bank ones in practice, scenario ones in scenario practice", () => {
+  const app = launch();
+  app.click("search");
+  app.type("search-q", "Question 2-1");
+  app.click("practice-search", { pool: "bank" });
+  let sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "practice");
+  assert.equal(sess.questions.length, 11);
+  assert.ok(app.html().includes("Search: “Question 2-1”"));
+  app.click("quit");
+  app.click("discard");
+  app.click("search");
+  assert.ok(app.html().includes('value="Question 2-1"'), "the query is kept");
+  app.type("search-q", "scenario question ci");
+  app.click("practice-search", { pool: "scenario" });
+  sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario-practice");
+  assert.equal(sess.questions.length, 16);
 });

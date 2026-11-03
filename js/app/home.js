@@ -259,6 +259,7 @@ function homePractice(progress, now, lookup) {
       progress.weak.length + "</span></button>";
   }
   html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
+    '<button class="h-row" data-action="search"><span>🔍 Search questions</span><span class="muted">by keyword →</span></button>' +
     '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
   return html + "</section>";
 }

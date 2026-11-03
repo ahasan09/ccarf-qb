@@ -226,6 +226,76 @@ function setComment(text) {
   renderQuestion();
 }
 
+/* --------------------------------------------------------- search */
+var SEARCH_SHOWN = 30; // results listed per group; "Practice these" takes all
+
+function searchHits() {
+  return {
+    bank: searchQuestions(BANK, searchQuery),
+    scenario: searchQuestions(SCENARIO_BANK, searchQuery),
+  };
+}
+
+function renderSearch() {
+  view = "search";
+  app.innerHTML = '<div class="quiz-header"><div><strong>Search questions</strong></div>' +
+    '<button class="btn ghost small" data-action="home">← Home</button></div>' +
+    '<div class="card"><label class="search-label" for="search-q">Find questions by keyword — e.g. <i>tool_choice</i>, <i>hooks</i>, <i>CLAUDE.md</i></label>' +
+    '<input class="input search-input" id="search-q" type="search" autocomplete="off" value="' + esc(searchQuery) + '" autofocus>' +
+    '<p class="muted search-note">Searches the question bank and the scenario questions (text, options, explanations and objectives). Imported exams are not included.</p></div>' +
+    '<div id="search-results" aria-live="polite">' + searchResultsHtml() + "</div>";
+  var input = document.getElementById("search-q");
+  if (input && input.focus) {
+    input.focus();
+    if (input.setSelectionRange) input.setSelectionRange(searchQuery.length, searchQuery.length);
+  }
+}
+
+/* Typing only redraws the results, so the box keeps focus. */
+function updateSearch(query) {
+  searchQuery = String(query || "");
+  var box = document.getElementById("search-results");
+  if (box) box.innerHTML = searchResultsHtml();
+  else renderSearch();
+}
+
+function searchResultsHtml() {
+  if (searchQuery.replace(/\s/g, "").length < 2) return "";
+  var hits = searchHits();
+  if (!hits.bank.length && !hits.scenario.length) {
+    return '<div class="card"><p class="muted">No questions match “' + esc(searchQuery) + "”.</p></div>";
+  }
+  return searchGroup("Question bank", hits.bank, "bank") + searchGroup("Scenario questions", hits.scenario, "scenario");
+}
+
+function searchGroup(title, list, pool) {
+  if (!list.length) return "";
+  var html = '<div class="card"><div class="search-head"><h2>' + title + ' <span class="muted">(' + list.length + ")</span></h2>" +
+    '<button class="btn primary small" data-action="practice-search" data-pool="' + pool + '">Practice ' +
+    (list.length === 1 ? "this one" : "these " + list.length) + "</button></div><ol class=\"search-list\">";
+  list.slice(0, SEARCH_SHOWN).forEach(function (q) {
+    var text = String(q.question);
+    if (text.length > 220) text = text.slice(0, 220) + "…";
+    html += '<li><div class="q-meta">' + questionMeta(q) + "</div>" + esc(text) + "</li>";
+  });
+  html += "</ol>";
+  if (list.length > SEARCH_SHOWN) html += '<p class="muted">… and ' + (list.length - SEARCH_SHOWN) + " more. Add a word to narrow it down.</p>";
+  return html + "</div>";
+}
+
+/* Untimed practice on the matches, with feedback after each answer. */
+function startSearchPractice(pool) {
+  var hits = searchHits()[pool] || [];
+  if (!hits.length) return;
+  var title = "Search: “" + searchQuery.trim() + "”";
+  if (pool === "scenario") return startScenarioPractice(null, hits.map(function (q) { return q.id; }), title);
+  if (!okToReplaceSaved()) return;
+  session = newSession("practice", shuffle(hits), false);
+  session.practiceTitle = title;
+  persistSession();
+  renderQuestion();
+}
+
 function customPool() {
   return selectCustomQuestions(BANK, customState).length;
 }
@@ -449,6 +519,7 @@ function sessionTitle() {
     case "retry": return "Retry Failed Questions";
     case "weak": return "Weak Questions Drill";
     case "practice":
+      if (session.practiceTitle) return session.practiceTitle;
       if (session.reviewDrill) return "Due for review";
       if (session.savedDrill) return "Saved questions";
       if (session.examName) return "Practice — " + session.examName;
