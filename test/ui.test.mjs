@@ -1395,10 +1395,39 @@ test("each objective also offers question-bank practice", () => {
   assert.ok(app.html().includes('data-action="practice" data-domain="2" data-sub="2.1"'));
 });
 
-test("the sign-in chip opens the account section", () => {
-  const app = launch({ sync: { enabled: true, user: () => null } });
-  assert.ok(app.html().includes('data-action="open-section" data-id="h-acct"'));
-  assert.ok(!app.html().includes('href="#acct"'));
+test("account & sync is a dropdown on the header chip, not a section at the bottom", () => {
+  const signedOut = launch({ sync: { enabled: true, user: () => null } }).html();
+  assert.match(signedOut, /<details class="h-menu acct-menu" id="h-acct"><summary class="btn ghost small"[^>]*>Sign in /);
+  assert.ok(signedOut.includes('id="auth-email"'), "the sign-in form is inside the dropdown");
+  assert.ok(!signedOut.includes("h-fold\" id=\"h-acct"), "no bottom section any more");
+  assert.ok(signedOut.indexOf('id="h-acct"') < signedOut.indexOf("h-ready") || !signedOut.includes("h-ready"),
+    "the dropdown sits in the header, above the page content");
+
+  const { sync } = adminSync({ admin: false });
+  const signedIn = launch({ sync }).html();
+  assert.match(signedIn, /<summary class="signed-chip"[^>]*><span class="dot">●<\/span> admin@example\.com/);
+  assert.ok(signedIn.includes('data-action="auth-signout"'));
+  assert.ok(!signedIn.includes("Visitor stats ↓"), "no admin link for a regular account");
+
+  const noSync = launch().html();
+  assert.ok(noSync.includes(">Backup "), "without sync the menu still offers the backup file");
+  assert.ok(noSync.includes('data-action="export-progress"'));
+});
+
+test("the account dropdown stays open across a background sync redraw", () => {
+  const { sync } = adminSync({ admin: false });
+  const app = launch({ sync });
+  const menuOpen = () => app.html().includes('<details class="h-menu acct-menu" id="h-acct" open>');
+  assert.ok(!menuOpen(), "closed by default");
+  app.toggle("h-acct", true);
+  app.fireSyncEvent();
+  assert.ok(menuOpen(), "still open after the redraw");
+});
+
+test("an admin's account dropdown links to the visitor stats", () => {
+  const { sync } = adminSync({ stats: STATS });
+  const html = launch({ sync }).html();
+  assert.ok(html.includes('data-action="open-section" data-id="h-visitors">Visitor stats ↓'));
 });
 
 const RESOURCES = [
@@ -1549,12 +1578,10 @@ test("an opened home section stays open when the page redraws", () => {
 test("closing a section is remembered too, and it survives a trip into a quiz", () => {
   const app = launch({ storage: RETURNING });
   app.toggle("h-history", true);
-  app.toggle("h-acct", true);
   app.toggle("h-history", false);
   app.click("practice", { domain: "3", sub: "3.1" });
   app.click("quit");
   assert.ok(!isOpen(app.html(), "h-history"));
-  assert.ok(isOpen(app.html(), "h-acct"));
 });
 
 test("a collapsed scenario panel stays collapsed on the next question", () => {
@@ -1832,4 +1859,91 @@ test("5 or E picks the fifth option; on a four-option question it does nothing",
   app.click("jump", { index: String(firstFour) });
   app.key("e");
   assert.equal(sess().answers[sess().questions[firstFour].id], null);
+});
+
+/* ------------------------------------------------ admin visitor stats */
+function adminSync({ admin = true, stats, statsError = "" } = {}) {
+  const calls = { refresh: 0 };
+  return {
+    calls,
+    sync: {
+      enabled: true,
+      user: () => ({ id: "u1", email: "admin@example.com" }),
+      status: () => "synced",
+      error: () => "",
+      pendingCount: () => 0,
+      syncedAt: () => 0,
+      isAdmin: () => admin,
+      visitorStats: () => stats,
+      statsError: () => statsError,
+      refreshStats: () => { calls.refresh++; },
+    },
+  };
+}
+
+const STATS = {
+  windows: {
+    now: { anonymous: 3, signedIn: 2 },
+    day: { anonymous: 10, signedIn: 4 },
+    week: { anonymous: 25, signedIn: 7 },
+    month: { anonymous: 40, signedIn: 9 },
+    all: { anonymous: 120, signedIn: 15 },
+  },
+  registered: 18,
+};
+
+test("an admin sees the visitors card with anonymous, signed-in and total counts", () => {
+  const { sync } = adminSync({ stats: STATS });
+  const app = launch({ sync });
+  const html = app.html();
+  assert.ok(html.includes("<b>Visitors</b>"));
+  assert.ok(html.includes("admin · 5 active now"));
+  assert.ok(html.includes("<td>Active now</td><td>3</td><td>2</td><td><strong>5</strong></td>"));
+  assert.ok(html.includes("<td>All time</td><td>120</td><td>15</td><td><strong>135</strong></td>"));
+  assert.ok(html.includes("18 registered accounts"));
+});
+
+test("the visitors card is hidden from signed-in non-admins and from signed-out visitors", () => {
+  const { sync } = adminSync({ admin: false, stats: STATS });
+  assert.ok(!launch({ sync }).html().includes("<b>Visitors</b>"));
+  const signedOut = Object.assign({}, sync, { user: () => null, isAdmin: () => true });
+  assert.ok(!launch({ sync: signedOut }).html().includes("<b>Visitors</b>"));
+  /* An older sync adapter without the admin API must not break home. */
+  const { isAdmin, ...legacy } = sync;
+  assert.ok(!launch({ sync: legacy }).html().includes("<b>Visitors</b>"));
+});
+
+test("the visitors card refreshes on request and shows a failed refresh", () => {
+  const { sync, calls } = adminSync({ stats: STATS, statsError: "Failed to fetch" });
+  const app = launch({ sync });
+  assert.ok(app.html().includes("Could not refresh: Failed to fetch"));
+  app.click("refresh-visitors");
+  assert.equal(calls.refresh, 1);
+});
+
+test("the visitors card says it is loading before the first counts arrive", () => {
+  const { sync } = adminSync({ stats: null });
+  const html = launch({ sync }).html();
+  assert.ok(html.includes("<b>Visitors</b>"));
+  assert.ok(html.includes("admin · 0 active now"));
+  assert.ok(html.includes("Loading…"));
+});
+
+test("the account card says how visits are counted, unless counting is off", () => {
+  const { sync } = adminSync({ admin: false });
+  assert.ok(launch({ sync }).html().includes("Visits are counted with a random ID"));
+  assert.ok(!launch({ sync, config: { countVisits: false } }).html().includes("Visits are counted with a random ID"));
+  assert.ok(!launch().html().includes("Visits are counted with a random ID"));
+});
+
+test("score history is the last section on the home screen", () => {
+  const { sync } = adminSync({ stats: STATS });
+  const html = launch({ sync, resources: RESOURCES, storage: RETURNING }).html();
+  const at = (id) => html.indexOf('id="' + id + '"');
+  assert.ok(at("h-history") > 0);
+  for (const id of ["h-resources", "h-visitors"]) {
+    assert.ok(at(id) > 0, id + " should render");
+    assert.ok(at(id) < at("h-history"), id + " comes before score history");
+  }
+  assert.ok(html.indexOf("<details", at("h-history") + 1) === -1, "no section after score history");
 });

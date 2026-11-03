@@ -391,6 +391,9 @@ function handleAction(btn) {
     case "sync-now":
       window.CCARF_SYNC.syncNow();
       return;
+    case "refresh-visitors":
+      if (window.CCARF_SYNC && window.CCARF_SYNC.refreshStats) window.CCARF_SYNC.refreshStats();
+      return;
   }
 }
 

@@ -101,6 +101,18 @@
     border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
     max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .signed-chip .dot { color: var(--pass); }
+  summary.signed-chip { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: var(--card); }
+  summary.signed-chip:hover, .acct-menu[open] > summary.signed-chip { border-color: var(--pen); color: var(--ink); }
+  summary.signed-chip:focus-visible { outline: 2.5px solid var(--pen); outline-offset: 2px; }
+  .acct-pop {
+    position: absolute; z-index: 30; top: calc(100% + 8px); right: 0;
+    width: min(400px, calc(100vw - 24px)); max-height: calc(100vh - 90px); overflow-y: auto;
+    padding: 18px 20px; background: var(--card); border: 1px solid var(--line-strong);
+    border-radius: var(--radius); box-shadow: var(--shadow); text-align: left;
+  }
+  .acct-pop > .card { border: 0; box-shadow: none; background: none; padding: 0; margin: 0; }
+  .acct-pop h2 { margin-top: 0; }
+  .acct-admin { margin-top: 12px; }
 
   /* hero */
   .hero { display: flex; gap: 28px; align-items: stretch; justify-content: space-between; margin: 6px 0 26px; flex-wrap: wrap; }
@@ -184,6 +196,7 @@
   .table-scroll { overflow-x: auto; margin-bottom: 10px; }
   .history { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 0.86rem; white-space: nowrap; }
   .history th, .history td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+  .history.visitors { min-width: 0; }
   .history th { color: var(--graphite); font-weight: 700; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; }
   .history td { font-family: var(--mono); font-size: 0.82rem; }
   .history td:first-child { font-family: var(--body); }

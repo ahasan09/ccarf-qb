@@ -12,6 +12,9 @@
  * built-in mailer always sends its default template (link only); editing the
  * template to add {{ .Token }} needs custom SMTP. While false, sign-in is by
  * the e-mailed link and the app shows no code box.
+ *
+ * countVisits: false stops the anonymous visit check-ins that feed the admin
+ * "Visitors" card (README: "Visitor stats"). Defaults to on.
  */
 window.CCARF_CONFIG = {
   supabaseUrl: "https://nwceurthutlovstthseh.supabase.co",

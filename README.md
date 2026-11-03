@@ -207,6 +207,85 @@ and once more before the page is hidden or closed. `localStorage` holds only a
 cache so the app keeps working offline and before the first fetch; signing out
 clears it, and progress cached for one account is never folded into another.
 
+## Visitor stats (optional)
+
+With sync set up, the app can show you, and only you, how many people use it:
+active now, and unique visitors over the last 24 hours, 7 days, 30 days and
+all time, each split into anonymous and signed in, plus the number of
+registered accounts. It appears as a **Visitors** card on the home screen
+when you sign in with an admin e-mail.
+
+Each browser keeps a random ID (`ccarf.visitor` in localStorage) and, while
+the page is visible, checks in about once a minute. A check-in records only
+that ID, the signed-in account if any, and the time; no IP address, e-mail or
+progress. "Active now" means a check-in in the last 3 minutes. Anonymous
+counts browsers; signed in counts accounts, each by its sign-in state at its
+latest check-in.
+
+In the Supabase **SQL editor**, run the following, with your own e-mail on the
+`insert` line (keep real addresses out of this repo: the README is public):
+
+```sql
+create table public.visits (
+  visitor_id uuid primary key,
+  user_id uuid references auth.users(id) on delete set null,
+  first_seen timestamptz not null default now(),
+  last_seen timestamptz not null default now()
+);
+create index visits_last_seen on public.visits (last_seen);
+-- RLS with no policies: the table is reachable only through the functions below.
+alter table public.visits enable row level security;
+
+create table public.admins (email text primary key);
+alter table public.admins enable row level security;
+insert into public.admins (email) values ('you@example.com');
+
+-- Anyone may check in. The account comes from the caller's session, never
+-- from the request, and rapid repeats are ignored.
+create or replace function public.record_visit(p_visitor uuid)
+returns void language sql security definer set search_path = public as $$
+  insert into visits (visitor_id, user_id) values (p_visitor, auth.uid())
+  on conflict (visitor_id) do update
+    set user_id = excluded.user_id, last_seen = now()
+    where visits.last_seen < now() - interval '30 seconds'
+       or visits.user_id is distinct from excluded.user_id;
+$$;
+
+-- Only signed-in admins may read the counts.
+create or replace function public.visit_stats()
+returns json language plpgsql stable security definer set search_path = public as $$
+begin
+  if not exists (
+    select 1 from admins where lower(email) = lower(auth.jwt() ->> 'email')
+  ) then
+    raise exception 'not authorized' using errcode = '42501';
+  end if;
+  return (
+    with w(key, since) as (values
+      ('now',   now() - interval '3 minutes'),
+      ('day',   now() - interval '24 hours'),
+      ('week',  now() - interval '7 days'),
+      ('month', now() - interval '30 days'),
+      ('all',   '-infinity'::timestamptz))
+    select json_build_object(
+      'windows', (select json_object_agg(w.key, json_build_object(
+        'anonymous', (select count(*) from visits v
+                      where v.last_seen >= w.since and v.user_id is null),
+        'signedIn',  (select count(distinct v.user_id) from visits v
+                      where v.last_seen >= w.since and v.user_id is not null)))
+        from w),
+      'registered', (select count(*) from auth.users),
+      'at', now())
+  );
+end $$;
+revoke execute on function public.visit_stats() from public, anon;
+grant execute on function public.visit_stats() to authenticated;
+```
+
+Add more admins with another `insert into public.admins`. To turn the
+check-ins off, set `countVisits: false` in `config.js`. Until the SQL has been
+run, check-ins fail quietly and nobody sees the card.
+
 ## Development
 
 - `js/logic.js` — pure logic: drawing, grading, progress, readiness, spaced

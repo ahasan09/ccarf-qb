@@ -97,6 +97,68 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
       return inFlight;
     }
 
+    /* Visitor counting (README: "Visitor stats"). Each browser keeps a random
+     * ID and checks in while the page is visible, so the admin card can show
+     * who is active now and how many visited, anonymous or signed in. Nothing
+     * else is sent: no IP address, e-mail or progress. */
+    const VISITOR_KEY = "ccarf.visitor";
+    const BEAT_EVERY = 60000;
+    const countVisits = cfg.countVisits !== false;
+    let lastBeat = 0;
+
+    function randomUuid() {
+      if (crypto.randomUUID) return crypto.randomUUID();
+      const b = crypto.getRandomValues(new Uint8Array(16));
+      b[6] = (b[6] & 0x0f) | 0x40;
+      b[8] = (b[8] & 0x3f) | 0x80;
+      const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+      return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+    }
+
+    function visitorId() {
+      let id = null;
+      try { id = localStorage.getItem(VISITOR_KEY); } catch (_) {}
+      if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        id = randomUuid();
+        try { localStorage.setItem(VISITOR_KEY, id); } catch (_) {}
+      }
+      return id;
+    }
+
+    /* Best effort: a failed check-in (offline, or the SQL not set up yet)
+     * is simply skipped. */
+    function heartbeat(force) {
+      if (!countVisits || document.hidden) return;
+      if (!force && Date.now() - lastBeat < BEAT_EVERY - 10000) return;
+      lastBeat = Date.now();
+      sb.rpc("record_visit", { p_visitor: visitorId() }).then(() => {}, () => {});
+    }
+
+    /* visit_stats() refuses everyone but the e-mails in public.admins, so a
+     * successful call is what makes this browser show the admin card. */
+    let admin = false;
+    let stats = null;
+    let statsError = "";
+    async function loadStats() {
+      if (!user) return;
+      const forUser = user.id;
+      const { data, error } = await sb.rpc("visit_stats").then((r) => r, (e) => ({ error: e }));
+      if (!user || user.id !== forUser) return; // signed out or switched meanwhile
+      if (error) {
+        if (admin) statsError = error.message || String(error);
+      } else {
+        admin = true;
+        stats = data;
+        statsError = "";
+      }
+      announce();
+    }
+
+    setInterval(() => {
+      heartbeat();
+      if (admin && !document.hidden) loadStats();
+    }, BEAT_EVERY);
+
     window.CCARF_SYNC = {
       enabled: true,
       user: () => user,
@@ -117,11 +179,28 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
       },
       signOut: async () => { await sb.auth.signOut(); },
       syncNow: () => sync(true),
+      isAdmin: () => admin,
+      visitorStats: () => stats,
+      statsError: () => statsError,
+      refreshStats: () => loadStats(),
     };
 
     sb.auth.onAuthStateChange((_event, session) => {
       const previousId = user && user.id;
       user = session ? session.user : null;
+      const changed = (user && user.id) !== previousId;
+      if (changed) {
+        admin = false;
+        stats = null;
+        statsError = "";
+      }
+      /* Deferred: Supabase calls made inside this callback can deadlock. */
+      if (changed || !lastBeat) {
+        setTimeout(() => {
+          heartbeat(true);
+          if (user) loadStats();
+        }, 0);
+      }
 
       if (!user && previousId) {
         engine.forget();
@@ -165,7 +244,7 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) flush();
-      else refresh();
+      else { refresh(); heartbeat(); }
     });
     /* Another tab in this browser changed progress. Debounced and routed
      * through the throttle so two open tabs cannot trigger each other in a
