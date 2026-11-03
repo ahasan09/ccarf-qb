@@ -50,6 +50,8 @@ function renderResults(finished) {
     html += "</div>";
   }
 
+  html += paceCard(finished);
+
   var gradedDomains = isScenario ? [] : Object.keys(grade.perDomain).filter(function (d) {
     return !!DOMAIN_NAMES[d];
   });
@@ -85,6 +87,24 @@ function renderResults(finished) {
 
   app.innerHTML = html;
   lastFinished = finished;
+}
+
+/* Timed sessions: average time per question against the even-pace budget,
+ * and the objectives that took longest. */
+function paceCard(finished) {
+  if (!finished.timed) return "";
+  var qs = finished.questions.map(function (s) { return byId[s.id]; }).filter(Boolean);
+  var pace = paceSummary(qs, finished.timeSpent);
+  if (!pace) return "";
+  var budgetMs = EXAM_DURATION_MS / 60; // the real exam: 120 minutes for 60 questions
+  var html = '<div class="card pace-card"><h2>Time</h2><p>Average <strong>' + fmtTime(pace.avgMs) +
+    "</strong> per question" + '<span class="muted"> · the real exam allows about ' + fmtTime(budgetMs) + "</span></p>";
+  if (pace.slowest.length) {
+    html += '<p class="muted">Slowest objectives:</p><ul class="pace-list">' + pace.slowest.map(function (g) {
+      return "<li>" + esc(g.key) + ' <span class="muted">· ' + fmtTime(g.avgMs) + " avg over " + g.n + "</span></li>";
+    }).join("") + "</ul>";
+  }
+  return html + "</div>";
 }
 
 function sessionResultLabel(mode) {

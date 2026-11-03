@@ -603,3 +603,54 @@ function validResources(list) {
     return true;
   });
 }
+
+/* ------------------------------------------------ time per question */
+/* One stretch on a question counts for at most this long, so a tab left
+ * open over lunch does not make a question look slow. */
+var MAX_VISIT_MS = 5 * 60 * 1000;
+
+/* Returns a new time-spent map with the stretch from `since` to `now`
+ * added to question `id`. */
+function addTime(spent, id, since, now) {
+  var out = Object.assign({}, spent || {});
+  if (!id || typeof since !== "number" || !(now > since)) return out;
+  out[id] = (out[id] || 0) + Math.min(now - since, MAX_VISIT_MS);
+  return out;
+}
+
+/* Average time per question, and the objectives (or domains, for questions
+ * without one) that took longest on average — at least two questions each.
+ * `spent` is ms per question id; questions with no time are left out. */
+function paceSummary(questions, spent, limit) {
+  spent = spent || {};
+  var timed = (questions || []).filter(function (q) { return q && spent[q.id] > 0; });
+  if (!timed.length) return null;
+  var total = 0;
+  var groups = {};
+  timed.forEach(function (q) {
+    var ms = spent[q.id];
+    total += ms;
+    var key = q.subdomain || (DOMAIN_NAMES[q.domain] ? "D" + q.domain + " " + DOMAIN_NAMES[q.domain] : null);
+    if (!key) return;
+    var g = groups[key] = groups[key] || { key: key, ms: 0, n: 0 };
+    g.ms += ms;
+    g.n++;
+  });
+  var slowest = Object.keys(groups).map(function (k) { return groups[k]; })
+    .filter(function (g) { return g.n >= 2; })
+    .map(function (g) { return { key: g.key, avgMs: Math.round(g.ms / g.n), n: g.n }; })
+    .sort(function (a, b) { return b.avgMs - a.avgMs; })
+    .slice(0, limit || 3);
+  return { avgMs: Math.round(total / timed.length), count: timed.length, slowest: slowest };
+}
+
+/* In a timed session: how many questions behind an even pace the user is.
+ * Returns null when on pace or less than 3 behind, so a short pause on a
+ * hard question never nags. */
+function paceStatus(total, answered, startedAt, deadline, now) {
+  if (!deadline || !startedAt || !total || deadline <= startedAt) return null;
+  var budget = (deadline - startedAt) / total;
+  var expected = Math.min(total, Math.floor((now - startedAt) / budget));
+  var behind = expected - answered;
+  return behind >= 3 ? { behind: behind, budgetMs: Math.round(budget) } : null;
+}

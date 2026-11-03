@@ -261,6 +261,7 @@ function handleAction(btn) {
     }
     case "quit":
       if (!confirm("Exit? Your progress is saved — resume from the home screen.")) return;
+      clockOn(null);
       persistSession();
       stopTimer();
       return renderHome();
@@ -355,6 +356,16 @@ window.addEventListener("ccarf:signout", function () {
   Store.reset();
   LS.remove("ccarf.syncedAt");
   renderHome();
+});
+
+/* Closing or reloading the tab mid-exam asks first. The session is saved
+ * either way, but the exam clock keeps running while the tab is closed. */
+window.addEventListener("beforeunload", function (ev) {
+  if (!session || !session.deadline || (view !== "quiz" && view !== "scenario-review")) return;
+  clockOn(null);
+  persistSession();
+  ev.preventDefault();
+  ev.returnValue = "";
 });
 
 /* ------------------------------------------------------------- boot */

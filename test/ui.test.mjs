@@ -1553,3 +1553,76 @@ test("with emailCode on, the card offers the code box after the guidance", async
   assert.ok(html.indexOf("auth-steps") < html.indexOf('id="auth-code"'), "guidance comes before the code box");
   assert.ok(html.includes('placeholder="Code from the e-mail"'), "no fixed code length");
 });
+
+/* ------------------------------------------------ time and pace */
+test("time on each question is kept with the exam attempt", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const app = launch({ Date: FakeDate });
+  app.click("start-exam");
+  const first = app.store().snapshot().session.questions[0].id;
+  now += 90 * 1000;
+  app.click("select", { opt: "0" }); // re-render: the first 90 s are credited
+  now += 30 * 1000;
+  app.click("next");
+  now += 45 * 1000;
+  app.win.dispatchEvent({ type: "beforeunload", preventDefault() {} });
+  app.click("submit");
+  const items = app.store().snapshot().history[0].items;
+  assert.equal(items[0].id, first);
+  assert.equal(items[0].secs, 120);
+  assert.equal(items[1].secs, 45);
+  assert.equal(items[2].secs, undefined, "never shown, no time");
+  assert.match(app.html(), /<h2>Time<\/h2><p>Average <strong>1:22<\/strong> per question/);
+});
+
+test("time away from an exited session does not count", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const storage = {};
+  const app = launch({ Date: FakeDate, storage });
+  app.click("start-exam");
+  now += 60 * 1000;
+  app.click("quit");
+  now += 4 * 60 * 1000;
+  const again = launch({ Date: FakeDate, storage });
+  again.click("resume");
+  now += 10 * 1000;
+  again.click("next");
+  const id = again.store().snapshot().session.questions[0].id;
+  assert.equal(again.store().snapshot().session.timeSpent[id], 70 * 1000);
+});
+
+test("the pace hint appears once 3 questions behind", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const app = launch({ Date: FakeDate });
+  app.click("start-scenario-exam");
+  assert.match(app.html(), /<span id="pace" class="pace"[^>]*><\/span>/);
+  now += 7 * 60 * 1000;
+  app.click("next");
+  assert.match(app.html(), /⏱ 3 behind pace/);
+  assert.match(app.html(), /title="Aim for about 2:00 per question"/);
+});
+
+test("practice has no timer, no pace hint and no time card", () => {
+  const app = launch();
+  app.click("practice", { domain: "1" });
+  assert.ok(!app.html().includes('id="pace"'));
+  completeSession(app);
+  assert.ok(!app.html().includes("<h2>Time</h2>"));
+});
+
+test("closing the tab mid-exam asks first; at home it does not", () => {
+  const app = launch();
+  let asked = 0;
+  const unload = () => app.win.dispatchEvent({ type: "beforeunload", preventDefault() { asked++; } });
+  unload();
+  assert.equal(asked, 0, "home");
+  app.click("practice", { domain: "1" });
+  unload();
+  assert.equal(asked, 0, "untimed practice");
+  app.click("start-exam");
+  unload();
+  assert.equal(asked, 1, "timed exam");
+});

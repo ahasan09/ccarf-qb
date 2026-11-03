@@ -23,11 +23,28 @@ function newSession(mode, questions, durationMs) {
     deadline: durationMs ? now + durationMs : null,
     feedback: null, // practice mode: answered question awaiting "next"
     tally: { correct: 0, wrong: 0 }, // practice running tally
+    timeSpent: {}, // ms per question id, see clockOn()
+    clock: null, // { id, since }: the question on screen and since when
   };
 }
 
+/* Time per question: credit the question that was on screen with the time
+ * since it appeared, then start timing `id` (null when no question is on
+ * screen — review grid, exit, submit). Every screen change calls this. */
+function clockOn(id) {
+  if (!session) return;
+  var now = Date.now();
+  var c = session.clock;
+  if (c) session.timeSpent = addTime(session.timeSpent, c.id, c.since, now);
+  session.clock = id ? { id: id, since: now } : null;
+}
+
 function persistSession() {
-  if (session) Store.mutate(Mutations.setSession(session));
+  if (!session) return;
+  /* Bring the time-on-question up to date before saving, so what is
+   * stored never lags a step behind. */
+  if (session.clock) clockOn(session.questions[session.current].id);
+  Store.mutate(Mutations.setSession(session));
 }
 
 var MODE_NAMES = {
@@ -349,6 +366,8 @@ function loadSavedSession() {
   if (!saved.tally) saved.tally = { correct: 0, wrong: 0 };
   if (!saved.strikes) saved.strikes = {};
   if (!saved.comments) saved.comments = {};
+  if (!saved.timeSpent) saved.timeSpent = {};
+  saved.clock = null; // time away from the session is not counted
 
   session = saved;
   return true;
@@ -389,7 +408,28 @@ function startTimer() {
       el.textContent = fmtTime(left);
       el.classList.toggle("urgent", left < 10 * 60 * 1000);
     }
+    var paceEl = document.getElementById("pace");
+    if (paceEl) {
+      var text = paceText();
+      if (paceEl.textContent !== text) paceEl.textContent = text;
+    }
   }, 1000);
+}
+
+/* "⏱ 4 behind pace" while the user is 3+ questions behind an even pace in
+ * a timed session, otherwise empty. Shown beside the timer. */
+function paceText() {
+  if (!session || !session.deadline) return "";
+  var p = paceStatus(session.questions.length, answeredCount(session), session.startedAt, session.deadline, Date.now());
+  return p ? "⏱ " + p.behind + " behind pace" : "";
+}
+
+/* The timer plus the pace hint, for every timed screen's top bar. */
+function timerHtml() {
+  if (!session.deadline) return "";
+  var budget = fmtTime((session.deadline - session.startedAt) / session.questions.length);
+  return '<span id="timer" class="timer" role="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" +
+    '<span id="pace" class="pace" role="status" title="Aim for about ' + budget + ' per question">' + paceText() + "</span>";
 }
 
 function fmtTime(ms) {
