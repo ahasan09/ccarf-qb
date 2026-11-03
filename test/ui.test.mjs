@@ -1789,3 +1789,47 @@ test("nothing focused, nothing to restore", () => {
   app.click("toggle-mastery", { domain: "1" });
   assert.equal(asked, 0);
 });
+
+/* ------------------------------------------------ shortcut hints */
+test("the scenario exam shows the keyboard shortcuts in its bottom bar", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  const bottom = app.html().split('class="scn-bottom"')[1];
+  assert.match(bottom, /<kbd>1<\/kbd>–<kbd>4<\/kbd> answer · <kbd>←<\/kbd>\/<kbd>→<\/kbd> navigate · <kbd>F<\/kbd> flag/);
+});
+
+test("practice hints show only the shortcuts that work there", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "ci" });
+  assert.match(app.html(), /<kbd>1<\/kbd>–<kbd>4<\/kbd> answer · <kbd>→<\/kbd> next · <kbd>F<\/kbd> flag/);
+  app.click("quit");
+  app.click("discard");
+  app.click("practice", { domain: "1" });
+  assert.match(app.html(), /<kbd>1<\/kbd>–<kbd>4<\/kbd> answer · <kbd>→<\/kbd> next<\/span>/);
+});
+
+test("← in scenario practice does not reopen an answered question", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "ci" });
+  app.click("select", { opt: "0" });
+  app.click("next");
+  app.key("ArrowLeft");
+  assert.equal(app.store().snapshot().session.current, 1);
+});
+
+test("5 or E picks the fifth option; on a four-option question it does nothing", () => {
+  const five = bank().map((q) => (q.domain === 1 ? Object.assign({}, q, { options: ["A", "B", "C", "D", "E"] }) : q));
+  const app = launch({ bank: five });
+  app.click("start-exam");
+  const sess = () => app.store().snapshot().session;
+  const firstFive = sess().questions.findIndex((s) => s.order.length === 5);
+  const firstFour = sess().questions.findIndex((s) => s.order.length === 4);
+  app.click("jump", { index: String(firstFive) });
+  assert.ok(app.html().includes("<kbd>1</kbd>–<kbd>5</kbd> answer"));
+  app.key("5");
+  const q5 = sess().questions[firstFive];
+  assert.equal(sess().answers[q5.id], q5.order[4]);
+  app.click("jump", { index: String(firstFour) });
+  app.key("e");
+  assert.equal(sess().answers[sess().questions[firstFour].id], null);
+});
