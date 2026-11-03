@@ -1,5 +1,7 @@
 # Question Bank Coverage Audit — 2026-10-25
 
+> Superseded by [coverage-audit-2026-11-04.md](coverage-audit-2026-11-04.md); regenerate with `npm run coverage`.
+
 Bank at time of audit: 780 questions (300 authored, 480 imported with
 subdomain tags). Audited against the official 30-subdomain CCAR-F lesson
 structure (7/5/6/6/6 per domain). The imported set contributes exactly 16

@@ -3,7 +3,7 @@
 Exam prep for the Claude Certified Architect (Foundations) certification —
 877 questions (including 40 select-two items) across the five exam domains, with
 realistic timed mock exams, scoring, review, and retry-failed drilling — plus a
-separate 360-question **scenario bank** and a **Scenario exam** that mirrors the
+separate 383-question **scenario bank** and a **Scenario exam** that mirrors the
 real exam's format (see [Scenario exam](#scenario-exam)).
 
 ## Use
@@ -30,7 +30,8 @@ browser's localStorage.
   30 task statements, with a Drill per objective and **Practice all** for the
   question bank. Bank coverage, accuracy and mastery are shown above it.
 - **Practice** — **Due for review**, Saved questions, missed questions,
-  Custom quiz, and the six scenarios with your best score in each.
+  Custom quiz, **Search questions**, and the six scenarios with your best
+  score in each.
 - **Study resources**, score history, imported mock exams and account/sync are
   folded away below. Study resources links to the exam guide, courses, study
   guides and practice material outside the app (opens in a new tab, needs a
@@ -75,8 +76,25 @@ Modes:
 - **Attempt review** — every exam attempt stores its questions and answers, so
   any past attempt can be reopened and reviewed from score history.
 
+- **Search questions** — find questions by keyword (every word must appear in
+  the text, options, explanation, objective or id) across the bank and the
+  scenario questions, then **Practice these** to drill just the matches.
+- **Time per question** — timed sessions record how long each question took.
+  Results show your average against the real exam's 2:00 per question and
+  your slowest objectives. While the clock runs, the top bar shows
+  **⏱ N behind pace** once you are 3 or more questions behind an even pace.
+  Closing or reloading the tab mid-exam asks first (the clock keeps running).
+- **Report a problem** — after answering in practice, and on every review
+  card, a link opens a pre-filled GitHub issue for that question (never
+  shown during an exam).
+- **Backup file** — Account & sync → **Download progress** saves everything
+  to a `.json` file; **Import from file…** adds one back. Importing only adds
+  (nothing is removed; the newer review schedule wins per question), so it
+  is safe on any device, signed in or not.
+
 Keyboard shortcuts during a session: `1`–`4` (or `A`–`D`) answer, `←`/`→`
-navigate, `F` flag, `Enter` next, `Esc` close the strike-through menu.
+navigate, `F` flag, `Enter` next. After each click, keyboard focus stays on
+the control you used.
 
 Theme: use the toggle on the home screen (Auto / Light / Dark).
 
@@ -104,9 +122,10 @@ correct answer out of four. The Scenario exam reproduces that.
   the right.
 - Top bar: scenario and question position, the 120-minute timer,
   **💬 Comment** (a note kept with the attempt) and **⚑ Flag for review**.
-- **Strike through** an option you have ruled out: right-click it (or tap
-  ⊘ beside it on a touch screen). A struck option can still be selected;
-  strike it again to undo.
+- **Strike through** an option you have ruled out: right-click it, and
+  right-click again to undo — no menu, as in the real exam. On a touch screen
+  tap ⊘ beside it; with the keyboard, Tab to ⊘ and press Enter. A struck
+  option can still be selected.
 - Bottom bar: **Previous**, answered/flagged counts, **Review all**, **Next**.
   You can move freely back and forth for the whole exam.
 - After the last question, the review screen shows every question as a tile
@@ -209,7 +228,7 @@ clears it, and progress cached for one account is never folded into another.
   first time they are opened. Kept out of the practice bank: they never feed practice pools, custom quizzes, mastery or the
   weak drill, and are scored as standalone attempts
 - `scenarios/index.js` + `scenarios/<id>.js` — the scenario bank: the six
-  official scenarios (`window.SCENARIOS`) and 60 single-answer questions per
+  official scenarios (`window.SCENARIOS`) and 60–68 single-answer questions per
   scenario (`window.SCENARIO_BANK`). Each question carries `scenario`,
   `domain`, `subdomain` (one of the 30 exam-guide task statements), four
   `options`, one `answer` index, four `optionNotes`, an `explanation`, and
@@ -218,8 +237,19 @@ clears it, and progress cached for one account is never folded into another.
 - `scripts/scenario-candidates.mjs <scenarioId> [--json]` — lists existing
   imported-exam questions that belong to a scenario, as raw material for new
   scenario questions
-- `node --test test/logic.test.mjs test/sync.test.mjs test/ui.test.mjs test/scenario.test.mjs` — engine,
-  cross-device sync, screen-flow, scenario and home-page tests (also `test/home.test.mjs`)
+- **`npm test`** — runs everything: all `test/*.test.mjs` (engine, sync,
+  screens, scenarios, home, pace, search, backup, report link) and both
+  validators below. Nothing to install; needs Node 20+. GitHub runs the same
+  on every push and pull request (`.github/workflows/test.yml`); a red ✖ on
+  a commit means it broke something.
+- **`npm run coverage`** — questions per exam-guide objective in the bank and
+  the scenario bank, marking any under 10 (`--min N` to change). Run it
+  before writing new questions to see where they are needed.
+- Where things live, for common changes: a new screen action → a `case` in
+  `handleAction` (`js/app/events.js`); pure rules (grading, pace, search,
+  backup file) → `js/logic.js` with a test in `test/`; the "Report a
+  problem" target → `REPORT_ISSUE_URL` in `js/app/state.js`. Screens draw
+  through `paint(html)`, which keeps keyboard focus.
 - `node test/validate-bank.mjs` — structural validation of the question bank
 - `node test/validate-scenarios.mjs` — validation of the scenario bank. It
   rejects a question that repeats the scenario intro, is under 40 words, has
