@@ -68,6 +68,7 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
      * Without pending work there is nothing urgent to send, so collapse those
      * into at most one read per MIN_GAP. */
     const MIN_GAP = 10000;
+    const SYNC_TIMEOUT = 20000;
     let lastSyncAt = 0;
 
     function sync(force) {
@@ -79,8 +80,15 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
       }
       lastSyncAt = Date.now();
       setStatus("syncing");
-      inFlight = engine
-        .sync()
+      /* A sync that never settles (a stalled request, or an auth lock held
+       * by another tab) would block every later sync behind inFlight, so it
+       * is given up on after SYNC_TIMEOUT and the next trigger tries again. */
+      let timer = null;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Sync timed out. It will retry automatically.")), SYNC_TIMEOUT);
+      });
+      inFlight = Promise.race([engine.sync(), timeout])
+        .finally(() => clearTimeout(timer))
         .then(() => {
           localStorage.setItem("ccarf.syncedAt", String(Date.now()));
           setStatus("synced");
@@ -217,7 +225,12 @@ if (cfg && cfg.supabaseUrl && cfg.supabaseAnonKey) {
         const cachedUid = localStorage.getItem("ccarf.uid");
         if (cachedUid && cachedUid !== user.id) Store.reset();
         localStorage.setItem("ccarf.uid", user.id);
-        sync(true);
+        window.dispatchEvent(new CustomEvent("ccarf:signin"));
+        /* Deferred, as Supabase advises: a request made from inside this
+         * callback can deadlock on the auth lock — most easily when the
+         * sign-in arrives from another tab — and leave this tab signed in
+         * but stuck on the progress it had before. */
+        setTimeout(() => sync(true), 0);
       }
     });
 
