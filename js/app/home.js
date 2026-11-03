@@ -28,13 +28,7 @@ function renderHome() {
       '<button class="btn small" data-action="hard-reload">Reload the bank</button></div>';
   }
 
-  var S = window.CCARF_SYNC;
-  var acctChip = "";
-  if (S && S.enabled) {
-    acctChip = S.user()
-      ? '<span class="signed-chip" title="Progress syncs to this account"><span class="dot">●</span> ' + esc(S.user().email || "signed in") + "</span>"
-      : '<button class="btn ghost small" data-action="open-section" data-id="h-acct">Sign in</button>';
-  }
+  var acctChip = accountMenu(window.CCARF_SYNC);
   html += '<div class="h-top"><div class="h-brand"><svg width="30" height="30" viewBox="0 0 128 128" aria-hidden="true">' +
     '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
     '<circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/>' +
@@ -269,6 +263,35 @@ function homeCollapsed(progress) {
   var best = 0;
   history.forEach(function (h) { if (h.score > best) best = h.score; });
   var html = homeResources();
+
+  if (EXAMS.length) {
+    var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
+    html += '<details class="card h-fold"' + foldAttrs("h-imported") + '><summary><b>Imported mock exams</b><span class="muted">' +
+      EXAMS.length + " tests · " + taken + " taken</span>" + chev() + "</summary>" +
+      '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
+      '<div class="domain-list">';
+    EXAMS.forEach(function (e) {
+      var attempt = bestAttemptFor(e.id, history);
+      var source = RESOURCES.filter(function (r) { return r.exam === e.id; })[0];
+      html += '<div class="domain-row exam-row"><span>' + esc(e.name) +
+        (source ? ' <a class="h-link h-src" href="' + esc(source.url) + '"' + EXTERNAL + ' title="' + esc(source.title) + '">source ↗</a>' : "") + "</span>" +
+        '<span class="muted">' + (e.count || (e.questions ? e.questions.length : 0)) + " questions" +
+        (attempt ? " · best " + attempt.score + (attempt.pass ? " · passed" : "") : "") + "</span>" +
+        '<button class="btn small" data-action="practice-imported" data-exam="' + esc(e.id) + '">Practice</button>' +
+        '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
+        (attempt ? "Retake mock" : "Take mock") + "</button></div>";
+    });
+    html += "</div></details>";
+  }
+
+  var S = window.CCARF_SYNC;
+  if (isAdminUser(S)) html += visitorCard(S);
+  return html + homeHistory(history, best);
+}
+
+/* Score history comes last on the home screen. */
+function homeHistory(history, best) {
+  var html = "";
   html += '<details class="card h-fold"' + foldAttrs("h-history") + '><summary><b>Score history</b><span class="muted">' +
     (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span>" + chev() + "</summary>";
   if (!history.length) {
@@ -294,32 +317,64 @@ function homeCollapsed(progress) {
     html += "</tbody></table></div>" +
       '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
   }
-  html += "</details>";
+  return html + "</details>";
+}
 
-  if (EXAMS.length) {
-    var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
-    html += '<details class="card h-fold"' + foldAttrs("h-imported") + '><summary><b>Imported mock exams</b><span class="muted">' +
-      EXAMS.length + " tests · " + taken + " taken</span>" + chev() + "</summary>" +
-      '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
-      '<div class="domain-list">';
-    EXAMS.forEach(function (e) {
-      var attempt = bestAttemptFor(e.id, history);
-      var source = RESOURCES.filter(function (r) { return r.exam === e.id; })[0];
-      html += '<div class="domain-row exam-row"><span>' + esc(e.name) +
-        (source ? ' <a class="h-link h-src" href="' + esc(source.url) + '"' + EXTERNAL + ' title="' + esc(source.title) + '">source ↗</a>' : "") + "</span>" +
-        '<span class="muted">' + (e.count || (e.questions ? e.questions.length : 0)) + " questions" +
-        (attempt ? " · best " + attempt.score + (attempt.pass ? " · passed" : "") : "") + "</span>" +
-        '<button class="btn small" data-action="practice-imported" data-exam="' + esc(e.id) + '">Practice</button>' +
-        '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
-        (attempt ? "Retake mock" : "Take mock") + "</button></div>";
+function isAdminUser(S) {
+  return !!(S && S.enabled && S.user() && S.isAdmin && S.isAdmin());
+}
+
+/* Account & sync lives in a dropdown on the header chip, reachable from
+ * the top of the page. It is an .h-menu, so Escape or a click outside
+ * closes it; its open state is remembered (foldAttrs) so a background sync
+ * redrawing the screen doesn't snap it shut while someone is using it. */
+function accountMenu(S) {
+  var user = S && S.enabled && S.user();
+  var label = user
+    ? '<span class="dot">●</span> ' + esc(user.email || "signed in") + " " + chev(false, true)
+    : (S && S.enabled ? "Sign in" : "Backup") + " " + chev(false, true);
+  return '<details class="h-menu acct-menu"' + foldAttrs("h-acct") + ">" +
+    '<summary class="' + (user ? "signed-chip" : "btn ghost small") + '" title="Account &amp; sync">' + label + "</summary>" +
+    '<div class="acct-pop">' + accountCard() +
+    (isAdminUser(S) ? '<button class="btn ghost small acct-admin" data-action="open-section" data-id="h-visitors">Visitor stats ↓</button>' : "") +
+    "</div></details>";
+}
+
+/* Admin only: who is using the app, from the visit_stats() function. The
+ * server refuses anyone not listed in public.admins, so this card appears
+ * only after that call has succeeded. */
+var VISITOR_WINDOWS = [
+  ["now", "Active now"],
+  ["day", "Last 24 hours"],
+  ["week", "Last 7 days"],
+  ["month", "Last 30 days"],
+  ["all", "All time"],
+];
+
+function visitorCard(S) {
+  var stats = S.visitorStats ? S.visitorStats() : null;
+  var windows = (stats && stats.windows) || {};
+  var count = function (w, k) { return Number((windows[w] || {})[k]) || 0; };
+  var activeNow = count("now", "anonymous") + count("now", "signedIn");
+  var html = '<details class="card h-fold"' + foldAttrs("h-visitors", true) + "><summary><b>Visitors</b>" +
+    '<span class="muted">admin · ' + activeNow + " active now</span>" + chev() + "</summary>";
+  if (!stats) {
+    html += '<p class="muted">Loading…</p>';
+  } else {
+    html += '<div class="table-scroll"><table class="history visitors"><thead><tr><th></th>' +
+      "<th>Anonymous</th><th>Signed in</th><th>Total</th></tr></thead><tbody>";
+    VISITOR_WINDOWS.forEach(function (w) {
+      var anon = count(w[0], "anonymous");
+      var signed = count(w[0], "signedIn");
+      html += "<tr><td>" + w[1] + "</td><td>" + anon + "</td><td>" + signed + "</td><td><strong>" + (anon + signed) + "</strong></td></tr>";
     });
-    html += "</div></details>";
+    html += "</tbody></table></div>" +
+      '<p class="muted auth-note">' + (Number(stats.registered) || 0) + " registered account" +
+      (Number(stats.registered) === 1 ? "" : "s") + ". Anonymous counts browsers; signed in counts accounts, " +
+      "by each visitor's sign-in state at their last visit. Active now means seen in the last 3 minutes.</p>";
   }
-
-  var S = window.CCARF_SYNC;
-  var signedIn = S && S.enabled && S.user();
-  html += '<details class="card h-fold"' + foldAttrs("h-acct") + '><summary><b>Account &amp; sync</b><span class="muted">' +
-    (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span>" + chev() + "</summary>" + accountCard() + "</details>";
+  if (S.statsError && S.statsError()) html += '<p class="muted auth-note">Could not refresh: ' + esc(S.statsError()) + "</p>";
+  html += '<button class="btn ghost small" data-action="refresh-visitors">Refresh</button></details>';
   return html;
 }
 
@@ -467,6 +522,10 @@ function accountCard() {
           '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>';
       }
     }
+  }
+  if (S && S.enabled && !S.unavailable && !(window.CCARF_CONFIG && window.CCARF_CONFIG.countVisits === false)) {
+    html += '<p class="muted auth-note">Visits are counted with a random ID kept in this browser. ' +
+      "No IP address or other personal details are recorded.</p>";
   }
   html += '<h3 class="h-h3">Backup file</h3><p class="muted auth-note">Save your progress to a file, or add one back — ' +
     "useful without an account, or before clearing browser data. Importing only adds: nothing here is removed.</p>" +
