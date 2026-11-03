@@ -205,6 +205,27 @@ function cycleTheme() {
   applyTheme();
 }
 
+/* Replace what is on screen. If the focused control (say an option picked
+ * from the keyboard, or a section toggle) is drawn again, focus returns to
+ * it, so keyboard and screen-reader users keep their place instead of
+ * starting over from the top of the page. */
+var FOCUS_KEYS = ["opt", "index", "domain", "sub", "scenario", "exam", "id", "filter", "pool", "date", "scope"];
+function paint(html) {
+  var sel = focusSelector(document.activeElement);
+  app.innerHTML = html;
+  var el = sel && app.querySelector(sel);
+  if (el && el.focus) el.focus({ preventScroll: true });
+}
+function focusSelector(el) {
+  if (!el || !el.dataset || !el.dataset.action) return null;
+  var q = function (v) { return '"' + String(v).replace(/["\\]/g, "\\$&") + '"'; };
+  var sel = "[data-action=" + q(el.dataset.action) + "]";
+  FOCUS_KEYS.forEach(function (k) {
+    if (el.dataset[k] !== undefined) sel += "[data-" + k + "=" + q(el.dataset[k]) + "]";
+  });
+  return sel;
+}
+
 function esc(s) {
   return String(s)
     .replace(/&/g, "&amp;")

@@ -85,7 +85,7 @@ function renderResults(finished) {
   html += '<button class="btn" data-action="show-review">Review answers</button>' +
     '<button class="btn ghost" data-action="home">Home</button></div>';
 
-  app.innerHTML = html;
+  paint(html);
   lastFinished = finished;
 }
 
@@ -231,7 +231,7 @@ function renderScenarioReviewAfter() {
       '<section class="scn-review-list">' + g.cards + "</section></div>";
   });
   if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';
-  app.innerHTML = html + "</div>";
+  paint(html + "</div>");
   window.scrollTo(0, 0);
 }
 
@@ -289,7 +289,7 @@ function renderReview() {
 
   if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';
 
-  app.innerHTML = html;
+  paint(html);
   var sel = document.getElementById("review-domain");
   if (sel) sel.addEventListener("change", function () {
     reviewDomain = Number(sel.value);

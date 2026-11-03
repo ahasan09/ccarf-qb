@@ -358,7 +358,7 @@ function renderCustomBuilder() {
     '<label class="check-inline"><input type="checkbox" data-action="cq-timed"' + (customState.timed ? " checked" : "") + "> Timed (2 min per question)</label>" +
     '<button class="btn primary" data-action="start-custom"' + (pool ? "" : " disabled") + ">Start quiz</button>" +
     "</div></div>";
-  app.innerHTML = html;
+  paint(html);
 }
 
 function startCustom() {

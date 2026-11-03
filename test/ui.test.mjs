@@ -153,6 +153,7 @@ function launch(opts = {}) {
     appEl,
     win,
     setAlert: (fn) => { alertFn = fn; },
+    doc: ctx.document,
     scripts,
     /* Runs scheduled frames, including any they schedule in turn. */
     flushFrames: () => { while (frames.length) frames.shift()(); },
@@ -1720,4 +1721,35 @@ test("a file that is not a backup is refused and changes nothing", async () => {
   await new Promise((r) => setImmediate(r));
   assert.match(said, /not a progress backup/);
   assert.equal(app.store().snapshot().attempted.length, 0);
+});
+
+/* ------------------------------------------------ keyboard focus */
+test("a redraw puts focus back on the control that had it", () => {
+  const app = launch();
+  app.click("practice", { domain: "1" });
+  const asked = [];
+  let focused = 0;
+  app.appEl.querySelector = (sel) => { asked.push(sel); return { focus: () => { focused++; } }; };
+  app.doc.activeElement = { dataset: { action: "select", opt: "2" } };
+  app.click("select", { opt: "2" });
+  assert.equal(asked[0], '[data-action="select"][data-opt="2"]');
+  assert.ok(focused >= 1);
+});
+
+test("quotes in a data value cannot break the focus selector", () => {
+  const app = launch();
+  let asked = null;
+  app.appEl.querySelector = (sel) => { asked = sel; return null; };
+  app.doc.activeElement = { dataset: { action: "toggle-mastery", domain: '1"]x' } };
+  app.click("toggle-mastery", { domain: "1" });
+  assert.equal(asked, '[data-action="toggle-mastery"][data-domain="1\\"]x"]');
+});
+
+test("nothing focused, nothing to restore", () => {
+  const app = launch();
+  let asked = 0;
+  app.appEl.querySelector = () => { asked++; return null; };
+  app.doc.activeElement = null;
+  app.click("toggle-mastery", { domain: "1" });
+  assert.equal(asked, 0);
 });

@@ -53,7 +53,7 @@ function renderHome() {
   html += homeCollapsed(progress);
   html += '<footer class="site-footer">Practice material for personal study. ' +
     "Not affiliated with Anthropic or Pearson VUE.</footer>";
-  app.innerHTML = html;
+  paint(html);
 }
 
 function examDateLine(progress, now) {

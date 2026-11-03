@@ -97,7 +97,7 @@ function renderScenarioQuestion() {
   }
   html += "</div></div>";
 
-  app.innerHTML = html;
+  paint(html);
   window.scrollTo(0, 0);
 }
 
@@ -143,7 +143,7 @@ function renderScenarioReview() {
     '">← Back to question ' + (session.current + 1) + "</button>" +
     '<button class="btn primary" data-action="submit">Submit exam</button></div>';
   html += "</div></div>";
-  app.innerHTML = html;
+  paint(html);
   window.scrollTo(0, 0);
 }
 
@@ -266,7 +266,7 @@ function renderQuestion() {
   }
   html += "</div></div></div>";
 
-  app.innerHTML = html;
+  paint(html);
   window.scrollTo(0, 0);
   var cur = app.querySelector(".nav-cell.current");
   if (cur && cur.scrollIntoView) cur.scrollIntoView({ inline: "center", block: "nearest" });
