@@ -43,7 +43,7 @@ function toggleFlag() {
 
 document.addEventListener("keydown", function (ev) {
   if (ev.key === "Escape") { hideCtxMenu(); closeMenus(null); }
-  if (!inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (busyAction || !inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   var tag = ev.target && ev.target.tagName;
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
   var key = ev.key.toLowerCase();
@@ -102,9 +102,65 @@ app.addEventListener("contextmenu", function (ev) {
 document.addEventListener("click", hideCtxMenu, true);
 document.addEventListener("scroll", hideCtxMenu, true);
 
+/* Actions that build a new screen: drawing questions, grading, or fetching
+ * an imported exam. They can take a moment, so the clicked button shows it
+ * is working and every other click is ignored until the action finishes
+ * (or its load settles) — no double starts, no clicks landing on the
+ * screen that replaces this one. */
+var SLOW_ACTIONS = {
+  "start-exam": 1, "start-imported": 1, "practice-imported": 1, "start-weak": 1, "practice": 1,
+  "resume": 1, "finish-saved": 1, "start-custom": 1, "start-saved": 1, "start-scenario-exam": 1,
+  "practice-scenario": 1, "start-review": 1, "start-diagnostic": 1, "drill-objective": 1,
+  "practice-missed": 1, "retry-failed": 1, "review-attempt": 1, "submit": 1, "show-review": 1,
+  "review-all": 1, "back-results": 1, "custom-builder": 1,
+};
+var busyAction = null;
+
+function setBusy(btn, on) {
+  if (on) app.dataset.busy = "true"; else delete app.dataset.busy;
+  if (!btn || !btn.classList) return;
+  if (on) { btn.classList.add("is-busy"); btn.setAttribute("aria-busy", "true"); }
+  else { btn.classList.remove("is-busy"); btn.removeAttribute("aria-busy"); }
+}
+
+/* Two frames: the first lets the browser paint the busy mark, the second
+ * runs the work. Without requestAnimationFrame (tests) it runs at once. */
+function afterPaint(fn) {
+  var raf = window.requestAnimationFrame;
+  if (typeof raf !== "function") return fn();
+  raf(function () { raf(fn); });
+}
+
+function runSlow(btn) {
+  busyAction = btn;
+  setBusy(btn, true);
+  var done = function () {
+    if (busyAction !== btn) return;
+    busyAction = null;
+    setBusy(btn, false);
+  };
+  afterPaint(function () {
+    var result;
+    try {
+      result = handleAction(btn);
+    } catch (err) {
+      done();
+      throw err;
+    }
+    if (result && typeof result.then === "function") result.then(done, done);
+    else done();
+  });
+}
+
 app.addEventListener("click", function (ev) {
   var btn = ev.target.closest("[data-action]");
   if (!btn || btn.disabled) return;
+  if (busyAction) { if (ev.preventDefault) ev.preventDefault(); return; }
+  if (SLOW_ACTIONS[btn.dataset.action]) return runSlow(btn);
+  return handleAction(btn);
+});
+
+function handleAction(btn) {
   var action = btn.dataset.action;
 
   switch (action) {
@@ -289,7 +345,7 @@ app.addEventListener("click", function (ev) {
       window.CCARF_SYNC.syncNow();
       return;
   }
-});
+}
 
 /* Sync and auth updates refresh the home screen only. Re-rendering while
  * a quiz, result or review is on screen would throw the user out of it. */
