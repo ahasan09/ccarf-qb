@@ -445,19 +445,26 @@ function accountCard() {
       (st === "syncing" ? " disabled" : "") + ">" + (st === "syncing" ? "Syncing…" : "Sync now") + "</button>" +
       '<button class="btn ghost small" data-action="auth-signout">Sign out</button></div>';
   } else {
+    var emailCode = !!(window.CCARF_CONFIG && window.CCARF_CONFIG.emailCode);
     html += '<p class="muted auth-note">Sign in with your e-mail to back up progress and resume from any device.</p>' +
       '<div class="row"><input class="input" id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(pendingEmail || "") + '">' +
-      '<button class="btn primary" data-action="auth-send">' + (pendingEmail ? "Resend e-mail" : "Email me a sign-in code") + "</button></div>";
+      '<button class="btn primary" data-action="auth-send">' +
+      (pendingEmail ? "Resend e-mail" : emailCode ? "Email me a sign-in code" : "Email me a sign-in link") + "</button></div>";
     if (pendingEmail) {
-      /* The e-mail carries both a code and a link. The code works on any
-       * device; the link signs in whichever browser opens it, which is often
-       * the phone's mail app rather than the device being studied on. */
+      /* Supabase's built-in mailer sends its default template, which holds
+       * only a link; the code exists in the e-mail only once a custom SMTP
+       * template adds {{ .Token }} (config.js emailCode). The link signs in
+       * whichever browser opens it, so say so. */
       html += '<div class="auth-steps"><p>We sent a sign-in e-mail to <strong>' + esc(pendingEmail) + "</strong>.</p>" +
-        '<p class="muted auth-note"><b>Enter the code</b> from it below to sign in here. ' +
-        "Or <b>click the link</b> in it instead — that only signs in the browser where you click it. " +
-        "Nothing there? Check spam, or resend.</p></div>" +
-        '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the e-mail">' +
-        '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>';
+        '<p class="muted auth-note">' +
+        (emailCode
+          ? "<b>Enter the code</b> from it below to sign in here. Or <b>click the link</b> in it instead — that only signs in the browser where you click it. "
+          : "<b>Open the link</b> in it in this browser to sign in here. The link only signs in the browser where you click it, so if your mail opens it on another device, sign in there or forward the e-mail to this one. ") +
+        "Nothing there? Check spam, or resend.</p></div>";
+      if (emailCode) {
+        html += '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the e-mail">' +
+          '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>';
+      }
     }
   }
   var backup = LS.get(BACKUP_KEY, null);

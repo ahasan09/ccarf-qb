@@ -75,6 +75,7 @@ function launch(opts = {}) {
     SCENARIOS: opts.scenarios || SCENARIOS,
     SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
     CCARF_SYNC: opts.sync,
+    CCARF_CONFIG: opts.config,
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -1528,18 +1529,31 @@ test("a collapsed scenario panel stays collapsed on the next question", () => {
 });
 
 /* ---- e-mail sign-in --------------------------------------------------------- */
-test("after sending, the sign-in card explains the code and the link", async () => {
+async function sendSignIn(config) {
   const sent = [];
   const sync = { enabled: true, user: () => null, sendCode: async (e) => { sent.push(e); } };
-  const app = launch({ sync, storage: RETURNING, inputs: { "auth-email": "me@example.com" } });
-  assert.ok(app.html().includes("Email me a sign-in code"), "the button says what arrives");
+  const app = launch({ sync, config, storage: RETURNING, inputs: { "auth-email": "me@example.com" } });
+  const before = app.html();
   app.click("auth-send");
   await new Promise((r) => setImmediate(r));
-  const html = app.html();
+  return { before, html: app.html(), sent };
+}
+
+test("by default sign-in is by link: the card says so and shows no code box", async () => {
+  const { before, html, sent } = await sendSignIn(undefined);
+  assert.ok(before.includes("Email me a sign-in link"));
   assert.deepEqual(sent, ["me@example.com"]);
   assert.ok(html.includes("We sent a sign-in e-mail to <strong>me@example.com</strong>"), "names the address");
-  assert.ok(html.indexOf("auth-steps") < html.indexOf('id="auth-code"'), "guidance comes before the code box");
-  assert.ok(html.includes("only signs in the browser where you click it"), "says where the link works");
-  assert.ok(html.includes('placeholder="Code from the e-mail"'), "no fixed code length");
+  assert.ok(html.includes("<b>Open the link</b>"));
+  assert.ok(html.includes("only signs in the browser where you click it"));
+  assert.ok(!html.includes('id="auth-code"'), "no code box when the e-mail has no code");
   assert.ok(html.includes("Resend e-mail"));
+});
+
+test("with emailCode on, the card offers the code box after the guidance", async () => {
+  const { before, html } = await sendSignIn({ emailCode: true });
+  assert.ok(before.includes("Email me a sign-in code"));
+  assert.ok(html.includes("<b>Enter the code</b>"));
+  assert.ok(html.indexOf("auth-steps") < html.indexOf('id="auth-code"'), "guidance comes before the code box");
+  assert.ok(html.includes('placeholder="Code from the e-mail"'), "no fixed code length");
 });
