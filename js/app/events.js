@@ -403,9 +403,18 @@ window.addEventListener("ccarf:auth", function () {
   if (!session && view === "home") renderHome();
 });
 
+/* Signed in (here, or in another tab by the e-mailed link): the sign-in
+ * form has done its job, so close the account menu and forget the
+ * pending e-mail. The ccarf:auth that follows redraws the screen. */
+window.addEventListener("ccarf:signin", function () {
+  foldState["h-acct"] = false;
+  pendingEmail = null;
+});
+
 /* Signing out must not leave one account's progress on screen for the
  * next person to sign in on this device. */
 window.addEventListener("ccarf:signout", function () {
+  foldState["h-acct"] = false;
   stopTimer();
   session = null;
   Store.reset();

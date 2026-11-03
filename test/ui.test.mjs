@@ -1947,3 +1947,34 @@ test("score history is the last section on the home screen", () => {
   }
   assert.ok(html.indexOf("<details", at("h-history") + 1) === -1, "no section after score history");
 });
+
+test("the account menu closes on sign-out and on sign-in", () => {
+  const { sync } = adminSync({ admin: false });
+  const app = launch({ sync });
+  const menuOpen = () => app.html().includes('<details class="h-menu acct-menu" id="h-acct" open>');
+  app.toggle("h-acct", true);
+  app.fireSyncEvent();
+  assert.ok(menuOpen());
+  app.fireSignOut();
+  assert.ok(!menuOpen(), "closed after signing out");
+
+  app.toggle("h-acct", true);
+  app.win.dispatchEvent({ type: "ccarf:signin" });
+  app.fireSyncEvent();
+  assert.ok(!menuOpen(), "closed after signing in, even from another tab");
+});
+
+test("signing in from another tab clears the 'we sent you an e-mail' step", () => {
+  let user = null;
+  const sync = { enabled: true, user: () => user, status: () => "idle", error: () => "", sendCode: () => Promise.resolve() };
+  const app = launch({ sync, inputs: { "auth-email": "me@example.com" } });
+  app.click("auth-send");
+  return Promise.resolve().then(() => {
+    assert.ok(app.html().includes("We sent a sign-in e-mail"));
+    user = { id: "u1", email: "me@example.com" };
+    app.win.dispatchEvent({ type: "ccarf:signin" });
+    user = null; // signed out again: the old pending e-mail must not come back
+    app.fireSyncEvent();
+    assert.ok(!app.html().includes("We sent a sign-in e-mail"));
+  });
+});
