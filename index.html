@@ -143,6 +143,13 @@
   .btn:hover:not(:disabled) { border-color: var(--pen); color: var(--pen); }
   .btn:active:not(:disabled) { transform: scale(0.97); }
   .btn:disabled { opacity: 0.4; cursor: default; }
+  /* Click feedback: the clicked control spins while its screen is built. */
+  #app[data-busy], #app[data-busy] [data-action] { cursor: progress; }
+  .is-busy::after { content: ""; flex: none; display: inline-block; width: .9em; height: .9em; margin-left: 8px; vertical-align: -2px;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: busy-spin .7s linear infinite; }
+  @keyframes busy-spin { to { transform: rotate(360deg); } }
+  .h-row.is-busy > :first-child { margin-right: auto; }
+  @media (prefers-reduced-motion: reduce) { .is-busy::after { animation-duration: 2.4s; } }
   .btn.primary { background: var(--pen); border-color: var(--pen); color: #fff; }
   .btn.primary:hover:not(:disabled) { filter: brightness(1.1); color: #fff; }
   .btn.ghost { background: transparent; border-color: transparent; }

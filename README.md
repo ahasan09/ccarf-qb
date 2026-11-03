@@ -185,7 +185,9 @@ clears it, and progress cached for one account is never folded into another.
 - `js/store.js` — the progress store and the cross-device sync engine (no DOM)
 - `js/app/` — the DOM app, in load order: `state.js` (banks, storage, shared
   state, helpers), `home.js`, `sessions.js`, `question.js`, `results.js`,
-  `events.js` (input handling and boot). These are classic scripts sharing
+  `events.js` (input handling and boot; actions listed in `SLOW_ACTIONS`
+  show a spinner on the clicked control and block other clicks and
+  shortcuts until they finish). These are classic scripts sharing
   globals, not ES modules, so `index.html` still opens from `file://`; keep
   the order in `index.html`, `sw.js` and `test/engine.mjs` in step.
 - `questions/domain1.js` … `domain5.js` — original question sets (49/32/36/36/27)

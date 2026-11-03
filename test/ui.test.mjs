@@ -70,6 +70,7 @@ function launch(opts = {}) {
   const win = {
     QUESTION_BANK: opts.bank || bank(),
     MOCK_EXAMS: opts.exams || [],
+    MOCK_EXAM_INDEX: opts.examIndex,
     STUDY_RESOURCES: opts.resources,
     SCENARIOS: opts.scenarios || SCENARIOS,
     SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
@@ -79,6 +80,11 @@ function launch(opts = {}) {
     scrollTo: () => {},
     caches: undefined,
   };
+  /* Frames run only when the test flushes them (opts.frames), so a test
+   * can look at the screen between the click and the work it schedules. */
+  const frames = [];
+  if (opts.frames) win.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+  const scripts = [];
 
   const ctx = {
     window: win,
@@ -103,6 +109,8 @@ function launch(opts = {}) {
       getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
+      createElement: () => ({}),
+      head: { appendChild: (tag) => scripts.push(tag) },
       hidden: false,
     },
   };
@@ -116,7 +124,13 @@ function launch(opts = {}) {
       extra
     );
     btn.closest = () => btn;
+    const classes = new Set();
+    btn.classList = { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) };
+    btn.attrs = {};
+    btn.setAttribute = (k, v) => { btn.attrs[k] = String(v); };
+    btn.removeAttribute = (k) => { delete btn.attrs[k]; };
     clickHandler({ target: { closest: () => btn } });
+    return btn;
   };
 
   return {
@@ -129,6 +143,11 @@ function launch(opts = {}) {
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
     menu: () => menuEl,
+    appEl,
+    win,
+    scripts,
+    /* Runs scheduled frames, including any they schedule in turn. */
+    flushFrames: () => { while (frames.length) frames.shift()(); },
     /* Right-click: on an option (opt given) or on something else. */
     rightClick: (opt) => {
       const optEl = opt === undefined ? null : { dataset: { opt: String(opt) } };
@@ -1378,4 +1397,74 @@ test("an imported exam links to its source resource", () => {
   const html = app.html();
   const row = html.slice(html.indexOf('id="h-imported"'));
   assert.ok(row.includes('href="https://example.com/src"'), "source link on the imported exam row");
+});
+
+/* ---- click feedback ----------------------------------------------------- */
+test("a slow action marks its button busy, shows it, then runs once", () => {
+  const app = launch({ frames: true });
+  const btn = app.click("practice", { domain: "3", sub: "3.1" });
+  assert.ok(btn.classList.contains("is-busy"), "the clicked button shows it is working");
+  assert.equal(btn.attrs["aria-busy"], "true");
+  assert.ok(!app.html().includes('data-action="select"'), "the work waits for a frame so the mark can paint");
+
+  app.click("practice", { domain: "2", sub: "2.1" });
+  app.click("start-custom");
+  app.flushFrames();
+  assert.ok(app.html().includes('data-action="select"'), "the first click ran");
+  assert.equal(app.store().snapshot().session.questions.every((s) => s.id.startsWith("d3-")), true,
+    "the repeated clicks were dropped");
+  assert.equal(app.appEl.dataset.busy, undefined, "busy clears once the screen is drawn");
+
+  app.click("select", { opt: "0" });
+  assert.ok(app.html().includes("Correct") || app.html().includes("correct"), "clicks work again afterwards");
+});
+
+test("a quick action runs straight away without the busy mark", () => {
+  const app = launch({ frames: true, storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) } });
+  const btn = app.click("toggle-mastery", { domain: "2" });
+  assert.ok(!btn.classList.contains("is-busy"));
+  assert.ok(app.html().includes('aria-expanded="true"'), "the toggle happened immediately");
+});
+
+test("an imported exam stays busy until its questions arrive, ignoring repeat clicks", async () => {
+  const questions = bank().slice(0, 5).map((q) => Object.assign({}, q, { id: "lazy-" + q.id, exam: "lazy" }));
+  const app = launch({ frames: true, examIndex: [{ id: "lazy", name: "Lazy exam", count: 5 }] });
+  const btn = app.click("start-imported", { exam: "lazy" });
+  app.flushFrames();
+  assert.equal(app.scripts.length, 1, "the exam file is requested");
+  assert.ok(btn.classList.contains("is-busy"), "still busy while the file loads");
+
+  app.click("start-imported", { exam: "lazy" });
+  app.flushFrames();
+  assert.equal(app.scripts.length, 1, "a repeat click does not start a second load");
+
+  app.win.MOCK_EXAMS = [{ id: "lazy", name: "Lazy exam", questions }];
+  app.scripts[0].onload();
+  await new Promise((r) => setImmediate(r));
+  assert.ok(app.html().includes('data-action="select"'), "the exam opens once loaded");
+  assert.equal(app.appEl.dataset.busy, undefined, "busy clears after the load");
+});
+
+test("a failed load clears busy so the user can try again", async () => {
+  const app = launch({ frames: true, examIndex: [{ id: "lazy", name: "Lazy exam", count: 5 }] });
+  const btn = app.click("start-imported", { exam: "lazy" });
+  app.flushFrames();
+  app.scripts[0].onerror();
+  await new Promise((r) => setImmediate(r));
+  assert.ok(!btn.classList.contains("is-busy"));
+  assert.equal(app.appEl.dataset.busy, undefined);
+  app.click("start-imported", { exam: "lazy" });
+  app.flushFrames();
+  assert.equal(app.scripts.length, 2, "a new click retries");
+});
+
+test("question shortcuts are ignored while an action is in progress", () => {
+  const app = launch({ frames: true });
+  app.click("practice", { domain: "3", sub: "3.1" });
+  app.flushFrames();
+  assert.ok(app.html().includes('data-action="select"'));
+  app.click("submit");          // busy until its frame runs
+  app.key("1");                 // would answer the current question
+  assert.equal(app.store().snapshot().attempted.length, 0, "no answer slipped in while busy");
+  app.flushFrames();
 });
