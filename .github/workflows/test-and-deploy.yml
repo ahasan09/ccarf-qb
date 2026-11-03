@@ -1,0 +1,45 @@
+# Every push and pull request runs all tests and both question-bank
+# validators. Only a push to main whose tests pass is published to GitHub
+# Pages, so a broken commit never goes live; the site keeps the last good
+# version until a fix passes. No install step: there are no dependencies.
+name: Test and deploy
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: # "Run workflow" button: re-test and re-deploy main
+
+# One deploy at a time; a newer push waits rather than racing an older one.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  deploy:
+    needs: test # skipped unless every test passed
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -240,8 +240,11 @@ clears it, and progress cached for one account is never folded into another.
 - **`npm test`** — runs everything: all `test/*.test.mjs` (engine, sync,
   screens, scenarios, home, pace, search, backup, report link) and both
   validators below. Nothing to install; needs Node 20+. GitHub runs the same
-  on every push and pull request (`.github/workflows/test.yml`); a red ✖ on
-  a commit means it broke something.
+  on every push and pull request (`.github/workflows/test-and-deploy.yml`),
+  and **publishes the site only when they pass**: a push to `main` that
+  breaks a test shows a red ✖ and the live site stays on the last good
+  version until a fix passes. To re-publish by hand: Actions → Test and
+  deploy → Run workflow.
 - **`npm run coverage`** — questions per exam-guide objective in the bank and
   the scenario bank, marking any under 10 (`--min N` to change). Run it
   before writing new questions to see where they are needed.
