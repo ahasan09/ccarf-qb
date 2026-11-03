@@ -699,3 +699,27 @@ function searchQuestions(list, query) {
     .concat(hits.filter(function (h) { return !h.inStem; }))
     .map(function (h) { return h.q; });
 }
+
+/* ------------------------------------------ progress backup file */
+/* What "Download progress" saves: the whole progress state, wrapped so an
+ * import can tell it is ours. */
+function progressFile(state, now) {
+  return JSON.stringify({
+    app: "ccarf-qb", kind: "progress", version: 1,
+    exportedAt: new Date(now).toISOString(),
+    progress: normalizeProgress(state),
+  }, null, 2);
+}
+
+/* Reads a file made by progressFile (or a bare progress object). Returns
+ * { progress } or { error } with a message fit to show the user. */
+function parseProgressFile(text) {
+  var data;
+  try { data = JSON.parse(String(text || "")); } catch (e) { return { error: "That file is not a progress backup (it is not valid JSON)." }; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "That file is not a progress backup." };
+  var raw = data.app === "ccarf-qb" ? data.progress : data;
+  var known = raw && typeof raw === "object" &&
+    ["history", "weak", "correctEver", "attempted", "saved", "review", "session"].some(function (k) { return k in raw; });
+  if (!known) return { error: "That file is not a progress backup from this app." };
+  return { progress: normalizeProgress(raw) };
+}

@@ -468,6 +468,11 @@ function accountCard() {
       }
     }
   }
+  html += '<h3 class="h-h3">Backup file</h3><p class="muted auth-note">Save your progress to a file, or add one back — ' +
+    "useful without an account, or before clearing browser data. Importing only adds: nothing here is removed.</p>" +
+    '<div class="row"><button class="btn small" data-action="export-progress">Download progress</button>' +
+    '<button class="btn ghost small" data-action="import-progress">Import from file…</button>' +
+    '<input type="file" id="import-file" accept=".json,application/json" hidden></div>';
   var backup = LS.get(BACKUP_KEY, null);
   var extra = progressSize(backup) - progressSize(Store.snapshot());
   if (extra > 0) {

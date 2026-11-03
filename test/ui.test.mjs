@@ -65,6 +65,7 @@ function launch(opts = {}) {
     if (type === "click") clickHandler = fn;
     (appListeners[type] = appListeners[type] || []).push(fn);
   };
+  appEl.dispatch = (type, ev) => (appListeners[type] || []).forEach((fn) => fn(ev));
 
   const win = {
     QUESTION_BANK: opts.bank || bank(),
@@ -85,6 +86,7 @@ function launch(opts = {}) {
   const frames = [];
   if (opts.frames) win.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
   const scripts = [];
+  let alertFn = () => {};
 
   const ctx = {
     window: win,
@@ -98,7 +100,7 @@ function launch(opts = {}) {
       setItem: (k, v) => { storage[k] = String(v); },
       removeItem: (k) => { delete storage[k]; },
     },
-    alert: () => {},
+    alert: (m) => alertFn(m),
     confirm: opts.confirm || (() => true),
     prompt: opts.prompt || (() => null),
     setInterval: (fn) => { timers.push(fn); return timers.length; },
@@ -150,6 +152,7 @@ function launch(opts = {}) {
     },
     appEl,
     win,
+    setAlert: (fn) => { alertFn = fn; },
     scripts,
     /* Runs scheduled frames, including any they schedule in turn. */
     flushFrames: () => { while (frames.length) frames.shift()(); },
@@ -1686,4 +1689,35 @@ test("practice the search matches: bank ones in practice, scenario ones in scena
   sess = app.store().snapshot().session;
   assert.equal(sess.mode, "scenario-practice");
   assert.equal(sess.questions.length, 16);
+});
+
+/* ------------------------------------------------ backup file */
+test("the account section offers download and import", () => {
+  const app = launch();
+  assert.ok(app.html().includes('data-action="export-progress"'));
+  assert.ok(app.html().includes('id="import-file"'));
+  app.click("export-progress"); // no Blob in the harness: must not throw
+});
+
+test("importing a backup file adds its progress after confirming", async () => {
+  let asked = "";
+  const app = launch({ confirm: (m) => { asked = m; return true; } });
+  const file = JSON.stringify({ app: "ccarf-qb", progress: { attempted: ["d1-q1", "d1-q2"], correctEver: ["d1-q1"], history: [] } });
+  const input = { id: "import-file", value: "C:\\fake\\file.json", files: [{ text: () => Promise.resolve(file) }] };
+  app.appEl.dispatch("change", { target: input });
+  await new Promise((r) => setImmediate(r));
+  assert.match(asked, /0 exam attempts and 2 questions tried/);
+  assert.deepEqual(app.store().snapshot().attempted, ["d1-q1", "d1-q2"]);
+  assert.equal(input.value, "", "cleared so the same file can be picked again");
+});
+
+test("a file that is not a backup is refused and changes nothing", async () => {
+  let said = "";
+  const app = launch();
+  const input = { id: "import-file", value: "", files: [{ text: () => Promise.resolve("{}") }] };
+  app.setAlert((m) => { said = m; });
+  app.appEl.dispatch("change", { target: input });
+  await new Promise((r) => setImmediate(r));
+  assert.match(said, /not a progress backup/);
+  assert.equal(app.store().snapshot().attempted.length, 0);
 });

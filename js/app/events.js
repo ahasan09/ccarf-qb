@@ -139,6 +139,39 @@ function runSlow(btn) {
   });
 }
 
+/* The file picked for "Import from file…". */
+app.addEventListener("change", function (ev) {
+  var input = ev.target;
+  if (!input || input.id !== "import-file" || !input.files || !input.files[0]) return;
+  var file = input.files[0];
+  input.value = ""; // picking the same file again still fires
+  file.text().then(importProgressText, function () { alert("That file could not be read."); });
+});
+
+function importProgressText(text) {
+  var got = parseProgressFile(text);
+  if (got.error) { alert(got.error); return; }
+  var p = got.progress;
+  if (!confirm("Add this backup to your progress? It has " + p.history.length + " exam attempt" +
+      (p.history.length === 1 ? "" : "s") + " and " + p.attempted.length + " questions tried. Nothing here is removed.")) return;
+  Store.mutate(Mutations.restore(p));
+  if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
+  if (view === "home") renderHome();
+}
+
+/* Hands the browser a file to save. */
+function downloadText(name, text) {
+  if (typeof Blob === "undefined" || !window.URL || !URL.createObjectURL) return;
+  var url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
 /* The search box: results follow as the user types. */
 app.addEventListener("input", function (ev) {
   if (view === "search" && ev.target && ev.target.id === "search-q") updateSearch(ev.target.value);
@@ -342,6 +375,14 @@ function handleAction(btn) {
       Store.mutate(Mutations.restore(backup));
       if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
       return renderHome();
+    }
+    case "export-progress":
+      return downloadText("ccarf-progress-" + new Date().toISOString().slice(0, 10) + ".json",
+        progressFile(Store.snapshot(), Date.now()));
+    case "import-progress": {
+      var picker = document.getElementById("import-file");
+      if (picker && picker.click) picker.click();
+      return;
     }
     case "sync-now":
       window.CCARF_SYNC.syncNow();
