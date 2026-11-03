@@ -492,13 +492,18 @@
   .scn-text { white-space: pre-line; }
   .scn-question { padding: 22px 24px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
   .scn-screen .q-text { font-weight: 500; font-size: 1.04rem; line-height: 1.65; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
   .opt-row { display: flex; gap: 6px; align-items: stretch; }
   .opt-row > .option { flex: 1; min-width: 0; }
   .strike-btn {
     flex: none; width: 40px; border: 1.5px solid var(--line); border-radius: 11px;
     background: var(--card); color: var(--graphite); font-size: 1.1rem; cursor: pointer;
   }
-  @media (pointer: fine) { .strike-btn { display: none; } }
+  /* A mouse strikes by right-click, so the button is hidden there — but it
+   * still appears when reached with Tab, so keyboard users can strike too. */
+  @media (pointer: fine) {
+    .strike-btn:not(:focus-visible) { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); }
+  }
   .scn-screen .opt-note { border-top: 0; padding-top: 0; }
   .opt-wrap + .opt-wrap { margin-top: 8px; }
   .scn-question .options { display: flex; flex-direction: column; }
@@ -509,12 +514,6 @@
   .opt-note.bad { border-left-color: var(--fail); }
   .scn-comment { margin-top: 14px; }
   .scn-hint { font-size: 0.8rem; margin-top: 14px; }
-  .ctx-menu {
-    position: fixed; z-index: 50; padding: 4px; background: var(--card);
-    border: 1px solid var(--line-strong); border-radius: 9px; box-shadow: var(--shadow);
-  }
-  .ctx-item { display: block; border: 0; background: none; color: var(--ink); font: inherit; padding: 7px 12px; border-radius: 6px; cursor: pointer; }
-  .ctx-item:hover, .ctx-item:focus-visible { background: var(--pen-soft); }
   .scn-review { display: flex; flex-direction: column; gap: 10px; }
   .review-filters { gap: 8px; flex-wrap: wrap; }
   .review-scn { margin: 10px 0 2px; font-size: 1rem; }

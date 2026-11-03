@@ -61,7 +61,6 @@ function launch(opts = {}) {
   let clickHandler = null;
   const appListeners = {};
   const docListeners = {};
-  const menuEl = { hidden: true, innerHTML: "", style: {} };
   appEl.addEventListener = (type, fn) => {
     if (type === "click") clickHandler = fn;
     (appListeners[type] = appListeners[type] || []).push(fn);
@@ -107,7 +106,7 @@ function launch(opts = {}) {
     setTimeout: () => 1,
     clearTimeout: () => {},
     document: {
-      getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl
+      getElementById: (id) => (id === "app" ? appEl
         : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
@@ -144,7 +143,6 @@ function launch(opts = {}) {
     bank: () => win.QUESTION_BANK,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
-    menu: () => menuEl,
     /* The user opening or closing a <details> section. */
     toggle: (id, open) => {
       const ev = { target: { tagName: "DETAILS", id, open } };
@@ -1063,32 +1061,27 @@ test("missed exam questions can be practised from the results", () => {
   assert.equal(sess.questions.length, 60);
 });
 
-/* Final review: the strike menu is position:fixed, so it must not sit inside
- * the transformed .scn-screen (which would offset it from the cursor). */
-test("the strike menu sits outside the transformed scenario screen", () => {
+/* ------------------------------------------------------- polish fixes */
+test("right-click strikes an option straight away and right-click again undoes it", () => {
   const app = launch();
   app.click("start-scenario-exam");
-  const html = app.html();
-  const at = html.indexOf('<div id="ctx-menu"');
-  assert.ok(at > 0, "menu rendered");
-  const before = html.slice(0, at);
-  const opens = (before.match(/<div\b/g) || []).length;
-  const closes = (before.match(/<\/div>/g) || []).length;
-  assert.equal(opens, closes, "every div before the menu is closed, so the menu is a sibling of .scn-screen");
+  const id = app.store().snapshot().session.questions[0].id;
+  app.rightClick(2);
+  assert.deepEqual(app.store().snapshot().session.strikes[id], [2]);
+  assert.match(app.html(), /class="option struck"[^>]*data-opt="2"/);
+  assert.ok(app.html().includes("(struck through)"), "screen readers hear it");
+  app.rightClick(2);
+  assert.deepEqual(app.store().snapshot().session.strikes[id], []);
+  app.rightClick();
+  assert.deepEqual(app.store().snapshot().session.strikes[id], [], "right-click off an option does nothing");
+  assert.ok(!app.html().includes("ctx-menu"), "no menu any more");
 });
 
-/* ------------------------------------------------------- polish fixes */
-test("right-click opens the strike menu; Escape or a right-click elsewhere closes it", () => {
+test("right-click does not strike in ordinary practice", () => {
   const app = launch();
-  app.click("start-scenario-exam");
-  app.rightClick(2);
-  assert.equal(app.menu().hidden, false);
-  assert.ok(app.menu().innerHTML.includes('data-opt="2"'));
-  app.key("Escape");
-  assert.equal(app.menu().hidden, true, "Escape closes it");
+  app.click("practice", { domain: "1" });
   app.rightClick(1);
-  app.rightClick();
-  assert.equal(app.menu().hidden, true, "right-click off an option closes it");
+  assert.equal(app.store().snapshot().session.strikes, undefined);
 });
 
 test("the review filter starts at All again after resuming", () => {
@@ -1277,10 +1270,13 @@ test("a past exam date hides the countdown; a future one shows days left", () =>
   app.store().mutate({ key: "examDate", apply: (s) => { s.examDate = "2001-01-01"; } });
   app.click("home");
   assert.ok(!app.html().includes("days left"));
-  const d = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+  /* Local date, as the app counts days in local time (UTC could be a day behind). */
+  const t = new Date(Date.now() + 10 * 86400000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const d = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
   app.store().mutate({ key: "examDate", apply: (s) => { s.examDate = d; } });
   app.click("home");
-  assert.match(app.html(), /(10|11) days left/);
+  assert.match(app.html(), /10 days left/);
 });
 
 test("the exam date can be set from the home page", () => {

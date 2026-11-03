@@ -48,17 +48,19 @@ function renderScenarioQuestion() {
     var cls = "option";
     var picked = chosen.indexOf(optIdx) !== -1;
     if (picked) cls += " selected";
-    if (struck.indexOf(optIdx) !== -1) cls += " struck";
+    var isStruck = struck.indexOf(optIdx) !== -1;
+    if (isStruck) cls += " struck";
     if (showFeedback) {
       if (correct.indexOf(optIdx) !== -1) cls += " correct";
       else if (picked) cls += " wrong";
     }
     html += '<div class="opt-wrap"><div class="opt-row"><button class="' + cls + '" role="radio" aria-checked="' + picked +
       '" data-action="select" data-opt="' + optIdx + '"' + (showFeedback ? " disabled" : "") + ">" +
-      '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>" +
+      '<span class="opt-letter"></span>' + esc(q.options[optIdx]) +
+      (isStruck ? '<span class="sr-only"> (struck through)</span>' : "") + "</button>" +
       /* Touch screens have no right-click, so they get a small button. */
-      '<button class="strike-btn" data-action="strike" data-opt="' + optIdx + '" aria-label="' +
-      (struck.indexOf(optIdx) !== -1 ? "Remove strike-through" : "Strike through") + '">⊘</button></div>';
+      '<button class="strike-btn" data-action="strike" data-opt="' + optIdx + '" aria-pressed="' + isStruck +
+      '" aria-label="Strike through option ' + (sq.order.indexOf(optIdx) + 1) + '">⊘</button></div>';
     if (showFeedback && q.optionNotes) {
       html += '<div class="opt-note ' + (correct.indexOf(optIdx) !== -1 ? "ok" : "bad") + '">' +
         esc(q.optionNotes[optIdx]) + "</div>";
@@ -72,7 +74,7 @@ function renderScenarioQuestion() {
       (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
   }
   if (comment) html += '<p class="scn-comment muted">💬 ' + esc(comment) + "</p>";
-  html += '<p class="muted scn-hint">Right-click an option to strike it through.</p>';
+  html += '<p class="muted scn-hint">Right-click an option to strike it through; right-click again to undo.</p>';
   html += "</section></div>";
 
   html += '<div class="scn-bottom">' +
@@ -92,10 +94,7 @@ function renderScenarioQuestion() {
       '<button class="btn primary" data-action="next">' +
       (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
   }
-  html += "</div>";
-  /* The menu is position:fixed, so it lives outside .scn-screen: a
-   * transformed ancestor would offset it from the cursor. */
-  html += '</div><div id="ctx-menu" class="ctx-menu" hidden></div>';
+  html += "</div></div>";
 
   app.innerHTML = html;
   window.scrollTo(0, 0);

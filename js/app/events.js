@@ -1,4 +1,4 @@
-/* DOM app — navigation, keyboard shortcuts, the context menu, click
+/* DOM app — navigation, keyboard shortcuts, right-click strike-through, click
  * dispatch, auth events and boot. Must load last: boot renders the home
  * screen using every other js/app file. */
 
@@ -42,7 +42,7 @@ function toggleFlag() {
 }
 
 document.addEventListener("keydown", function (ev) {
-  if (ev.key === "Escape") { hideCtxMenu(); closeMenus(null); }
+  if (ev.key === "Escape") closeMenus(null);
   if (busyAction || !inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   var tag = ev.target && ev.target.tagName;
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -66,8 +66,6 @@ document.addEventListener("keydown", function (ev) {
   if (key === "f") return toggleFlag();
 });
 
-/* Right-click an option in a scenario question to strike it through,
- * like the real exam. */
 /* The Other exams menu is a <details>; close it on Escape or a click
  * anywhere outside it, like a normal dropdown. */
 function closeMenus(except) {
@@ -80,27 +78,16 @@ document.addEventListener("click", function (ev) {
   closeMenus(ev.target && ev.target.closest ? ev.target.closest("details.h-menu") : null);
 }, true);
 
-function hideCtxMenu() {
-  var menu = document.getElementById("ctx-menu");
-  if (menu) menu.hidden = true;
-}
+/* Right-click an option in a scenario question to strike it through, and
+ * right-click it again to undo — like the real exam, no menu in between. */
 app.addEventListener("contextmenu", function (ev) {
   if (!session || !isScenarioMode(session.mode) || view !== "quiz") return;
   var opt = ev.target.closest && ev.target.closest(".option[data-opt]");
-  var menu = document.getElementById("ctx-menu");
-  if (!opt || !menu) return hideCtxMenu();
+  if (!opt) return;
   ev.preventDefault();
-  var optIdx = Number(opt.dataset.opt);
-  var id = session.questions[session.current].id;
-  var isStruck = (session.strikes[id] || []).indexOf(optIdx) !== -1;
-  menu.innerHTML = '<button class="ctx-item" data-action="strike" data-opt="' + optIdx + '">' +
-    (isStruck ? "Remove strike-through" : "Strike through") + "</button>";
-  menu.style.left = ev.clientX + "px";
-  menu.style.top = ev.clientY + "px";
-  menu.hidden = false;
+  if (busyAction) return;
+  toggleStrike(Number(opt.dataset.opt));
 });
-document.addEventListener("click", hideCtxMenu, true);
-document.addEventListener("scroll", hideCtxMenu, true);
 
 /* Actions that build a new screen: drawing questions, grading, or fetching
  * an imported exam. They can take a moment, so the clicked button shows it
