@@ -65,7 +65,9 @@ var Mutations = {
       },
     };
   },
-  /* Fold a rescued copy of progress back in. */
+  /* Fold a rescued copy of progress back in (a device backup or an
+   * imported file). Only adds: nothing already here is removed, and the
+   * newer schedule wins per question. */
   restore: function (backup) {
     return {
       key: null,
@@ -76,6 +78,8 @@ var Mutations = {
         s.correctEver = merged.correctEver;
         s.attempted = merged.attempted;
         s.saved = merged.saved;
+        s.review = mergeReview(s.review, backup && backup.review);
+        if (!s.examDate && merged.examDate) s.examDate = merged.examDate;
         if (!s.session && merged.session) s.session = merged.session;
       },
     };

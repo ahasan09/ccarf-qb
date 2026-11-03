@@ -61,11 +61,11 @@ function launch(opts = {}) {
   let clickHandler = null;
   const appListeners = {};
   const docListeners = {};
-  const menuEl = { hidden: true, innerHTML: "", style: {} };
   appEl.addEventListener = (type, fn) => {
     if (type === "click") clickHandler = fn;
     (appListeners[type] = appListeners[type] || []).push(fn);
   };
+  appEl.dispatch = (type, ev) => (appListeners[type] || []).forEach((fn) => fn(ev));
 
   const win = {
     QUESTION_BANK: opts.bank || bank(),
@@ -86,6 +86,7 @@ function launch(opts = {}) {
   const frames = [];
   if (opts.frames) win.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
   const scripts = [];
+  let alertFn = () => {};
 
   const ctx = {
     window: win,
@@ -99,7 +100,7 @@ function launch(opts = {}) {
       setItem: (k, v) => { storage[k] = String(v); },
       removeItem: (k) => { delete storage[k]; },
     },
-    alert: () => {},
+    alert: (m) => alertFn(m),
     confirm: opts.confirm || (() => true),
     prompt: opts.prompt || (() => null),
     setInterval: (fn) => { timers.push(fn); return timers.length; },
@@ -107,7 +108,7 @@ function launch(opts = {}) {
     setTimeout: () => 1,
     clearTimeout: () => {},
     document: {
-      getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl
+      getElementById: (id) => (id === "app" ? appEl
         : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
@@ -144,7 +145,6 @@ function launch(opts = {}) {
     bank: () => win.QUESTION_BANK,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
-    menu: () => menuEl,
     /* The user opening or closing a <details> section. */
     toggle: (id, open) => {
       const ev = { target: { tagName: "DETAILS", id, open } };
@@ -152,6 +152,8 @@ function launch(opts = {}) {
     },
     appEl,
     win,
+    setAlert: (fn) => { alertFn = fn; },
+    doc: ctx.document,
     scripts,
     /* Runs scheduled frames, including any they schedule in turn. */
     flushFrames: () => { while (frames.length) frames.shift()(); },
@@ -160,6 +162,10 @@ function launch(opts = {}) {
       const optEl = opt === undefined ? null : { dataset: { opt: String(opt) } };
       const ev = { clientX: 10, clientY: 20, preventDefault() {}, target: { closest: () => optEl } };
       (appListeners.contextmenu || []).forEach((fn) => fn(ev));
+    },
+    /* Typing into a text box: fires the app's input listener. */
+    type: (id, value) => {
+      (appListeners.input || []).forEach((fn) => fn({ target: { id, value } }));
     },
     key: (key) => {
       const ev = { key, preventDefault() {}, target: { tagName: "BODY", closest: () => null } };
@@ -1063,32 +1069,27 @@ test("missed exam questions can be practised from the results", () => {
   assert.equal(sess.questions.length, 60);
 });
 
-/* Final review: the strike menu is position:fixed, so it must not sit inside
- * the transformed .scn-screen (which would offset it from the cursor). */
-test("the strike menu sits outside the transformed scenario screen", () => {
+/* ------------------------------------------------------- polish fixes */
+test("right-click strikes an option straight away and right-click again undoes it", () => {
   const app = launch();
   app.click("start-scenario-exam");
-  const html = app.html();
-  const at = html.indexOf('<div id="ctx-menu"');
-  assert.ok(at > 0, "menu rendered");
-  const before = html.slice(0, at);
-  const opens = (before.match(/<div\b/g) || []).length;
-  const closes = (before.match(/<\/div>/g) || []).length;
-  assert.equal(opens, closes, "every div before the menu is closed, so the menu is a sibling of .scn-screen");
+  const id = app.store().snapshot().session.questions[0].id;
+  app.rightClick(2);
+  assert.deepEqual(app.store().snapshot().session.strikes[id], [2]);
+  assert.match(app.html(), /class="option struck"[^>]*data-opt="2"/);
+  assert.ok(app.html().includes("(struck through)"), "screen readers hear it");
+  app.rightClick(2);
+  assert.deepEqual(app.store().snapshot().session.strikes[id], []);
+  app.rightClick();
+  assert.deepEqual(app.store().snapshot().session.strikes[id], [], "right-click off an option does nothing");
+  assert.ok(!app.html().includes("ctx-menu"), "no menu any more");
 });
 
-/* ------------------------------------------------------- polish fixes */
-test("right-click opens the strike menu; Escape or a right-click elsewhere closes it", () => {
+test("right-click does not strike in ordinary practice", () => {
   const app = launch();
-  app.click("start-scenario-exam");
-  app.rightClick(2);
-  assert.equal(app.menu().hidden, false);
-  assert.ok(app.menu().innerHTML.includes('data-opt="2"'));
-  app.key("Escape");
-  assert.equal(app.menu().hidden, true, "Escape closes it");
+  app.click("practice", { domain: "1" });
   app.rightClick(1);
-  app.rightClick();
-  assert.equal(app.menu().hidden, true, "right-click off an option closes it");
+  assert.equal(app.store().snapshot().session.strikes, undefined);
 });
 
 test("the review filter starts at All again after resuming", () => {
@@ -1277,10 +1278,13 @@ test("a past exam date hides the countdown; a future one shows days left", () =>
   app.store().mutate({ key: "examDate", apply: (s) => { s.examDate = "2001-01-01"; } });
   app.click("home");
   assert.ok(!app.html().includes("days left"));
-  const d = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+  /* Local date, as the app counts days in local time (UTC could be a day behind). */
+  const t = new Date(Date.now() + 10 * 86400000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const d = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
   app.store().mutate({ key: "examDate", apply: (s) => { s.examDate = d; } });
   app.click("home");
-  assert.match(app.html(), /(10|11) days left/);
+  assert.match(app.html(), /10 days left/);
 });
 
 test("the exam date can be set from the home page", () => {
@@ -1556,4 +1560,196 @@ test("with emailCode on, the card offers the code box after the guidance", async
   assert.ok(html.includes("<b>Enter the code</b>"));
   assert.ok(html.indexOf("auth-steps") < html.indexOf('id="auth-code"'), "guidance comes before the code box");
   assert.ok(html.includes('placeholder="Code from the e-mail"'), "no fixed code length");
+});
+
+/* ------------------------------------------------ time and pace */
+test("time on each question is kept with the exam attempt", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const app = launch({ Date: FakeDate });
+  app.click("start-exam");
+  const first = app.store().snapshot().session.questions[0].id;
+  now += 90 * 1000;
+  app.click("select", { opt: "0" }); // re-render: the first 90 s are credited
+  now += 30 * 1000;
+  app.click("next");
+  now += 45 * 1000;
+  app.win.dispatchEvent({ type: "beforeunload", preventDefault() {} });
+  app.click("submit");
+  const items = app.store().snapshot().history[0].items;
+  assert.equal(items[0].id, first);
+  assert.equal(items[0].secs, 120);
+  assert.equal(items[1].secs, 45);
+  assert.equal(items[2].secs, undefined, "never shown, no time");
+  assert.match(app.html(), /<h2>Time<\/h2><p>Average <strong>1:22<\/strong> per question/);
+});
+
+test("time away from an exited session does not count", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const storage = {};
+  const app = launch({ Date: FakeDate, storage });
+  app.click("start-exam");
+  now += 60 * 1000;
+  app.click("quit");
+  now += 4 * 60 * 1000;
+  const again = launch({ Date: FakeDate, storage });
+  again.click("resume");
+  now += 10 * 1000;
+  again.click("next");
+  const id = again.store().snapshot().session.questions[0].id;
+  assert.equal(again.store().snapshot().session.timeSpent[id], 70 * 1000);
+});
+
+test("the pace hint appears once 3 questions behind", () => {
+  let now = Date.now();
+  class FakeDate extends Date { static now() { return now; } }
+  const app = launch({ Date: FakeDate });
+  app.click("start-scenario-exam");
+  assert.match(app.html(), /<span id="pace" class="pace"[^>]*><\/span>/);
+  now += 7 * 60 * 1000;
+  app.click("next");
+  assert.match(app.html(), /⏱ 3 behind pace/);
+  assert.match(app.html(), /title="Aim for about 2:00 per question"/);
+});
+
+test("practice has no timer, no pace hint and no time card", () => {
+  const app = launch();
+  app.click("practice", { domain: "1" });
+  assert.ok(!app.html().includes('id="pace"'));
+  completeSession(app);
+  assert.ok(!app.html().includes("<h2>Time</h2>"));
+});
+
+test("closing the tab mid-exam asks first; at home it does not", () => {
+  const app = launch();
+  let asked = 0;
+  const unload = () => app.win.dispatchEvent({ type: "beforeunload", preventDefault() { asked++; } });
+  unload();
+  assert.equal(asked, 0, "home");
+  app.click("practice", { domain: "1" });
+  unload();
+  assert.equal(asked, 0, "untimed practice");
+  app.click("start-exam");
+  unload();
+  assert.equal(asked, 1, "timed exam");
+});
+
+/* ------------------------------------------------ report a problem */
+test("the report link shows after answering in practice and in review, not mid-exam", () => {
+  const app = launch();
+  app.click("practice", { domain: "1" });
+  assert.ok(!app.html().includes("report-link"), "not before answering");
+  app.click("select", { opt: "0" });
+  assert.match(app.html(), /class="h-link report-link" href="https:\/\/github\.com\/ahasan09\/ccarf-qb\/issues\/new\?title=Question%20d1-q/);
+  app.click("start-exam");
+  app.click("select", { opt: "0" });
+  assert.ok(!app.html().includes("report-link"), "never during an exam");
+  app.click("submit");
+  app.click("show-review");
+  assert.equal((app.html().match(/report-link/g) || []).length, 60);
+});
+
+test("scenario practice has the report link too", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "ci" });
+  app.click("select", { opt: "1" });
+  assert.ok(app.html().includes("report-link"));
+});
+
+/* ------------------------------------------------------------ search */
+test("search lists matching bank and scenario questions as you type", () => {
+  const app = launch();
+  app.click("search");
+  assert.ok(app.html().includes('id="search-q"'));
+  app.type("search-q", "Question 2-1");
+  const html = app.html();
+  assert.match(html, /Question bank <span class="muted">\(11\)<\/span>/); // 2-1, 2-10 … 2-19
+  assert.ok(!html.includes("Scenario questions"), "no scenario hits, no empty group");
+  app.type("search-q", "ci 3");
+  assert.match(app.html(), /Scenario questions <span class="muted">\(\d+\)/);
+  app.type("search-q", "zzzz");
+  assert.ok(app.html().includes("No questions match"));
+});
+
+test("practice the search matches: bank ones in practice, scenario ones in scenario practice", () => {
+  const app = launch();
+  app.click("search");
+  app.type("search-q", "Question 2-1");
+  app.click("practice-search", { pool: "bank" });
+  let sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "practice");
+  assert.equal(sess.questions.length, 11);
+  assert.ok(app.html().includes("Search: “Question 2-1”"));
+  app.click("quit");
+  app.click("discard");
+  app.click("search");
+  assert.ok(app.html().includes('value="Question 2-1"'), "the query is kept");
+  app.type("search-q", "scenario question ci");
+  app.click("practice-search", { pool: "scenario" });
+  sess = app.store().snapshot().session;
+  assert.equal(sess.mode, "scenario-practice");
+  assert.equal(sess.questions.length, 16);
+});
+
+/* ------------------------------------------------ backup file */
+test("the account section offers download and import", () => {
+  const app = launch();
+  assert.ok(app.html().includes('data-action="export-progress"'));
+  assert.ok(app.html().includes('id="import-file"'));
+  app.click("export-progress"); // no Blob in the harness: must not throw
+});
+
+test("importing a backup file adds its progress after confirming", async () => {
+  let asked = "";
+  const app = launch({ confirm: (m) => { asked = m; return true; } });
+  const file = JSON.stringify({ app: "ccarf-qb", progress: { attempted: ["d1-q1", "d1-q2"], correctEver: ["d1-q1"], history: [] } });
+  const input = { id: "import-file", value: "C:\\fake\\file.json", files: [{ text: () => Promise.resolve(file) }] };
+  app.appEl.dispatch("change", { target: input });
+  await new Promise((r) => setImmediate(r));
+  assert.match(asked, /0 exam attempts and 2 questions tried/);
+  assert.deepEqual(app.store().snapshot().attempted, ["d1-q1", "d1-q2"]);
+  assert.equal(input.value, "", "cleared so the same file can be picked again");
+});
+
+test("a file that is not a backup is refused and changes nothing", async () => {
+  let said = "";
+  const app = launch();
+  const input = { id: "import-file", value: "", files: [{ text: () => Promise.resolve("{}") }] };
+  app.setAlert((m) => { said = m; });
+  app.appEl.dispatch("change", { target: input });
+  await new Promise((r) => setImmediate(r));
+  assert.match(said, /not a progress backup/);
+  assert.equal(app.store().snapshot().attempted.length, 0);
+});
+
+/* ------------------------------------------------ keyboard focus */
+test("a redraw puts focus back on the control that had it", () => {
+  const app = launch();
+  app.click("practice", { domain: "1" });
+  const asked = [];
+  let focused = 0;
+  app.appEl.querySelector = (sel) => { asked.push(sel); return { focus: () => { focused++; } }; };
+  app.doc.activeElement = { dataset: { action: "select", opt: "2" } };
+  app.click("select", { opt: "2" });
+  assert.equal(asked[0], '[data-action="select"][data-opt="2"]');
+  assert.ok(focused >= 1);
+});
+
+test("quotes in a data value cannot break the focus selector", () => {
+  const app = launch();
+  let asked = null;
+  app.appEl.querySelector = (sel) => { asked = sel; return null; };
+  app.doc.activeElement = { dataset: { action: "toggle-mastery", domain: '1"]x' } };
+  app.click("toggle-mastery", { domain: "1" });
+  assert.equal(asked, '[data-action="toggle-mastery"][data-domain="1\\"]x"]');
+});
+
+test("nothing focused, nothing to restore", () => {
+  const app = launch();
+  let asked = 0;
+  app.appEl.querySelector = () => { asked++; return null; };
+  app.doc.activeElement = null;
+  app.click("toggle-mastery", { domain: "1" });
+  assert.equal(asked, 0);
 });

@@ -1301,5 +1301,131 @@ window.SCENARIO_BANK.push(
       "Suppressing contradiction flags would also hide the real conflicts that do exist between contemporaneous sources."
     ],
     explanation: "Structured findings should include publication and data collection dates so temporal differences are not misread as contradictions. Provenance metadata is what allows synthesis to tell real disagreement from change over time."
+  },
+  {
+    id: "sc-research-061",
+    scenario: "research",
+    domain: 5,
+    subdomain: "5.1 Manage conversation context to preserve critical information across long interactions",
+    question: "A teammate prototypes a lightweight coordinator directly on the Messages API instead of the Agent SDK. Each turn, the code sends the system prompt plus only the user's newest message. Users report that after they say \"limit this to EU sources\" and then \"now add a cost comparison,\" the coordinator ignores the EU restriction. The teammate suspects the model is forgetting instructions. What is the actual cause and fix?",
+    options: [
+      "The model is losing the instruction as the context fills up, so the coordinator should move to a model with a larger context window.",
+      "The EU restriction is too vague for the model to apply, so users should repeat a precise version of it in every message they send.",
+      "The Messages API keeps no state, so each request must resend earlier turns or a summary of constraints like the EU limit.",
+      "The sampling temperature is too high, so lowering it will make the model apply earlier restrictions more consistently."
+    ],
+    answer: 2,
+    optionNotes: [
+      "The context never fills up, because only one message is sent per request. A larger window changes nothing when the earlier turns are never included.",
+      "The restriction is clear. Making users repeat it shifts the burden to them and does not fix the missing history.",
+      "The API retains nothing between calls, so the model only sees what each request contains. Sending the conversation history, or a structured summary of active constraints, keeps earlier instructions in effect.",
+      "Sampling temperature cannot restore information the model never received in the request."
+    ],
+    explanation: "The Messages API is stateless: every request must carry the conversation history or a summary of what matters. The Agent SDK manages this for you, but a custom loop must resend it each turn."
+  },
+  {
+    id: "sc-research-062",
+    scenario: "research",
+    domain: 5,
+    subdomain: "5.1 Manage conversation context to preserve critical information across long interactions",
+    question: "The web search subagent fetches 20 to 30 pages per task, and each fetch returns the full page text, including navigation menus, comment threads and related-article lists. By the later searches in a task, most of the subagent's context is page boilerplate, and its final findings omit details it found early on. You want the subagent to keep what matters through the whole task. What change best addresses this?",
+    options: [
+      "Lower the number of pages the subagent may fetch to five per task, so that its context window never fills with page text at all.",
+      "Ask the subagent to write a long running summary of everything it has read after each fetch and to base its findings on that.",
+      "Give the subagent a model with a larger context window so that all of the page text from every fetch can stay available to it.",
+      "Reduce each fetch result to the relevant passages with their URL and date before it enters context, and keep those as findings."
+    ],
+    answer: 3,
+    optionNotes: [
+      "Fewer pages reduces coverage, which hurts a system meant to produce comprehensive reports, and does not address the boilerplate in each page.",
+      "A running prose summary adds still more text to context and is lossy, so early specifics such as figures and dates still get compressed away.",
+      "A larger window postpones the problem while leaving relevant details buried in boilerplate, where attention to them stays weak.",
+      "Extracting the relevant passages keeps tool output compact, and carrying the URL and date preserves provenance for later citation. The subagent's context then holds evidence rather than page chrome."
+    ],
+    explanation: "Tool results accumulate and consume context in proportion to their size. Trim them to the relevant content, with source metadata, before they enter the conversation."
+  },
+  {
+    id: "sc-research-063",
+    scenario: "research",
+    domain: 5,
+    subdomain: "5.2 Design effective escalation and ambiguity resolution patterns",
+    question: "A user asks for a report on \"Mercury's growth since 2021.\" The web search subagent returns results about a fintech bank, a space-industry startup and a commodity price trend, all named Mercury. The current system blends these into one report, producing claims such as a bank whose revenue rose alongside metal prices. The request gives no other hint about which Mercury the user means. How should the system handle this?",
+    options: [
+      "Choose the Mercury with the most search results, since it is most likely to be the one the user meant, and note the choice in the report.",
+      "Have the coordinator stop before delegating further research and ask the user which Mercury they mean, listing the candidates found.",
+      "Research all three entities and merge the findings into one report, so that the user is sure to find the Mercury they were looking for.",
+      "Ask the synthesis agent to decide which Mercury fits best, based on which set of findings produces the most coherent narrative."
+    ],
+    answer: 1,
+    optionNotes: [
+      "Popularity is a guess, not evidence of intent. A full research run on the wrong entity wastes effort, and a note in the report does not undo it.",
+      "The ambiguity cannot be resolved from the request, and guessing wrong costs a whole research run. One targeted question listing the candidates lets the user choose quickly.",
+      "Merging distinct entities is exactly what produced the nonsensical claims, and researching all three triples the work for entities the user does not want.",
+      "How coherent a narrative is says nothing about which entity the user meant, and it hides the ambiguity from the user."
+    ],
+    explanation: "When a request maps to several plausible entities and nothing in it disambiguates, ask for clarification instead of choosing heuristically. Listing the candidates makes the question quick to answer."
+  },
+  {
+    id: "sc-research-064",
+    scenario: "research",
+    domain: 5,
+    subdomain: "5.2 Design effective escalation and ambiguity resolution patterns",
+    question: "After you added clarification behaviour, the coordinator now asks users two or three questions before almost every run, such as which date range, which regions and how long the report should be. Usage data shows many users abandon the request at this point, and most answers match sensible defaults. Some ambiguities, though, genuinely change what should be researched. What should the coordinator's instructions say?",
+    options: [
+      "Never ask clarifying questions, and always proceed with default assumptions so that users are not slowed down by any questions at all.",
+      "Ask all of the questions at once in a single message instead of across several turns, so the clarification step takes less time.",
+      "Ask clarifying questions only for requests above a certain length, since longer requests are more likely to contain ambiguities.",
+      "Ask only when an ambiguity would change what gets researched; otherwise use defaults and state those assumptions in the report."
+    ],
+    answer: 3,
+    optionNotes: [
+      "Some ambiguities do change the research, and proceeding blindly on those wastes a whole run on the wrong question.",
+      "Batching the questions reduces turns but still interrupts users with questions whose answers rarely matter.",
+      "Request length is a poor proxy for ambiguity; a short request can be badly ambiguous and a long one perfectly clear.",
+      "Explicit criteria reserve questions for ambiguity that materially changes the outcome. Stated assumptions let users correct a default afterwards without blocking the run."
+    ],
+    explanation: "Effective ambiguity handling uses explicit criteria for when to ask. Ask when the answer changes the work; otherwise proceed on documented assumptions the user can see and correct."
+  },
+  {
+    id: "sc-research-065",
+    scenario: "research",
+    domain: 5,
+    subdomain: "5.6 Preserve information provenance and handle uncertainty in multi-source synthesis",
+    question: "A report on sleep and productivity states that a finding is \"confirmed by four independent sources.\" A reviewer traces the citations and finds that three of them are news articles all reporting the same single university study, and the fourth is the study itself. The synthesis agent counted each article as separate corroboration because the findings it received listed only each article's own title and URL. What change best prevents this?",
+    options: [
+      "Have findings record the original source behind each secondary report, and count corroboration by distinct originals.",
+      "Exclude news articles from the research entirely and only allow the web search subagent to return peer-reviewed papers.",
+      "Require the report to cite at least five sources for any finding it describes as confirmed, so one study is never enough.",
+      "Tell the synthesis agent to lower its confidence whenever many sources for a finding were published within the same month."
+    ],
+    answer: 0,
+    optionNotes: [
+      "Tracking which primary source a secondary report relies on lets synthesis see that four citations are one piece of evidence, so corroboration is counted honestly.",
+      "News coverage is useful for recent developments. Dropping it loses coverage without teaching the system to recognize shared origins.",
+      "Five articles echoing one study would still pass. Raising the count does not distinguish independent evidence from repetition.",
+      "Publication timing is a weak proxy: independent studies can appear close together, and echoes of one study can span months."
+    ],
+    explanation: "Provenance should trace claims back to their original source. Independent corroboration means distinct primary evidence, not several reports of the same study."
+  },
+  {
+    id: "sc-research-066",
+    scenario: "research",
+    domain: 5,
+    subdomain: "5.6 Preserve information provenance and handle uncertainty in multi-source synthesis",
+    question: "During a report on battery recycling regulations, the web search subagent fails to retrieve any sources for Asia-Pacific because the relevant government sites time out repeatedly. The coordinator proceeds with the European and North American findings. The final report is titled as a global overview and reads as complete, and a reader later assumes Asia-Pacific has no relevant regulations. How should the system handle this?",
+    options: [
+      "Ask the synthesis agent to fill the Asia-Pacific section from its general knowledge so that the report covers every region as promised.",
+      "Have findings and the report note which areas lacked sources and why, so readers can tell gaps apart from evidence of absence.",
+      "Hold the entire report until every region has sources, retrying the failed sites until they respond, however long that takes.",
+      "Remove the word global from the title and say nothing more, since the report then only describes the regions it covers."
+    ],
+    answer: 1,
+    optionNotes: [
+      "Unsourced content presented alongside cited findings misrepresents its reliability and defeats the purpose of a cited report.",
+      "Coverage annotations make the report's limits explicit. Readers can see that Asia-Pacific is a gap caused by retrieval failure, not a finding that no regulations exist.",
+      "Blocking indefinitely on an unavailable source delivers nothing; a useful partial report that discloses the gap is the better outcome.",
+      "Silently narrowing the scope hides why a region is missing and still lets readers draw wrong conclusions about it."
+    ],
+    explanation: "Synthesis output should annotate coverage: which conclusions are well supported and which areas have gaps because sources were unavailable. Missing evidence must not read as evidence of absence."
   }
 );

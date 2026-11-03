@@ -603,3 +603,123 @@ function validResources(list) {
     return true;
   });
 }
+
+/* ------------------------------------------------ time per question */
+/* One stretch on a question counts for at most this long, so a tab left
+ * open over lunch does not make a question look slow. */
+var MAX_VISIT_MS = 5 * 60 * 1000;
+
+/* Returns a new time-spent map with the stretch from `since` to `now`
+ * added to question `id`. */
+function addTime(spent, id, since, now) {
+  var out = Object.assign({}, spent || {});
+  if (!id || typeof since !== "number" || !(now > since)) return out;
+  out[id] = (out[id] || 0) + Math.min(now - since, MAX_VISIT_MS);
+  return out;
+}
+
+/* Average time per question, and the objectives (or domains, for questions
+ * without one) that took longest on average — at least two questions each.
+ * `spent` is ms per question id; questions with no time are left out. */
+function paceSummary(questions, spent, limit) {
+  spent = spent || {};
+  var timed = (questions || []).filter(function (q) { return q && spent[q.id] > 0; });
+  if (!timed.length) return null;
+  var total = 0;
+  var groups = {};
+  timed.forEach(function (q) {
+    var ms = spent[q.id];
+    total += ms;
+    var key = q.subdomain || (DOMAIN_NAMES[q.domain] ? "D" + q.domain + " " + DOMAIN_NAMES[q.domain] : null);
+    if (!key) return;
+    var g = groups[key] = groups[key] || { key: key, ms: 0, n: 0 };
+    g.ms += ms;
+    g.n++;
+  });
+  var slowest = Object.keys(groups).map(function (k) { return groups[k]; })
+    .filter(function (g) { return g.n >= 2; })
+    .map(function (g) { return { key: g.key, avgMs: Math.round(g.ms / g.n), n: g.n }; })
+    .sort(function (a, b) { return b.avgMs - a.avgMs; })
+    .slice(0, limit || 3);
+  return { avgMs: Math.round(total / timed.length), count: timed.length, slowest: slowest };
+}
+
+/* In a timed session: how many questions behind an even pace the user is.
+ * Returns null when on pace or less than 3 behind, so a short pause on a
+ * hard question never nags. */
+function paceStatus(total, answered, startedAt, deadline, now) {
+  if (!deadline || !startedAt || !total || deadline <= startedAt) return null;
+  var budget = (deadline - startedAt) / total;
+  var expected = Math.min(total, Math.floor((now - startedAt) / budget));
+  var behind = expected - answered;
+  return behind >= 3 ? { behind: behind, budgetMs: Math.round(budget) } : null;
+}
+
+/* ------------------------------------------------ report a question */
+/* A link that opens a new GitHub issue about question `q`, pre-filled with
+ * what a maintainer needs to find and check it. `base` is the repo's
+ * ".../issues/new" URL; returns "" without one. */
+function reportIssueUrl(q, base) {
+  if (!base || !q || !q.id) return "";
+  var correct = correctIndices(q).map(function (i) { return q.options[i]; });
+  var text = String(q.question || "");
+  if (text.length > 400) text = text.slice(0, 400) + "…";
+  var body = [
+    "**Question:** `" + q.id + "`" + (q.subdomain ? " · " + q.subdomain : ""),
+    "",
+    "> " + text.replace(/\n+/g, " "),
+    "",
+    "**Marked correct:** " + correct.join(" / "),
+    "",
+    "**What is wrong?** (wrong answer, unclear wording, outdated fact, typo…)",
+    "",
+    "",
+    "<!-- To find it in the code: grep -rn \"" + q.id + "\" questions scenarios exams -->",
+  ].join("\n");
+  return base + "?title=" + encodeURIComponent("Question " + q.id + ": ") +
+    "&labels=bug&body=" + encodeURIComponent(body);
+}
+
+/* ------------------------------------------------------------ search */
+/* Questions containing every word of `query` (any case) in their text,
+ * options, explanation, objective or id. Matches in the question text come
+ * first. Fewer than 2 characters matches nothing. */
+function searchQuestions(list, query) {
+  var words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.join("").length < 2) return [];
+  var hits = [];
+  (list || []).forEach(function (q) {
+    var stem = String(q.question || "").toLowerCase();
+    var all = [stem, q.id, q.subdomain || "", q.explanation || ""]
+      .concat(q.options || [], q.optionNotes || []).join("\n").toLowerCase();
+    if (!words.every(function (w) { return all.indexOf(w) !== -1; })) return;
+    hits.push({ q: q, inStem: words.every(function (w) { return stem.indexOf(w) !== -1; }) });
+  });
+  return hits.filter(function (h) { return h.inStem; })
+    .concat(hits.filter(function (h) { return !h.inStem; }))
+    .map(function (h) { return h.q; });
+}
+
+/* ------------------------------------------ progress backup file */
+/* What "Download progress" saves: the whole progress state, wrapped so an
+ * import can tell it is ours. */
+function progressFile(state, now) {
+  return JSON.stringify({
+    app: "ccarf-qb", kind: "progress", version: 1,
+    exportedAt: new Date(now).toISOString(),
+    progress: normalizeProgress(state),
+  }, null, 2);
+}
+
+/* Reads a file made by progressFile (or a bare progress object). Returns
+ * { progress } or { error } with a message fit to show the user. */
+function parseProgressFile(text) {
+  var data;
+  try { data = JSON.parse(String(text || "")); } catch (e) { return { error: "That file is not a progress backup (it is not valid JSON)." }; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return { error: "That file is not a progress backup." };
+  var raw = data.app === "ccarf-qb" ? data.progress : data;
+  var known = raw && typeof raw === "object" &&
+    ["history", "weak", "correctEver", "attempted", "saved", "review", "session"].some(function (k) { return k in raw; });
+  if (!known) return { error: "That file is not a progress backup from this app." };
+  return { progress: normalizeProgress(raw) };
+}

@@ -22,6 +22,16 @@ function resourceById(id) {
   return null;
 }
 
+/* Where "Report a problem" sends people: a new GitHub issue on this repo.
+ * Set to "" to hide the link (e.g. in a fork without issues). */
+var REPORT_ISSUE_URL = "https://github.com/ahasan09/ccarf-qb/issues/new";
+
+function reportLink(q) {
+  var url = reportIssueUrl(q, REPORT_ISSUE_URL);
+  return url ? '<a class="h-link report-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
+    "Report a problem with this question ↗</a>" : "";
+}
+
 /* Mock exams draw from the exam-guide-mapped pool; the unmapped ones are
  * kept aside and only used by the supplementary exam. */
 var MAPPED = filterByTagging(BANK, true);
@@ -151,7 +161,8 @@ var Store = createStore({
 window.CCARF_STORE = Store;
 
 var app = document.getElementById("app");
-var view = "home"; // home | quiz | results | review | custom
+var view = "home"; // home | quiz | results | review | custom | search
+var searchQuery = ""; // the search screen's last query
 var timerHandle = null;
 var session = null; // active session object
 var pendingEmail = null; // login code sent, awaiting verification
@@ -192,6 +203,27 @@ function applyTheme() {
 function cycleTheme() {
   LS.set("ccarf.theme", THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]);
   applyTheme();
+}
+
+/* Replace what is on screen. If the focused control (say an option picked
+ * from the keyboard, or a section toggle) is drawn again, focus returns to
+ * it, so keyboard and screen-reader users keep their place instead of
+ * starting over from the top of the page. */
+var FOCUS_KEYS = ["opt", "index", "domain", "sub", "scenario", "exam", "id", "filter", "pool", "date", "scope"];
+function paint(html) {
+  var sel = focusSelector(document.activeElement);
+  app.innerHTML = html;
+  var el = sel && app.querySelector(sel);
+  if (el && el.focus) el.focus({ preventScroll: true });
+}
+function focusSelector(el) {
+  if (!el || !el.dataset || !el.dataset.action) return null;
+  var q = function (v) { return '"' + String(v).replace(/["\\]/g, "\\$&") + '"'; };
+  var sel = "[data-action=" + q(el.dataset.action) + "]";
+  FOCUS_KEYS.forEach(function (k) {
+    if (el.dataset[k] !== undefined) sel += "[data-" + k + "=" + q(el.dataset[k]) + "]";
+  });
+  return sel;
 }
 
 function esc(s) {

@@ -23,11 +23,28 @@ function newSession(mode, questions, durationMs) {
     deadline: durationMs ? now + durationMs : null,
     feedback: null, // practice mode: answered question awaiting "next"
     tally: { correct: 0, wrong: 0 }, // practice running tally
+    timeSpent: {}, // ms per question id, see clockOn()
+    clock: null, // { id, since }: the question on screen and since when
   };
 }
 
+/* Time per question: credit the question that was on screen with the time
+ * since it appeared, then start timing `id` (null when no question is on
+ * screen — review grid, exit, submit). Every screen change calls this. */
+function clockOn(id) {
+  if (!session) return;
+  var now = Date.now();
+  var c = session.clock;
+  if (c) session.timeSpent = addTime(session.timeSpent, c.id, c.since, now);
+  session.clock = id ? { id: id, since: now } : null;
+}
+
 function persistSession() {
-  if (session) Store.mutate(Mutations.setSession(session));
+  if (!session) return;
+  /* Bring the time-on-question up to date before saving, so what is
+   * stored never lags a step behind. */
+  if (session.clock) clockOn(session.questions[session.current].id);
+  Store.mutate(Mutations.setSession(session));
 }
 
 var MODE_NAMES = {
@@ -209,6 +226,76 @@ function setComment(text) {
   renderQuestion();
 }
 
+/* --------------------------------------------------------- search */
+var SEARCH_SHOWN = 30; // results listed per group; "Practice these" takes all
+
+function searchHits() {
+  return {
+    bank: searchQuestions(BANK, searchQuery),
+    scenario: searchQuestions(SCENARIO_BANK, searchQuery),
+  };
+}
+
+function renderSearch() {
+  view = "search";
+  app.innerHTML = '<div class="quiz-header"><div><strong>Search questions</strong></div>' +
+    '<button class="btn ghost small" data-action="home">← Home</button></div>' +
+    '<div class="card"><label class="search-label" for="search-q">Find questions by keyword — e.g. <i>tool_choice</i>, <i>hooks</i>, <i>CLAUDE.md</i></label>' +
+    '<input class="input search-input" id="search-q" type="search" autocomplete="off" value="' + esc(searchQuery) + '" autofocus>' +
+    '<p class="muted search-note">Searches the question bank and the scenario questions (text, options, explanations and objectives). Imported exams are not included.</p></div>' +
+    '<div id="search-results" aria-live="polite">' + searchResultsHtml() + "</div>";
+  var input = document.getElementById("search-q");
+  if (input && input.focus) {
+    input.focus();
+    if (input.setSelectionRange) input.setSelectionRange(searchQuery.length, searchQuery.length);
+  }
+}
+
+/* Typing only redraws the results, so the box keeps focus. */
+function updateSearch(query) {
+  searchQuery = String(query || "");
+  var box = document.getElementById("search-results");
+  if (box) box.innerHTML = searchResultsHtml();
+  else renderSearch();
+}
+
+function searchResultsHtml() {
+  if (searchQuery.replace(/\s/g, "").length < 2) return "";
+  var hits = searchHits();
+  if (!hits.bank.length && !hits.scenario.length) {
+    return '<div class="card"><p class="muted">No questions match “' + esc(searchQuery) + "”.</p></div>";
+  }
+  return searchGroup("Question bank", hits.bank, "bank") + searchGroup("Scenario questions", hits.scenario, "scenario");
+}
+
+function searchGroup(title, list, pool) {
+  if (!list.length) return "";
+  var html = '<div class="card"><div class="search-head"><h2>' + title + ' <span class="muted">(' + list.length + ")</span></h2>" +
+    '<button class="btn primary small" data-action="practice-search" data-pool="' + pool + '">Practice ' +
+    (list.length === 1 ? "this one" : "these " + list.length) + "</button></div><ol class=\"search-list\">";
+  list.slice(0, SEARCH_SHOWN).forEach(function (q) {
+    var text = String(q.question);
+    if (text.length > 220) text = text.slice(0, 220) + "…";
+    html += '<li><div class="q-meta">' + questionMeta(q) + "</div>" + esc(text) + "</li>";
+  });
+  html += "</ol>";
+  if (list.length > SEARCH_SHOWN) html += '<p class="muted">… and ' + (list.length - SEARCH_SHOWN) + " more. Add a word to narrow it down.</p>";
+  return html + "</div>";
+}
+
+/* Untimed practice on the matches, with feedback after each answer. */
+function startSearchPractice(pool) {
+  var hits = searchHits()[pool] || [];
+  if (!hits.length) return;
+  var title = "Search: “" + searchQuery.trim() + "”";
+  if (pool === "scenario") return startScenarioPractice(null, hits.map(function (q) { return q.id; }), title);
+  if (!okToReplaceSaved()) return;
+  session = newSession("practice", shuffle(hits), false);
+  session.practiceTitle = title;
+  persistSession();
+  renderQuestion();
+}
+
 function customPool() {
   return selectCustomQuestions(BANK, customState).length;
 }
@@ -271,7 +358,7 @@ function renderCustomBuilder() {
     '<label class="check-inline"><input type="checkbox" data-action="cq-timed"' + (customState.timed ? " checked" : "") + "> Timed (2 min per question)</label>" +
     '<button class="btn primary" data-action="start-custom"' + (pool ? "" : " disabled") + ">Start quiz</button>" +
     "</div></div>";
-  app.innerHTML = html;
+  paint(html);
 }
 
 function startCustom() {
@@ -349,6 +436,8 @@ function loadSavedSession() {
   if (!saved.tally) saved.tally = { correct: 0, wrong: 0 };
   if (!saved.strikes) saved.strikes = {};
   if (!saved.comments) saved.comments = {};
+  if (!saved.timeSpent) saved.timeSpent = {};
+  saved.clock = null; // time away from the session is not counted
 
   session = saved;
   return true;
@@ -389,7 +478,28 @@ function startTimer() {
       el.textContent = fmtTime(left);
       el.classList.toggle("urgent", left < 10 * 60 * 1000);
     }
+    var paceEl = document.getElementById("pace");
+    if (paceEl) {
+      var text = paceText();
+      if (paceEl.textContent !== text) paceEl.textContent = text;
+    }
   }, 1000);
+}
+
+/* "⏱ 4 behind pace" while the user is 3+ questions behind an even pace in
+ * a timed session, otherwise empty. Shown beside the timer. */
+function paceText() {
+  if (!session || !session.deadline) return "";
+  var p = paceStatus(session.questions.length, answeredCount(session), session.startedAt, session.deadline, Date.now());
+  return p ? "⏱ " + p.behind + " behind pace" : "";
+}
+
+/* The timer plus the pace hint, for every timed screen's top bar. */
+function timerHtml() {
+  if (!session.deadline) return "";
+  var budget = fmtTime((session.deadline - session.startedAt) / session.questions.length);
+  return '<span id="timer" class="timer" role="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" +
+    '<span id="pace" class="pace" role="status" title="Aim for about ' + budget + ' per question">' + paceText() + "</span>";
 }
 
 function fmtTime(ms) {
@@ -409,6 +519,7 @@ function sessionTitle() {
     case "retry": return "Retry Failed Questions";
     case "weak": return "Weak Questions Drill";
     case "practice":
+      if (session.practiceTitle) return session.practiceTitle;
       if (session.reviewDrill) return "Due for review";
       if (session.savedDrill) return "Saved questions";
       if (session.examName) return "Practice — " + session.examName;

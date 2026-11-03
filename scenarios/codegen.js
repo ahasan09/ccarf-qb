@@ -1289,5 +1289,110 @@ window.SCENARIO_BANK.push(
       "Re-exploring each time repeats expensive work and discards findings between sessions."
     ],
     explanation: "Summaries are lossy, so durable findings from long explorations should be written to a file. Claude can re-read that file after compaction or in later sessions.",
+  },
+  {
+    id: "sc-codegen-061",
+    scenario: "codegen",
+    domain: 5,
+    subdomain: "5.1 Manage conversation context to preserve critical information across long interactions",
+    question: "You are two hours into a Claude Code debugging session on a flaky payment test. The context is nearly full, mostly with long test logs, but you have established three specific facts: the race occurs only when the retry worker starts before the ledger lock, the fix must not change the public charge() signature, and two hypotheses have already been ruled out. You want to keep working in this session. What should you do?",
+    options: [
+      "Run /compact with instructions to keep the root cause, the charge() constraint and the ruled-out hypotheses.",
+      "Run /clear and restate the three findings from memory in your first message once the fresh conversation begins.",
+      "Keep going without compacting and let the session continue until Claude Code reaches the context limit on its own.",
+      "Run /compact with no instructions, since the automatic summary always keeps every specific detail from the session."
+    ],
+    answer: 0,
+    optionNotes: [
+      "/compact summarizes the conversation to free context, and focus instructions tell it what must survive. The bulky logs go while the critical findings stay.",
+      "/clear discards the whole conversation. Restating findings from memory risks losing details you did not think to repeat.",
+      "Responses degrade as the context fills, and when auto-compaction eventually triggers you have no say in what it keeps.",
+      "Summaries are lossy. Without guidance, specific constraints and ruled-out paths can be condensed into vague statements."
+    ],
+    explanation: "Use /compact with focus instructions to free context while telling the summary what to preserve. For findings that must survive repeated compaction or later sessions, also record them in a file or in CLAUDE.md.",
+  },
+  {
+    id: "sc-codegen-062",
+    scenario: "codegen",
+    domain: 3,
+    subdomain: "3.3 Apply path-specific rules for conditional convention loading",
+    question: "Your root CLAUDE.md has grown to 900 lines, with long sections on React component style, Django model conventions, Terraform module layout and SQL migration rules. Every session loads all of it, so a developer fixing a Python bug still has the Terraform and React guidance in context, and the team notices Claude applying conventions from the wrong area. You want each set of conventions loaded only when relevant. What should you do?",
+    options: [
+      "Keep the single file but add a heading before each section that names the folders where the conventions in that section apply.",
+      "Move each section into its own slash command so that developers can load the relevant conventions by hand when they start work.",
+      "Move each section into a .claude/rules/ file with paths frontmatter matching that area, keeping shared rules in CLAUDE.md.",
+      "Split the content into separate files and import each of them from the root CLAUDE.md with @ references to keep it short."
+    ],
+    answer: 2,
+    optionNotes: [
+      "Headings are still part of a file loaded in full every session, so all conventions remain in context and can still be misapplied.",
+      "Manual loading depends on developers remembering to do it, and conventions are skipped whenever someone forgets.",
+      "Rules with paths frontmatter load only when Claude works with matching files, so each area's conventions appear only when relevant, while project-wide guidance stays in CLAUDE.md.",
+      "Imported files load together with the CLAUDE.md that imports them, so this reorganizes the text but still loads everything every session."
+    ],
+    explanation: "Use path-scoped rules in .claude/rules/ to load area-specific conventions only when Claude works on matching files. Imports and headings organize content but do not make loading conditional.",
+  },
+  {
+    id: "sc-codegen-063",
+    scenario: "codegen",
+    domain: 3,
+    subdomain: "3.3 Apply path-specific rules for conditional convention loading",
+    question: "Your .claude/rules/ directory has grown to 30 files with names like fe-forms.md, be-auth.md and infra-dns.md. A teammate proposes moving them into frontend/, backend/ and infra/ subfolders to make them easier to maintain, but another teammate worries that Claude Code only reads rule files placed directly in .claude/rules/ and would silently stop applying the moved ones. What is correct?",
+    options: [
+      "The concern is valid, so each subfolder must be listed in settings.json for Claude Code to discover the rule files inside it.",
+      "The concern is valid, so the rule files must stay flat, and naming prefixes such as fe- and be- are the only way to group them.",
+      "Subfolders work only if each one also contains its own CLAUDE.md that imports the rule files stored inside that subfolder.",
+      "Rule files are discovered recursively, so subfolders are fine, and each file's paths frontmatter still controls when it loads."
+    ],
+    answer: 3,
+    optionNotes: [
+      "No settings entry is needed; Claude Code discovers rule files in subdirectories on its own.",
+      "Flat naming is not required, because every .md file under .claude/rules/ is found recursively.",
+      "A CLAUDE.md is not part of rule discovery, so adding one to each subfolder is unnecessary.",
+      "All .md files under .claude/rules/ are discovered recursively, so subfolders are a supported way to organize them. Moving a file does not change its paths frontmatter, which still decides when it applies."
+    ],
+    explanation: "Claude Code discovers every .md file under .claude/rules/ recursively, so rules can be grouped in subdirectories. Each rule's paths frontmatter, not its folder, determines when it loads.",
+  },
+  {
+    id: "sc-codegen-064",
+    scenario: "codegen",
+    domain: 3,
+    subdomain: "3.3 Apply path-specific rules for conditional convention loading",
+    question: "Your API conventions apply to TypeScript handlers in src/api/ and also to serverless functions in functions/, which use both .ts and .js files. Right now the team keeps two copies of the same rule file with different paths frontmatter, and the copies have drifted apart after several edits. You want one source of truth that still loads only for those files. What should you do?",
+    options: [
+      "Keep both copies but add a CI check that fails whenever the contents of the two rule files are no longer identical to each other.",
+      "Use one rule file whose paths list has src/api/**/*.ts and functions/**/*.{ts,js}, and delete the duplicate.",
+      "Use one rule file without any paths frontmatter, so that it loads in every session and always covers both sets of files.",
+      "Move the conventions into the root CLAUDE.md and tell Claude to apply them only when it edits files in those two folders."
+    ],
+    answer: 1,
+    optionNotes: [
+      "A sync check guards against drift but keeps the duplication that caused it; one file with several patterns is simpler.",
+      "A rule's paths frontmatter accepts multiple patterns and brace expansion, so one file can cover both locations and both extensions while still loading only for matching files.",
+      "Without paths the rule loads unconditionally, putting API conventions in context for unrelated work.",
+      "Root CLAUDE.md loads in every session, and an instruction to apply conventions selectively is less reliable than path-based loading."
+    ],
+    explanation: "A single rule can list several glob patterns, including brace expansion such as *.{ts,js}. That keeps one source of truth while loading stays conditional.",
+  },
+  {
+    id: "sc-codegen-065",
+    scenario: "codegen",
+    domain: 3,
+    subdomain: "3.3 Apply path-specific rules for conditional convention loading",
+    question: "Your .claude/rules/payments.md has paths set to src/payments/**. Early in a long session Claude edited payment files and followed the rule. After you ran /compact, you asked Claude to outline the next change to the payment flow before it opened any files, and the outline ignored the rule's conventions. Once Claude read a payment file again, it followed them. What explains this behavior?",
+    options: [
+      "Path-scoped rules are not re-injected after compaction; they load again when Claude next reads or edits a matching file.",
+      "Compaction deletes rule files from the session permanently, so the rule had to be recreated before Claude could follow it again.",
+      "The paths glob is invalid, since src/payments/** matches only folders and never matches the files that are inside them.",
+      "Path-scoped rules only ever apply during edits, so Claude cannot use them for any planning or explanation work at all."
+    ],
+    answer: 0,
+    optionNotes: [
+      "The project-root CLAUDE.md is re-read after compaction, but path-scoped rules load on demand when Claude next works with a matching file. Having Claude read a relevant file before planning brings the rule back.",
+      "Nothing is deleted from disk; the rule loaded again as soon as a matching file was read, which shows it was intact.",
+      "The rule worked before compaction and again afterwards on matching files, so the glob does match the files.",
+      "Rules apply whenever they are loaded, including for planning. The issue was only that it had not loaded again yet."
+    ],
+    explanation: "Path-specific rules load when Claude reads or edits matching files. After compaction they return on demand rather than automatically, so for planning work have Claude open a relevant file first, or put always-needed guidance in CLAUDE.md.",
   }
 );

@@ -53,7 +53,7 @@ function renderHome() {
   html += homeCollapsed(progress);
   html += '<footer class="site-footer">Practice material for personal study. ' +
     "Not affiliated with Anthropic or Pearson VUE.</footer>";
-  app.innerHTML = html;
+  paint(html);
 }
 
 function examDateLine(progress, now) {
@@ -259,6 +259,7 @@ function homePractice(progress, now, lookup) {
       progress.weak.length + "</span></button>";
   }
   html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
+    '<button class="h-row" data-action="search"><span>🔍 Search questions</span><span class="muted">by keyword →</span></button>' +
     '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
   return html + "</section>";
 }
@@ -467,6 +468,11 @@ function accountCard() {
       }
     }
   }
+  html += '<h3 class="h-h3">Backup file</h3><p class="muted auth-note">Save your progress to a file, or add one back — ' +
+    "useful without an account, or before clearing browser data. Importing only adds: nothing here is removed.</p>" +
+    '<div class="row"><button class="btn small" data-action="export-progress">Download progress</button>' +
+    '<button class="btn ghost small" data-action="import-progress">Import from file…</button>' +
+    '<input type="file" id="import-file" accept=".json,application/json" hidden></div>';
   var backup = LS.get(BACKUP_KEY, null);
   var extra = progressSize(backup) - progressSize(Store.snapshot());
   if (extra > 0) {

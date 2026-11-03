@@ -50,6 +50,8 @@ function renderResults(finished) {
     html += "</div>";
   }
 
+  html += paceCard(finished);
+
   var gradedDomains = isScenario ? [] : Object.keys(grade.perDomain).filter(function (d) {
     return !!DOMAIN_NAMES[d];
   });
@@ -83,8 +85,26 @@ function renderResults(finished) {
   html += '<button class="btn" data-action="show-review">Review answers</button>' +
     '<button class="btn ghost" data-action="home">Home</button></div>';
 
-  app.innerHTML = html;
+  paint(html);
   lastFinished = finished;
+}
+
+/* Timed sessions: average time per question against the even-pace budget,
+ * and the objectives that took longest. */
+function paceCard(finished) {
+  if (!finished.timed) return "";
+  var qs = finished.questions.map(function (s) { return byId[s.id]; }).filter(Boolean);
+  var pace = paceSummary(qs, finished.timeSpent);
+  if (!pace) return "";
+  var budgetMs = EXAM_DURATION_MS / 60; // the real exam: 120 minutes for 60 questions
+  var html = '<div class="card pace-card"><h2>Time</h2><p>Average <strong>' + fmtTime(pace.avgMs) +
+    "</strong> per question" + '<span class="muted"> · the real exam allows about ' + fmtTime(budgetMs) + "</span></p>";
+  if (pace.slowest.length) {
+    html += '<p class="muted">Slowest objectives:</p><ul class="pace-list">' + pace.slowest.map(function (g) {
+      return "<li>" + esc(g.key) + ' <span class="muted">· ' + fmtTime(g.avgMs) + " avg over " + g.n + "</span></li>";
+    }).join("") + "</ul>";
+  }
+  return html + "</div>";
 }
 
 function sessionResultLabel(mode) {
@@ -176,7 +196,7 @@ function reviewCard(s, i, finished) {
   html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div>";
   var comment = finished.comments && finished.comments[q.id];
   if (comment) html += '<div class="scn-comment"><strong>Your comment:</strong> ' + esc(comment) + "</div>";
-  return html + "</div>";
+  return html + reportLink(q) + "</div>";
 }
 
 function renderScenarioReviewAfter() {
@@ -211,7 +231,7 @@ function renderScenarioReviewAfter() {
       '<section class="scn-review-list">' + g.cards + "</section></div>";
   });
   if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';
-  app.innerHTML = html + "</div>";
+  paint(html + "</div>");
   window.scrollTo(0, 0);
 }
 
@@ -264,12 +284,12 @@ function renderReview() {
         (note ? '<div class="opt-note">' + esc(note) + "</div>" : "") +
         "</div>";
     });
-    html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div></div>";
+    html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div>" + reportLink(q) + "</div>";
   });
 
   if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';
 
-  app.innerHTML = html;
+  paint(html);
   var sel = document.getElementById("review-domain");
   if (sel) sel.addEventListener("change", function () {
     reviewDomain = Number(sel.value);

@@ -8,6 +8,7 @@
 function renderScenarioQuestion() {
   view = "quiz";
   var sq = session.questions[session.current];
+  clockOn(sq.id);
   var q = byId[sq.id];
   var total = session.questions.length;
   var isPractice = session.mode === "scenario-practice";
@@ -28,7 +29,7 @@ function renderScenarioQuestion() {
   html += '<div class="scn-top">' +
     '<div><strong>' + esc(sessionTitle()) + '</strong><span class="muted"> · ' + where + "</span></div>" +
     '<div class="row">' +
-    (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
+    timerHtml() +
     (isPractice
       ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
       : '<button class="btn ghost small" data-action="comment">' + (comment ? "💬 Edit comment" : "💬 Comment") + "</button>") +
@@ -48,17 +49,19 @@ function renderScenarioQuestion() {
     var cls = "option";
     var picked = chosen.indexOf(optIdx) !== -1;
     if (picked) cls += " selected";
-    if (struck.indexOf(optIdx) !== -1) cls += " struck";
+    var isStruck = struck.indexOf(optIdx) !== -1;
+    if (isStruck) cls += " struck";
     if (showFeedback) {
       if (correct.indexOf(optIdx) !== -1) cls += " correct";
       else if (picked) cls += " wrong";
     }
     html += '<div class="opt-wrap"><div class="opt-row"><button class="' + cls + '" role="radio" aria-checked="' + picked +
       '" data-action="select" data-opt="' + optIdx + '"' + (showFeedback ? " disabled" : "") + ">" +
-      '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>" +
+      '<span class="opt-letter"></span>' + esc(q.options[optIdx]) +
+      (isStruck ? '<span class="sr-only"> (struck through)</span>' : "") + "</button>" +
       /* Touch screens have no right-click, so they get a small button. */
-      '<button class="strike-btn" data-action="strike" data-opt="' + optIdx + '" aria-label="' +
-      (struck.indexOf(optIdx) !== -1 ? "Remove strike-through" : "Strike through") + '">⊘</button></div>';
+      '<button class="strike-btn" data-action="strike" data-opt="' + optIdx + '" aria-pressed="' + isStruck +
+      '" aria-label="Strike through option ' + (sq.order.indexOf(optIdx) + 1) + '">⊘</button></div>';
     if (showFeedback && q.optionNotes) {
       html += '<div class="opt-note ' + (correct.indexOf(optIdx) !== -1 ? "ok" : "bad") + '">' +
         esc(q.optionNotes[optIdx]) + "</div>";
@@ -69,10 +72,10 @@ function renderScenarioQuestion() {
   if (showFeedback) {
     var right = sameChoice(session.answers[q.id], correct);
     html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status"><strong>' +
-      (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
+      (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>" + reportLink(q);
   }
   if (comment) html += '<p class="scn-comment muted">💬 ' + esc(comment) + "</p>";
-  html += '<p class="muted scn-hint">Right-click an option to strike it through.</p>';
+  html += '<p class="muted scn-hint">Right-click an option to strike it through; right-click again to undo.</p>';
   html += "</section></div>";
 
   html += '<div class="scn-bottom">' +
@@ -92,12 +95,9 @@ function renderScenarioQuestion() {
       '<button class="btn primary" data-action="next">' +
       (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
   }
-  html += "</div>";
-  /* The menu is position:fixed, so it lives outside .scn-screen: a
-   * transformed ancestor would offset it from the cursor. */
-  html += '</div><div id="ctx-menu" class="ctx-menu" hidden></div>';
+  html += "</div></div>";
 
-  app.innerHTML = html;
+  paint(html);
   window.scrollTo(0, 0);
 }
 
@@ -107,13 +107,14 @@ var reviewFilter = "all";
  * flagged and unanswered ones are easy to revisit. The clock keeps going. */
 function renderScenarioReview() {
   view = "scenario-review";
+  clockOn(null);
   var total = session.questions.length;
   var unanswered = session.questions.filter(function (s) { return session.answers[s.id] === null; }).length;
   var flagged = session.questions.filter(function (s) { return session.flagged[s.id]; }).length;
   var html = '<div class="scn-screen"><div class="scn-top"><div><strong>Review your answers</strong>' +
     '<span class="muted"> · ' + (total - unanswered) + " of " + total + " answered</span></div>" +
     '<div class="row">' +
-    (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
+    timerHtml() +
     '<button class="btn exit small" data-action="quit">Exit ↩</button></div></div>';
   html += '<div class="scn-review">';
   html += '<div class="row review-filters">' +
@@ -142,7 +143,7 @@ function renderScenarioReview() {
     '">← Back to question ' + (session.current + 1) + "</button>" +
     '<button class="btn primary" data-action="submit">Submit exam</button></div>';
   html += "</div></div>";
-  app.innerHTML = html;
+  paint(html);
   window.scrollTo(0, 0);
 }
 
@@ -150,6 +151,7 @@ function renderQuestion() {
   if (isScenarioMode(session.mode)) return renderScenarioQuestion();
   view = "quiz";
   var sq = session.questions[session.current];
+  clockOn(sq.id);
   var q = byId[sq.id];
   var total = session.questions.length;
   var answered = session.answers[q.id];
@@ -165,7 +167,7 @@ function renderQuestion() {
     "<div><strong>" + sessionTitle() + "</strong>" +
     '<span class="muted"> · Question ' + (session.current + 1) + " of " + total + "</span></div>" +
     '<div class="row">' +
-    (session.deadline ? '<span id="timer" class="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" : "") +
+    timerHtml() +
     (isPractice
       ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
       : '<button class="btn ghost small" data-action="toggle-flag">' + (session.flagged[q.id] ? "🚩 Flagged" : "Flag for review") + "</button>") +
@@ -237,7 +239,7 @@ function renderQuestion() {
         }
       });
     }
-    html += "</div>";
+    html += "</div>" + reportLink(q);
   }
   html += "</div>";
 
@@ -264,7 +266,7 @@ function renderQuestion() {
   }
   html += "</div></div></div>";
 
-  app.innerHTML = html;
+  paint(html);
   window.scrollTo(0, 0);
   var cur = app.querySelector(".nav-cell.current");
   if (cur && cur.scrollIntoView) cur.scrollIntoView({ inline: "center", block: "nearest" });
@@ -307,6 +309,7 @@ function selectOption(optIdx) {
 function submitSession() {
   stopTimer();
   if (!session) return;
+  clockOn(null);
   var questions = session.questions
     .map(function (s) { return byId[s.id]; })
     .filter(Boolean);
@@ -317,6 +320,8 @@ function submitSession() {
     questions: session.questions,
     answers: session.answers,
     grade: grade,
+    timeSpent: session.timeSpent || {},
+    timed: !!session.deadline,
   };
 
   var separate = session.separate === true || session.mode === "imported" || isScenarioMode(session.mode);
@@ -334,6 +339,8 @@ function submitSession() {
        * reviewed and broken down by subdomain later. */
       items: session.questions.map(function (s) {
         var item = { id: s.id, order: s.order, given: session.answers[s.id] };
+        var ms = session.timeSpent && session.timeSpent[s.id];
+        if (ms) item.secs = Math.round(ms / 1000);
         if (isScenarioExam && session.comments && session.comments[s.id]) item.comment = session.comments[s.id];
         return item;
       }),
