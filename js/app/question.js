@@ -84,11 +84,11 @@ function renderScenarioQuestion() {
       ? (session.current + 1 < total
         ? '<button class="btn primary" data-action="next">Next →</button>'
         : '<button class="btn primary" data-action="submit">Finish</button>')
-      : '<span class="muted">Pick an answer to see the notes</span>';
+      : '<span class="scn-mid"><span class="muted">Pick an answer to see the notes</span>' + kbdHint(sq.order.length, false, true) + "</span>";
   } else {
     var flaggedCount = Object.keys(session.flagged).filter(function (k) { return session.flagged[k]; }).length;
-    html += '<span class="muted">Answered ' + answeredCount(session) + " of " + total +
-      " · Flagged " + flaggedCount + "</span>" +
+    html += '<span class="scn-mid"><span class="muted">Answered ' + answeredCount(session) + " of " + total +
+      " · Flagged " + flaggedCount + "</span>" + kbdHint(sq.order.length, true, true) + "</span>" +
       '<div class="row"><button class="btn" data-action="review-all">Review all</button>' +
       '<button class="btn primary" data-action="next">' +
       (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
@@ -97,6 +97,16 @@ function renderScenarioQuestion() {
 
   paint(html);
   window.scrollTo(0, 0);
+}
+
+/* The keyboard shortcuts that work on this screen, for the bottom bar
+ * (hidden on touch screens and narrow windows). Keep in step with the
+ * keydown handler in events.js. */
+function kbdHint(optionCount, canGoBack, canFlag) {
+  var last = Math.min(optionCount, 5);
+  return '<span class="muted kbd-hint"><kbd>1</kbd>–<kbd>' + last + "</kbd> answer · " +
+    (canGoBack ? "<kbd>←</kbd>/<kbd>→</kbd> navigate" : "<kbd>→</kbd> next") +
+    (canFlag ? " · <kbd>F</kbd> flag" : "") + "</span>";
 }
 
 /* Touch screens have no right-click, so each option gets a small ⊘ button
@@ -255,8 +265,7 @@ function renderQuestion() {
   }
   html += "</div>";
 
-  var hint = '<span class="muted kbd-hint"><kbd>1</kbd>–<kbd>4</kbd> answer · <kbd>←</kbd>/<kbd>→</kbd> navigate' +
-    (isPractice ? "" : " · <kbd>F</kbd> flag") + "</span>";
+  var hint = kbdHint(sq.order.length, !isPractice, !isPractice);
   html += '<div class="quiz-footer">' +
     (isPractice ? "" : '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>") +
     hint +

@@ -9,8 +9,10 @@ function inQuestionScreen() {
   return view === "quiz" && !!(session && session.questions && session.questions[session.current]);
 }
 
+/* Practice runs only go forward: going back would let an answered
+ * question be answered (and counted) again. */
 function goPrev() {
-  if (session.mode === "practice" || session.current === 0) return;
+  if (session.mode === "practice" || session.mode === "scenario-practice" || session.current === 0) return;
   session.current--;
   session.feedback = null;
   persistSession();
@@ -48,10 +50,12 @@ document.addEventListener("keydown", function (ev) {
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
   var key = ev.key.toLowerCase();
   var optPos = -1;
-  if (key.length === 1 && key >= "1" && key <= "4") optPos = Number(key) - 1;
-  else if (key.length === 1 && key >= "a" && key <= "d") optPos = key.charCodeAt(0) - 97;
+  /* 1–5 or A–E pick an option (some questions have five). F stays "flag". */
+  if (key.length === 1 && key >= "1" && key <= "5") optPos = Number(key) - 1;
+  else if (key.length === 1 && key >= "a" && key <= "e") optPos = key.charCodeAt(0) - 97;
   if (optPos >= 0) {
     var sq = session.questions[session.current];
+    if (optPos >= sq.order.length) return;
     if ((session.mode === "practice" || session.mode === "scenario-practice") && session.feedback === sq.id) return;
     return selectOption(sq.order[optPos]);
   }

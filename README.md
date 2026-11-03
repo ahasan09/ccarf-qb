@@ -97,8 +97,12 @@ Modes:
   to cross it out; right-click again to undo. Touch: tap ⊘. Not in plain
   practice, where the answer shows on the first click.
 
-Keyboard shortcuts during a session: `1`–`4` (or `A`–`D`) answer, `←`/`→`
-navigate, `F` flag, `Enter` next. After each click, keyboard focus stays on
+Keyboard shortcuts during a session: `1`–`5` (or `A`–`E`) answer, `←`/`→`
+navigate, `F` flag, `Enter` next. The bottom bar of every question screen
+lists the ones that work there (practice runs only go forward, and plain
+practice has no flag); the list comes from `kbdHint()` in
+`js/app/question.js` — keep it in step with the keydown handler in
+`js/app/events.js`. After each click, keyboard focus stays on
 the control you used.
 
 Theme: use the toggle on the home screen (Auto / Light / Dark).
