@@ -654,3 +654,28 @@ function paceStatus(total, answered, startedAt, deadline, now) {
   var behind = expected - answered;
   return behind >= 3 ? { behind: behind, budgetMs: Math.round(budget) } : null;
 }
+
+/* ------------------------------------------------ report a question */
+/* A link that opens a new GitHub issue about question `q`, pre-filled with
+ * what a maintainer needs to find and check it. `base` is the repo's
+ * ".../issues/new" URL; returns "" without one. */
+function reportIssueUrl(q, base) {
+  if (!base || !q || !q.id) return "";
+  var correct = correctIndices(q).map(function (i) { return q.options[i]; });
+  var text = String(q.question || "");
+  if (text.length > 400) text = text.slice(0, 400) + "…";
+  var body = [
+    "**Question:** `" + q.id + "`" + (q.subdomain ? " · " + q.subdomain : ""),
+    "",
+    "> " + text.replace(/\n+/g, " "),
+    "",
+    "**Marked correct:** " + correct.join(" / "),
+    "",
+    "**What is wrong?** (wrong answer, unclear wording, outdated fact, typo…)",
+    "",
+    "",
+    "<!-- To find it in the code: grep -rn \"" + q.id + "\" questions scenarios exams -->",
+  ].join("\n");
+  return base + "?title=" + encodeURIComponent("Question " + q.id + ": ") +
+    "&labels=bug&body=" + encodeURIComponent(body);
+}

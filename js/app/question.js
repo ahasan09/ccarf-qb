@@ -72,7 +72,7 @@ function renderScenarioQuestion() {
   if (showFeedback) {
     var right = sameChoice(session.answers[q.id], correct);
     html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status"><strong>' +
-      (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>";
+      (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>" + reportLink(q);
   }
   if (comment) html += '<p class="scn-comment muted">💬 ' + esc(comment) + "</p>";
   html += '<p class="muted scn-hint">Right-click an option to strike it through; right-click again to undo.</p>';
@@ -239,7 +239,7 @@ function renderQuestion() {
         }
       });
     }
-    html += "</div>";
+    html += "</div>" + reportLink(q);
   }
   html += "</div>";
 

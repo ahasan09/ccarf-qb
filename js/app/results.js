@@ -196,7 +196,7 @@ function reviewCard(s, i, finished) {
   html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div>";
   var comment = finished.comments && finished.comments[q.id];
   if (comment) html += '<div class="scn-comment"><strong>Your comment:</strong> ' + esc(comment) + "</div>";
-  return html + "</div>";
+  return html + reportLink(q) + "</div>";
 }
 
 function renderScenarioReviewAfter() {
@@ -284,7 +284,7 @@ function renderReview() {
         (note ? '<div class="opt-note">' + esc(note) + "</div>" : "") +
         "</div>";
     });
-    html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div></div>";
+    html += "</div>" + '<div class="feedback ok">' + esc(q.explanation) + "</div>" + reportLink(q) + "</div>";
   });
 
   if (!shown) html += '<div class="card"><p class="muted">Nothing matches this filter.</p></div>';

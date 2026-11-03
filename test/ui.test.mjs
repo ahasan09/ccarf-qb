@@ -1626,3 +1626,25 @@ test("closing the tab mid-exam asks first; at home it does not", () => {
   unload();
   assert.equal(asked, 1, "timed exam");
 });
+
+/* ------------------------------------------------ report a problem */
+test("the report link shows after answering in practice and in review, not mid-exam", () => {
+  const app = launch();
+  app.click("practice", { domain: "1" });
+  assert.ok(!app.html().includes("report-link"), "not before answering");
+  app.click("select", { opt: "0" });
+  assert.match(app.html(), /class="h-link report-link" href="https:\/\/github\.com\/ahasan09\/ccarf-qb\/issues\/new\?title=Question%20d1-q/);
+  app.click("start-exam");
+  app.click("select", { opt: "0" });
+  assert.ok(!app.html().includes("report-link"), "never during an exam");
+  app.click("submit");
+  app.click("show-review");
+  assert.equal((app.html().match(/report-link/g) || []).length, 60);
+});
+
+test("scenario practice has the report link too", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "ci" });
+  app.click("select", { opt: "1" });
+  assert.ok(app.html().includes("report-link"));
+});

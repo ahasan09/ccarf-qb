@@ -22,6 +22,16 @@ function resourceById(id) {
   return null;
 }
 
+/* Where "Report a problem" sends people: a new GitHub issue on this repo.
+ * Set to "" to hide the link (e.g. in a fork without issues). */
+var REPORT_ISSUE_URL = "https://github.com/ahasan09/ccarf-qb/issues/new";
+
+function reportLink(q) {
+  var url = reportIssueUrl(q, REPORT_ISSUE_URL);
+  return url ? '<a class="h-link report-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
+    "Report a problem with this question ↗</a>" : "";
+}
+
 /* Mock exams draw from the exam-guide-mapped pool; the unmapped ones are
  * kept aside and only used by the supplementary exam. */
 var MAPPED = filterByTagging(BANK, true);
