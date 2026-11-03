@@ -1468,3 +1468,18 @@ test("question shortcuts are ignored while an action is in progress", () => {
   assert.equal(app.store().snapshot().attempted.length, 0, "no answer slipped in while busy");
   app.flushFrames();
 });
+
+/* ---- full-height question screens ----------------------------------------- */
+test("both question layouts render inside a full-height screen with the action bar last", () => {
+  const app = launch();
+  app.click("practice", { domain: "3", sub: "3.1" });
+  let html = app.html();
+  assert.ok(html.startsWith('<div class="q-screen quiz-screen">'), "standard layout is wrapped");
+  assert.ok(html.trimEnd().endsWith("</div></div></div>"), "the footer closes the screen");
+  assert.ok(html.lastIndexOf('class="quiz-footer"') > html.lastIndexOf('class="card question-card"'), "footer after the card");
+
+  app.click("quit");
+  app.click("practice-scenario", { scenario: "support" });
+  html = app.html();
+  assert.ok(html.startsWith('<div class="q-screen scn-screen">'), "scenario layout shares the screen class");
+});

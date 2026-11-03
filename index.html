@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CCAR-F Question Bank</title>
 <meta name="description" content="Exam prep for the Claude Certified Architect (Foundations) certification — mock exams, drills, and mastery tracking.">
 <link rel="manifest" href="manifest.webmanifest">
@@ -287,7 +287,21 @@
   .feedback.ok { background: var(--pass-soft); }
   .feedback.bad { background: var(--fail-soft); }
 
-  .quiz-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; max-width: 760px; }
+  /* Question screens fill the window: the question grows into the spare
+   * height and the action bar sits on the bottom edge, staying in view
+   * while a long question or explanation scrolls underneath it. */
+  #app:has(.q-screen) { padding-top: 0; padding-bottom: 0; }
+  html:has(.q-screen) { scroll-padding: 80px 0 96px; }
+  .q-screen { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+  .quiz-screen .question-card { flex: 1 0 auto; width: 100%; margin-bottom: 14px; }
+  .quiz-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;
+    position: sticky; bottom: 0; z-index: 10; margin: auto -18px 0;
+    /* Right edge lines up with the question card (max 760px) on wide screens. */
+    padding: 12px calc(18px + max(0px, 100% - 760px)) calc(12px + env(safe-area-inset-bottom, 0px)) 18px;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--line); }
+  .quiz-footer > .row { margin-left: auto; }
   .kbd-hint { flex: 1; text-align: center; font-size: 0.74rem; white-space: nowrap; }
   @media (max-width: 680px), (pointer: coarse) { .kbd-hint { display: none; } }
   kbd {
@@ -451,7 +465,10 @@
     position: relative; left: 50%; transform: translateX(-50%);
     width: min(1240px, calc(100vw - 32px));
     display: flex; flex-direction: column; gap: 12px;
+    padding-top: 12px;
   }
+  .scn-body { flex: 1 0 auto; }
+  .scn-bottom { margin-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
   .scn-top, .scn-bottom {
     display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 10px 14px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -610,6 +627,7 @@
     .question-card { padding: 18px; }
     .score-card { gap: 18px; padding: 20px; }
     .quiz-header { margin: 0 -12px 12px; padding: 10px 12px; }
+    .quiz-footer { margin: auto -12px 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
     .history { font-size: 0.82rem; }
   }
   @media (prefers-reduced-motion: reduce) {
