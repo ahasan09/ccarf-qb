@@ -106,7 +106,8 @@ function launch(opts = {}) {
     setTimeout: () => 1,
     clearTimeout: () => {},
     document: {
-      getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl : null),
+      getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl
+        : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
       createElement: () => ({}),
@@ -1524,4 +1525,21 @@ test("a collapsed scenario panel stays collapsed on the next question", () => {
   assert.ok(app.html().includes('<details id="scn-brief">'), "stays collapsed after answering");
   app.click("next");
   assert.ok(app.html().includes('<details id="scn-brief">'), "and on the next question");
+});
+
+/* ---- e-mail sign-in --------------------------------------------------------- */
+test("after sending, the sign-in card explains the code and the link", async () => {
+  const sent = [];
+  const sync = { enabled: true, user: () => null, sendCode: async (e) => { sent.push(e); } };
+  const app = launch({ sync, storage: RETURNING, inputs: { "auth-email": "me@example.com" } });
+  assert.ok(app.html().includes("Email me a sign-in code"), "the button says what arrives");
+  app.click("auth-send");
+  await new Promise((r) => setImmediate(r));
+  const html = app.html();
+  assert.deepEqual(sent, ["me@example.com"]);
+  assert.ok(html.includes("We sent a sign-in e-mail to <strong>me@example.com</strong>"), "names the address");
+  assert.ok(html.indexOf("auth-steps") < html.indexOf('id="auth-code"'), "guidance comes before the code box");
+  assert.ok(html.includes("only signs in the browser where you click it"), "says where the link works");
+  assert.ok(html.includes('placeholder="Code from the e-mail"'), "no fixed code length");
+  assert.ok(html.includes("Resend e-mail"));
 });

@@ -447,11 +447,17 @@ function accountCard() {
   } else {
     html += '<p class="muted auth-note">Sign in with your e-mail to back up progress and resume from any device.</p>' +
       '<div class="row"><input class="input" id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(pendingEmail || "") + '">' +
-      '<button class="btn primary" data-action="auth-send">' + (pendingEmail ? "Resend code" : "Send login code") + "</button></div>";
+      '<button class="btn primary" data-action="auth-send">' + (pendingEmail ? "Resend e-mail" : "Email me a sign-in code") + "</button></div>";
     if (pendingEmail) {
-      html += '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">' +
-        '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>' +
-        '<p class="muted auth-note">Check your inbox — enter the code here, or just click the link in the e-mail.</p>';
+      /* The e-mail carries both a code and a link. The code works on any
+       * device; the link signs in whichever browser opens it, which is often
+       * the phone's mail app rather than the device being studied on. */
+      html += '<div class="auth-steps"><p>We sent a sign-in e-mail to <strong>' + esc(pendingEmail) + "</strong>.</p>" +
+        '<p class="muted auth-note"><b>Enter the code</b> from it below to sign in here. ' +
+        "Or <b>click the link</b> in it instead — that only signs in the browser where you click it. " +
+        "Nothing there? Check spam, or resend.</p></div>" +
+        '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the e-mail">' +
+        '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>';
     }
   }
   var backup = LS.get(BACKUP_KEY, null);
