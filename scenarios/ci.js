@@ -1294,5 +1294,68 @@ window.SCENARIO_BANK.push(
       "An explicit scope rule removes the out-of-scope inline noise, and a defined exception with its own output section keeps the high-value findings without cluttering the diff."
     ],
     explanation: "Precision improves when the prompt states exactly what is in scope and how exceptions are handled. Explicit boundaries beat general appeals to judgment."
+  },
+  {
+    id: "sc-ci-061",
+    scenario: "ci",
+    domain: 3,
+    subdomain: "3.6 Integrate Claude Code into CI/CD pipelines",
+    question: "Your pipeline uses one claude -p session to generate unit tests for a PR and then, using --resume on that session, asks Claude to review the PR including the tests it just wrote. The review rarely flags problems in the generated tests, yet human reviewers later find tests that assert the buggy behavior they were meant to catch. You want a more effective review step. What should you change?",
+    options: [
+      "Run the review as a separate claude -p invocation without the generation session's context, so it judges the tests fresh.",
+      "Keep resuming the generation session, but add an instruction telling Claude to be especially critical of the tests it generated.",
+      "Have the generation session review its own tests twice in a row, and report only issues that it finds in both review passes.",
+      "Skip automated review of generated tests and rely on code coverage numbers to show whether the generated tests are useful."
+    ],
+    answer: 0,
+    optionNotes: [
+      "A fresh instance without the generation reasoning in context does not inherit the assumptions that produced the tests, so it is more likely to notice tests that encode the bug.",
+      "The session still carries the reasoning that led to the flawed tests, so it tends to agree with its own earlier decisions despite the instruction.",
+      "Repeating the review in the same context repeats the same blind spots; agreement between passes adds no independence.",
+      "Coverage measures which lines run, not whether assertions are correct, so tests that assert buggy behavior still score well."
+    ],
+    explanation: "The same session that generated code is less effective at reviewing it, because it retains its own reasoning. Use an independent Claude instance for the review step in the pipeline."
+  },
+  {
+    id: "sc-ci-062",
+    scenario: "ci",
+    domain: 3,
+    subdomain: "3.6 Integrate Claude Code into CI/CD pipelines",
+    question: "Your CI review job runs claude -p with --system-prompt set to a short security rubric. The reviews follow the rubric, but the team notices that the job has lost parts of Claude Code's default behavior; for example, it no longer starts with the repository's git status snapshot. You want to keep the default behavior and add the rubric on top of it. Which change achieves this?",
+    options: [
+      "Move the rubric into the user prompt passed to -p, and keep --system-prompt set to a one-line description of the review task.",
+      "Copy Claude Code's default system prompt into a file and pass that file together with the rubric through --system-prompt.",
+      "Pass the rubric with --append-system-prompt instead of replacing the default prompt with --system-prompt.",
+      "Add --bare to the command so that the run skips local configuration and falls back to Claude Code's default system prompt."
+    ],
+    answer: 2,
+    optionNotes: [
+      "As long as --system-prompt is set, the default prompt is still replaced, so the lost behavior does not come back.",
+      "A copied default prompt goes stale as Claude Code updates, and features tied to the default prompt may still not be restored.",
+      "--append-system-prompt adds instructions while keeping Claude Code's default system prompt, which is the documented way to customize a CI run without losing default behavior.",
+      "--bare skips auto-discovery of hooks, plugins, MCP servers and CLAUDE.md; it does not undo a replaced system prompt."
+    ],
+    explanation: "Use --append-system-prompt, or its file variant, to add CI-specific instructions while keeping Claude Code's defaults. --system-prompt replaces the entire default prompt."
+  },
+  {
+    id: "sc-ci-063",
+    scenario: "ci",
+    domain: 3,
+    subdomain: "3.6 Integrate Claude Code into CI/CD pipelines",
+    question: "Your review job runs claude -p with --output-format json and a --json-schema for findings, then pipes the response to jq '.structured_output.findings[]' to post comments. On most PRs this works, but occasionally the posting step crashes on a null value and the job fails with no useful explanation. Investigation shows those runs ended without producing valid structured output. How should the pipeline handle this?",
+    options: [
+      "Parse the free-text result field with regular expressions whenever structured_output is missing, and post what the parsing finds.",
+      "Remove --json-schema and ask for JSON in the prompt, since a prompt request produces valid JSON on every run without exception.",
+      "Treat the missing field as a successful review with no findings, so that the job passes and the pull request is not blocked.",
+      "Check that structured_output is present before posting, and if it is absent, log the result field and fail with a clear message."
+    ],
+    answer: 3,
+    optionNotes: [
+      "Regex parsing of free text is the brittle approach the schema replaced, and it can post fragments as if they were findings.",
+      "Prompt-only JSON is less reliable than schema-validated output, and it does not prevent runs that end without a usable answer.",
+      "Silently passing hides a review that never happened, so the PR can merge unreviewed while the pipeline reports success.",
+      "The JSON response omits structured_output when no valid output was produced, so the script must check for it. Logging the result text and failing explicitly makes the cause visible and stops unreviewed PRs passing silently."
+    ],
+    explanation: "With --output-format json and --json-schema, the validated data is in structured_output, which is absent when a run ends without valid output. CI scripts should check for it and fail clearly rather than crash or pass silently."
   }
 );

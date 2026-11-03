@@ -1279,5 +1279,26 @@ window.SCENARIO_BANK.push(
       "Reviewing everything is safe but wastes reviewer capacity on the many straightforward migrations that are reliably correct."
     ],
     explanation: "Self-reported confidence must be calibrated against labelled outcomes before it can drive automation. Combine calibrated thresholds with rules that send known ambiguous cases, such as reflection or dynamic dispatch, to human review."
+  },
+  {
+    id: "sc-devprod-061",
+    scenario: "devprod",
+    domain: 5,
+    subdomain: "5.6 Preserve information provenance and handle uncertainty in multi-source synthesis",
+    question: "An engineer asks the agent how many times the legacy payment client retries a failed charge. The README says three retries, a code comment in client.py says five, and the code reads the value from a RETRY_LIMIT setting whose default is four. The agent's current answer simply states \"three retries\" from the README, with no mention of the other sources. What should the agent's answer look like?",
+    options: [
+      "Report the README value, because documentation describes the intended behavior and is the most authoritative source for the system.",
+      "Report the code comment value, since a comment placed directly next to the code is more likely to be current than a README file.",
+      "Report the default of four from the code, cite each conflicting source by file, and note that the deployed setting needs checking.",
+      "Report the average of the three values as the likely retry count, and mention that the sources disagree somewhat on the exact number."
+    ],
+    answer: 2,
+    optionNotes: [
+      "Documentation in legacy systems often drifts from the code, and picking it silently hides the conflict from the engineer.",
+      "Comments drift too, and choosing one source silently still hides that the sources disagree.",
+      "The code's default is the strongest evidence of runtime behavior, citing each source exposes the conflict, and flagging the unverified deployed setting marks what remains uncertain.",
+      "An average is a number no source states, and it blurs the conflict instead of explaining it."
+    ],
+    explanation: "When sources conflict, keep the attribution of each value, say which is the strongest evidence, and flag what remains unverified. Do not silently pick one source or blend them."
   }
 );

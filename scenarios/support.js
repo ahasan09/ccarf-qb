@@ -1311,5 +1311,173 @@ window.SCENARIO_BANK.push(
     ],
     explanation: "Condensed notes lose where each statement came from unless provenance is kept explicitly. Claim-to-source mappings let reviewers tell verified backend facts from customer allegations and agent inferences.",
     source: "pt1-q035"
+  },
+  {
+    id: "sc-support-061",
+    scenario: "support",
+    domain: 5,
+    subdomain: "5.1 Manage conversation context to preserve critical information across long interactions",
+    question: "Each call to lookup_order returns about 40 fields per order, including warehouse codes, carrier scan events, tax breakdowns and internal audit flags. Customers with several orders often trigger five or six lookups in one conversation, and by the middle of longer chats the agent's context is dominated by these payloads. Late in those chats it starts confusing which delivery date belongs to which order. What change best addresses this?",
+    options: [
+      "Trim each lookup_order result to the fields the agent needs, such as status, amounts and dates, before it enters the context.",
+      "Switch to a model with a larger context window so that every complete order payload can stay in the conversation until it ends.",
+      "Tell the agent in the system prompt to ignore warehouse, carrier and audit fields whenever it reads an order lookup result.",
+      "Limit customers to one order lookup per conversation and ask them to open a new chat for each additional order they need help with."
+    ],
+    answer: 0,
+    optionNotes: [
+      "Verbose tool output accumulates and crowds out the details that matter. Keeping only the relevant fields, in the MCP tool itself or in a PostToolUse hook, keeps each order's key facts compact and easy to tell apart.",
+      "A larger window postpones the problem but leaves the context dominated by irrelevant fields, and attention over long, noisy inputs still degrades.",
+      "The fields are still loaded into context, so they still consume tokens and compete for attention. An instruction to ignore them does not remove them.",
+      "This harms first-contact resolution for customers with legitimate multi-order issues, and it treats the symptom rather than the verbose payload."
+    ],
+    explanation: "Tool results accumulate in the conversation and consume context in proportion to their size. Trim tool output to the fields the task needs before it reaches the model, so long conversations keep the facts that matter."
+  },
+  {
+    id: "sc-support-062",
+    scenario: "support",
+    domain: 5,
+    subdomain: "5.1 Manage conversation context to preserve critical information across long interactions",
+    question: "A customer chatted yesterday about a missing parcel, and the agent told them the carrier was investigating. Today they return to the same chat, and your system resumes yesterday's session with its full transcript, including yesterday's lookup_order result showing the parcel as in transit. Since then the carrier has marked the parcel as delivered. The agent replies that the parcel is still in transit. How should returning conversations be handled?",
+    options: [
+      "Resume the full session as before, and add a system prompt line reminding the agent that information in older tool results may be outdated.",
+      "Start a new session seeded with a short summary of the earlier case, and have the agent re-run lookup_order before answering.",
+      "Resume the full session and have the agent ask the customer to confirm the current parcel status before it says anything else.",
+      "Discard all earlier context and treat the returning customer as a new case, asking them to explain the whole problem again."
+    ],
+    answer: 1,
+    optionNotes: [
+      "A reminder does not tell the agent which values changed, and the stale result still sits in context looking authoritative. The agent has no reason to re-check unless the workflow makes it.",
+      "A concise summary carries forward what was promised and why the customer is back, while fresh tool calls replace stale data. The agent no longer reasons from results that no longer match the backend.",
+      "The backend is the source of truth for parcel status. Asking the customer for data the agent can look up adds friction and can still produce wrong answers.",
+      "Throwing away the history forces the customer to repeat themselves and loses commitments the agent already made, which hurts resolution and satisfaction."
+    ],
+    explanation: "When earlier tool results may be stale, resuming with the old transcript can mislead the agent. Start fresh with a structured summary of the prior interaction and re-fetch current data rather than reasoning over outdated results."
+  },
+  {
+    id: "sc-support-063",
+    scenario: "support",
+    domain: 5,
+    subdomain: "5.1 Manage conversation context to preserve critical information across long interactions",
+    question: "In its first message a customer raises three issues: a damaged blender on order 5521, a promo code that did not apply to order 5590, and a duplicate charge on their card. The agent resolves the blender replacement over many turns, and older turns are summarized as the conversation grows. When the customer asks whether everything is done, the agent says yes, although the promo code and duplicate charge were never handled. What change most reliably prevents this?",
+    options: [
+      "Raise the summarization threshold so the customer's first message stays verbatim for longer in long conversations with many turns.",
+      "Ask the agent to reread the whole conversation summary carefully before telling a customer that all of their issues are resolved.",
+      "Have the agent resolve all three issues in a single response, so nothing is still open by the time any summarization happens.",
+      "Keep a structured list of the customer's issues with order IDs and status outside the summary, and update it as each is resolved."
+    ],
+    answer: 3,
+    optionNotes: [
+      "A higher threshold only delays summarization. Once it triggers, the details of the opening message can still be compressed away.",
+      "If the summary already dropped the two open issues, rereading it cannot recover them; the information is gone from context.",
+      "Each issue needs its own lookups and possibly customer input, so forcing them into one response is unrealistic, and it does not protect information in long chats.",
+      "Structured issue state persisted outside the summarized history survives summarization. The agent can check open items against it before closing the conversation."
+    ],
+    explanation: "In multi-issue conversations, extract each issue with its identifiers and status into a persistent structured layer that summarization does not touch. The agent then reasons from that state rather than from a lossy summary."
+  },
+  {
+    id: "sc-support-064",
+    scenario: "support",
+    domain: 5,
+    subdomain: "5.2 Design effective escalation and ambiguity resolution patterns",
+    question: "A customer asks the agent to match a lower price they found on a competitor's website for a television they bought last week. Your refund policy covers price adjustments when your own site lowers its price within 14 days, but it says nothing about competitor prices. The agent has the tools to issue a partial refund. In testing, it sometimes approves the match and sometimes refuses it outright. How should the agent handle requests like this?",
+    options: [
+      "Treat the policy gap as an escalation trigger: tell the customer it needs review and escalate with the case details.",
+      "Apply the 14-day own-site rule by analogy, and approve the match whenever the competitor price falls within the 14-day window.",
+      "Refuse competitor price matches, since anything the policy does not explicitly allow should be treated as not permitted.",
+      "Ask the customer for a screenshot of the competitor listing, and approve the partial refund once the screenshot is provided."
+    ],
+    answer: 0,
+    optionNotes: [
+      "When policy is silent on the specific request, the decision belongs to someone with authority to set or interpret policy. Escalating with context gives a consistent outcome without the agent inventing policy.",
+      "Extending a rule by analogy is the agent creating policy it was not given, and it produces commitments the business never authorized.",
+      "Silence is not the same as a prohibition. A blanket refusal may contradict how the business wants these cases handled; it is the agent deciding policy in the other direction.",
+      "Evidence of the competitor price does not answer whether the business offers competitor matching at all, so the agent is still deciding an unwritten policy."
+    ],
+    explanation: "Escalation criteria should include cases where policy is ambiguous or silent on the customer's specific request. The agent resolves what policy covers and hands off what it does not, rather than improvising in either direction."
+  },
+  {
+    id: "sc-support-065",
+    scenario: "support",
+    domain: 1,
+    subdomain: "1.4 Implement multi-step workflows with enforcement and handoff patterns",
+    question: "Company policy says refunds above $500 must be approved by a human. The system prompt states this rule, and in testing the agent followed it in most cases, but production logs show a handful of process_refund calls for $650 and $900 issued directly after long, friendly conversations. Finance needs a guarantee that no refund above the limit is issued without approval. What should you implement?",
+    options: [
+      "Move the $500 rule to the top of the system prompt in capital letters and add few-shot examples of correctly escalated large refunds.",
+      "Add a second agent that reviews each completed conversation afterwards and reports any refund above $500 to the finance team.",
+      "Add a hook that intercepts process_refund calls above $500, blocks them, and routes the case to escalate_to_human instead.",
+      "Lower the limit stated in the prompt to $300 so that the agent's occasional mistakes still stay under the real $500 threshold."
+    ],
+    answer: 2,
+    optionNotes: [
+      "Stronger prompting raises compliance but remains probabilistic, so it cannot give the guarantee finance asked for.",
+      "An after-the-fact review detects violations once the money has already moved. It does not prevent them.",
+      "A hook runs deterministically on every tool call, so a refund above the limit cannot go through whatever the model decides. Redirecting to escalation keeps the workflow moving.",
+      "A lower prompt limit is still a prompt instruction. The lapses were not small overshoots, so the real limit can still be breached."
+    ],
+    explanation: "When a business rule must hold every time, enforce it in code that intercepts the tool call rather than in prompt instructions. Prompt guidance suits preferences; hooks and prerequisite gates are for guarantees."
+  },
+  {
+    id: "sc-support-066",
+    scenario: "support",
+    domain: 1,
+    subdomain: "1.4 Implement multi-step workflows with enforcement and handoff patterns",
+    question: "A customer writes one message covering three things: a refund for a late delivery on order 7012, a wrong size on order 7044 that they want exchanged, and a question about why their loyalty points dropped. The agent currently works through the message linearly and often answers the first concern thoroughly while giving vague replies to the rest. You want each concern handled properly in one response. How should the workflow be structured?",
+    options: [
+      "Ask the customer to open a separate ticket for each concern, so the agent can handle one issue per conversation from start to finish.",
+      "Split the message into distinct issues, investigate each with the shared customer context, then combine the results into one reply.",
+      "Escalate any message that contains more than one concern, since multi-issue requests are too complex for the agent to resolve alone.",
+      "Instruct the agent to keep its reply short and address only the issue that the customer seems most upset about in the message."
+    ],
+    answer: 1,
+    optionNotes: [
+      "Pushing the decomposition onto the customer adds friction and works against first-contact resolution.",
+      "Decomposing the request gives each concern its own investigation, and sharing the verified customer context avoids repeated lookups. A synthesis step then produces one coherent answer covering every item.",
+      "Each concern here is routine. Escalating because a message has several issues lowers first-contact resolution without any real need for human judgment.",
+      "Ignoring two of the three concerns guarantees the customer comes back, and guessing which one matters most is unreliable."
+    ],
+    explanation: "Multi-concern requests should be decomposed into distinct items, investigated using shared context, and synthesized into a single unified resolution. This gives every concern the same care."
+  },
+  {
+    id: "sc-support-067",
+    scenario: "support",
+    domain: 1,
+    subdomain: "1.4 Implement multi-step workflows with enforcement and handoff patterns",
+    question: "During a network outage, the agent's first process_refund call for order 3308 timed out on the client side, although the backend had actually issued the refund. The agent retried and the customer was refunded twice. Similar duplicates have appeared after other timeouts. The system prompt already tells the agent never to refund an order more than once. What is the most reliable fix?",
+    options: [
+      "Strengthen the system prompt so the agent waits a few minutes and checks with the customer before retrying any refund that timed out.",
+      "Remove automatic retries from the agent entirely and escalate every process_refund call that does not succeed on the first attempt.",
+      "Ask the agent to note each refund it issues in its reply, so it can see in the conversation which refunds have already been made.",
+      "Give each refund an idempotency key and have the tool or a pre-call check reject a second refund for the same order and amount."
+    ],
+    answer: 3,
+    optionNotes: [
+      "The customer cannot tell whether a backend call succeeded, and a prompt instruction stays probabilistic; one already failed in this exact situation.",
+      "Escalating every failed call sends many routine cases to humans and lowers first-contact resolution, while a deterministic duplicate check solves the actual problem.",
+      "The timed-out call never reported success, so the agent had nothing to note. The failure is that backend state was never checked, which a note cannot fix.",
+      "A deterministic check at the tool boundary makes repeated calls safe regardless of what the model decides, so a retry after a timeout can no longer produce a second refund."
+    ],
+    explanation: "Rules that must never be broken, such as not refunding an order twice, belong in deterministic enforcement at the tool or hook layer. Prompt instructions guide behaviour but cannot guarantee it under retries and failures."
+  },
+  {
+    id: "sc-support-068",
+    scenario: "support",
+    domain: 5,
+    subdomain: "5.2 Design effective escalation and ambiguity resolution patterns",
+    question: "A customer reports, with photos, that a cake stand arrived broken, and also demands $200 compensation because their party was ruined. Damage replacements with photo evidence are standard and within the agent's authority, but your policy has no provision for consequential-loss compensation. The agent currently escalates the entire case, so the customer waits hours even for the replacement. What should the agent do?",
+    options: [
+      "Offer a goodwill credit in place of the compensation, since a smaller amount resolves the case without the need for a human.",
+      "Keep escalating the whole case, because splitting one case between the agent and a human is too confusing for the customer.",
+      "Process the replacement now, then escalate only the compensation request, telling the customer it needs review.",
+      "Process the replacement and tell the customer that compensation for consequential losses is never offered under the policy."
+    ],
+    answer: 2,
+    optionNotes: [
+      "Inventing a goodwill credit is the agent creating policy it was not given, and it may not be what the business would decide.",
+      "Escalating the routine part delays a resolution the agent is authorized to give and lowers first-contact resolution.",
+      "The agent resolves what is within its authority immediately and hands off only the part policy does not cover, with context so the human does not start over.",
+      "The policy is silent rather than prohibitive, so saying compensation is never offered misrepresents policy to the customer."
+    ],
+    explanation: "Escalation should be scoped to the part of a case that needs human judgment. Resolve what falls within policy, and escalate the uncovered remainder with a clear summary."
   }
 );
