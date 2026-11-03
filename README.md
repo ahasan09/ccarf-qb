@@ -31,7 +31,10 @@ browser's localStorage.
   question bank. Bank coverage, accuracy and mastery are shown above it.
 - **Practice** — **Due for review**, Saved questions, missed questions,
   Custom quiz, and the six scenarios with your best score in each.
-- Score history, imported mock exams and account/sync are folded away below.
+- **Study resources**, score history, imported mock exams and account/sync are
+  folded away below. Study resources links to the exam guide, courses, study
+  guides and practice material outside the app (opens in a new tab, needs a
+  connection); the first visit also points at the two starting resources.
 
 **Spaced review:** every question you miss (in practice, or unanswered or
 wrong in an exam) comes back after 1 day; each time you get it right when due
@@ -176,6 +179,9 @@ clears it, and progress cached for one account is never folded into another.
 
 - `js/logic.js` — pure logic: drawing, grading, progress, readiness, spaced
   review, bank and scenario validation (no DOM)
+- `resources.js` — the study-resource links on the home page (`id`, `group`,
+  `title`, `url`, optional `note`, `star`, `start`, `exam`). Only `https`
+  links in a known group render; keep tracking parameters out of URLs
 - `js/store.js` — the progress store and the cross-device sync engine (no DOM)
 - `js/app/` — the DOM app, in load order: `state.js` (banks, storage, shared
   state, helpers), `home.js`, `sessions.js`, `question.js`, `results.js`,

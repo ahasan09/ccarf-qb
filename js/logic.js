@@ -585,3 +585,21 @@ function unionIds(existing, added) {
   (added || []).forEach(function (id) { set[id] = true; });
   return Object.keys(set).sort();
 }
+
+/* ---------------------------------------------------- study resources */
+/* The groups the home page shows, in display order. */
+var RESOURCE_GROUPS = ["Official", "Study guides", "Practice & reviews", "Events"];
+
+/* Keeps the entries that are safe to render as links: an https URL, a
+ * title, a known group and an id not already used. */
+function validResources(list) {
+  var seen = {};
+  return (Array.isArray(list) ? list : []).filter(function (r) {
+    if (!r || typeof r.id !== "string" || !r.id || seen[r.id]) return false;
+    if (typeof r.title !== "string" || !r.title.trim()) return false;
+    if (typeof r.url !== "string" || !/^https:\/\/[^\s]+$/.test(r.url)) return false;
+    if (RESOURCE_GROUPS.indexOf(r.group) < 0) return false;
+    seen[r.id] = true;
+    return true;
+  });
+}

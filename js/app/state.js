@@ -15,6 +15,13 @@ EXAMS.forEach(function (e) {
   examById[e.id] = { id: e.id, name: e.name, count: e.count, questions: e.questions };
 });
 
+/* Study resources (resources.js): links only, never fetched by the app. */
+var RESOURCES = validResources(window.STUDY_RESOURCES);
+function resourceById(id) {
+  for (var i = 0; i < RESOURCES.length; i++) if (RESOURCES[i].id === id) return RESOURCES[i];
+  return null;
+}
+
 /* Mock exams draw from the exam-guide-mapped pool; the unmapped ones are
  * kept aside and only used by the supplementary exam. */
 var MAPPED = filterByTagging(BANK, true);

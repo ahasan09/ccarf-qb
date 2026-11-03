@@ -1,5 +1,5 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v20";
+const VERSION = "v21";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
@@ -13,6 +13,7 @@ const CORE = [
   "js/app/results.js",
   "js/app/events.js",
   "config.js",
+  "resources.js",
   "sync.js",
   "icon.svg",
   "manifest.webmanifest",

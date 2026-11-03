@@ -140,7 +140,7 @@ function homeFirstVisit(progress) {
     scenarioExamNote() +
     '<div class="h-steps"><div class="h-step"><b>1 · Diagnose</b>20 questions in the real exam\'s layout.</div>' +
     '<div class="h-step"><b>2 · Set your date</b>Get a countdown and a review queue.</div>' +
-    '<div class="h-step"><b>3 · Drill</b>Short drills on your weakest objectives.</div></div></div>' +
+    '<div class="h-step"><b>3 · Drill</b>Short drills on your weakest objectives.</div></div>' + startHereLine() + "</div>" +
     '<div><div class="h-step h-date"><b>Exam date</b>' +
     (progress.examDate ? esc(progress.examDate) + "<br>" : "Optional — sets your countdown<br>") +
     '<button class="btn small" data-action="edit-exam-date">' + (progress.examDate ? "Change" : "Set date") + "</button></div></div></section>";
@@ -180,7 +180,8 @@ function homeNextStep(acc) {
   var weak = weakestObjectives(acc);
   if (!weak.length) return "";
   var html = '<section class="card h-next"><h2 class="h-h2">Next best step</h2>' +
-    '<p class="h-sub">Your weakest objectives across your exams — each drill is up to 8 questions with a note on every option.</p>';
+    '<p class="h-sub">Your weakest objectives across your exams — each drill is up to 8 questions with a note on every option.' +
+    examGuideLink() + "</p>";
   weak.forEach(function (w) {
     html += '<div class="h-weak"><div>' + esc(w.key) + "<small>" + w.correct + " of " + w.total + " right</small></div>" +
       meter(w.pct) + '<span class="h-pct">' + w.pct + "%</span>" +
@@ -266,7 +267,8 @@ function homeCollapsed(progress) {
   var history = progress.history;
   var best = 0;
   history.forEach(function (h) { if (h.score > best) best = h.score; });
-  var html = '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
+  var html = homeResources();
+  html += '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
     (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span>" + chev() + "</summary>";
   if (!history.length) {
     html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
@@ -301,7 +303,9 @@ function homeCollapsed(progress) {
       '<div class="domain-list">';
     EXAMS.forEach(function (e) {
       var attempt = bestAttemptFor(e.id, history);
-      html += '<div class="domain-row exam-row"><span>' + esc(e.name) + "</span>" +
+      var source = RESOURCES.filter(function (r) { return r.exam === e.id; })[0];
+      html += '<div class="domain-row exam-row"><span>' + esc(e.name) +
+        (source ? ' <a class="h-link h-src" href="' + esc(source.url) + '"' + EXTERNAL + ' title="' + esc(source.title) + '">source ↗</a>' : "") + "</span>" +
         '<span class="muted">' + (e.count || (e.questions ? e.questions.length : 0)) + " questions" +
         (attempt ? " · best " + attempt.score + (attempt.pass ? " · passed" : "") : "") + "</span>" +
         '<button class="btn small" data-action="practice-imported" data-exam="' + esc(e.id) + '">Practice</button>' +
@@ -370,6 +374,45 @@ function bestAttemptFor(examId, history) {
     if (h.examId === examId && (!best || h.score > best.score)) best = h;
   });
   return best;
+}
+
+/* ------------------------------------------------- study resources */
+var EXTERNAL = ' target="_blank" rel="noopener noreferrer"';
+
+function resourceLink(r, cls, text) {
+  return '<a class="' + cls + '" href="' + esc(r.url) + '"' + EXTERNAL + ">" + (text || esc(r.title)) + "</a>";
+}
+
+function homeResources() {
+  if (!RESOURCES.length) return "";
+  var html = '<details class="card h-fold" id="h-resources"><summary><b>Study resources</b><span class="muted">' +
+    RESOURCES.length + " link" + (RESOURCES.length === 1 ? "" : "s") + " · exam guide, courses, practice</span>" + chev() + "</summary>" +
+    '<p class="muted">Material outside this app — links open in a new tab and need an internet connection.</p>';
+  RESOURCE_GROUPS.forEach(function (g) {
+    var items = RESOURCES.filter(function (r) { return r.group === g; });
+    if (!items.length) return;
+    html += '<div class="h-res-group"><h3 class="h-h3">' + esc(g) + "</h3>";
+    items.forEach(function (r) {
+      html += resourceLink(r, "h-row h-res",
+        "<span>" + (r.star ? '<span class="h-star" title="Must-read">★</span> ' : "") + esc(r.title) +
+        (r.note ? "<small>" + esc(r.note) + "</small>" : "") + "</span>" +
+        '<span class="muted">' + (r.start ? "start here ↗" : "↗") + "</span>");
+    });
+    html += "</div>";
+  });
+  return html + "</details>";
+}
+
+function startHereLine() {
+  var start = RESOURCES.filter(function (r) { return r.start; });
+  if (!start.length) return "";
+  return '<p class="h-meta h-start">New to the exam? Start with ' +
+    start.map(function (r) { return resourceLink(r, "h-link", esc(r.title) + " ↗"); }).join(" and ") + ".</p>";
+}
+
+function examGuideLink() {
+  var guide = resourceById("exam-guide");
+  return guide ? " " + resourceLink(guide, "h-link", "What each objective covers: exam guide ↗") : "";
 }
 
 function accountCard() {
