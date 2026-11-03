@@ -59,9 +59,7 @@ function renderScenarioQuestion() {
       '" data-action="select" data-opt="' + optIdx + '"' + (showFeedback ? " disabled" : "") + ">" +
       '<span class="opt-letter"></span>' + esc(q.options[optIdx]) +
       (isStruck ? '<span class="sr-only"> (struck through)</span>' : "") + "</button>" +
-      /* Touch screens have no right-click, so they get a small button. */
-      '<button class="strike-btn" data-action="strike" data-opt="' + optIdx + '" aria-pressed="' + isStruck +
-      '" aria-label="Strike through option ' + (sq.order.indexOf(optIdx) + 1) + '">⊘</button></div>';
+      strikeButton(optIdx, sq.order.indexOf(optIdx), isStruck) + "</div>";
     if (showFeedback && q.optionNotes) {
       html += '<div class="opt-note ' + (correct.indexOf(optIdx) !== -1 ? "ok" : "bad") + '">' +
         esc(q.optionNotes[optIdx]) + "</div>";
@@ -99,6 +97,13 @@ function renderScenarioQuestion() {
 
   paint(html);
   window.scrollTo(0, 0);
+}
+
+/* Touch screens have no right-click, so each option gets a small ⊘ button
+ * (hidden for a mouse until reached with Tab). */
+function strikeButton(optIdx, position, isStruck) {
+  return '<button class="strike-btn" data-action="strike" data-opt="' + optIdx + '" aria-pressed="' + isStruck +
+    '" aria-label="Strike through option ' + (position + 1) + '">⊘</button>';
 }
 
 var reviewFilter = "all";
@@ -207,21 +212,28 @@ function renderQuestion() {
     (multi ? '<p class="pick-hint">Select ' + correct.length + " answers.</p>" : "") +
     '<div class="options" role="' + (multi ? "group" : "radiogroup") + '">';
 
+  var strikeOn = canStrike(session.mode);
+  var struck = (session.strikes && session.strikes[q.id]) || [];
   sq.order.forEach(function (optIdx) {
     var cls = "option";
     var disabled = showFeedback ? " disabled" : "";
     var picked = chosen.indexOf(optIdx) !== -1;
+    var isStruck = strikeOn && struck.indexOf(optIdx) !== -1;
     if (picked) cls += " selected";
+    if (isStruck) cls += " struck";
     if (showFeedback) {
       if (correct.indexOf(optIdx) !== -1) cls += " correct";
       else if (picked) cls += " wrong";
     }
-    html += '<button class="' + cls + '" role="' + (multi ? "checkbox" : "radio") +
+    var btn = '<button class="' + cls + '" role="' + (multi ? "checkbox" : "radio") +
       '" aria-checked="' + picked +
       '" data-action="select" data-opt="' + optIdx + '"' + disabled + ">" +
-      '<span class="opt-letter"></span>' + esc(q.options[optIdx]) + "</button>";
+      '<span class="opt-letter"></span>' + esc(q.options[optIdx]) +
+      (isStruck ? '<span class="sr-only"> (struck through)</span>' : "") + "</button>";
+    html += strikeOn ? '<div class="opt-row">' + btn + strikeButton(optIdx, sq.order.indexOf(optIdx), isStruck) + "</div>" : btn;
   });
   html += "</div>";
+  if (strikeOn) html += '<p class="muted scn-hint">Right-click an option to strike it through; right-click again to undo.</p>';
 
   if (showFeedback) {
     var right = sameChoice(answered, correct);

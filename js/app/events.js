@@ -78,10 +78,10 @@ document.addEventListener("click", function (ev) {
   closeMenus(ev.target && ev.target.closest ? ev.target.closest("details.h-menu") : null);
 }, true);
 
-/* Right-click an option in a scenario question to strike it through, and
- * right-click it again to undo — like the real exam, no menu in between. */
+/* Right-click an option to strike it through, and right-click it again to
+ * undo — like the real exam, no menu in between. */
 app.addEventListener("contextmenu", function (ev) {
-  if (!session || !isScenarioMode(session.mode) || view !== "quiz") return;
+  if (!session || !canStrike(session.mode) || view !== "quiz") return;
   var opt = ev.target.closest && ev.target.closest(".option[data-opt]");
   if (!opt) return;
   ev.preventDefault();

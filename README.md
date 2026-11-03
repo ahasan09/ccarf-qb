@@ -92,6 +92,11 @@ Modes:
   (nothing is removed; the newer review schedule wins per question), so it
   is safe on any device, signed in or not.
 
+- **Strike through** — in mock, imported, custom, retry and weak-drill
+  sessions (and the scenario exam), right-click an option you have ruled out
+  to cross it out; right-click again to undo. Touch: tap ⊘. Not in plain
+  practice, where the answer shows on the first click.
+
 Keyboard shortcuts during a session: `1`–`4` (or `A`–`D`) answer, `←`/`→`
 navigate, `F` flag, `Enter` next. After each click, keyboard focus stays on
 the control you used.
