@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import app from "./engine.mjs";
 
 const {
+  signInEmailError,
   EXAM_DRAW_COUNTS,
   PASS_SCORE,
   shuffle,
@@ -477,4 +478,17 @@ test("an unmapped-pool exam draws only unmapped questions", () => {
   const exam = drawExam(filterByTagging(bank, false), EXAM_DRAW_COUNTS);
   assert.equal(exam.length, 60);
   assert.ok(exam.every((q) => !q.subdomain), "every drawn question is unmapped");
+});
+
+test("sign-in e-mail errors are explained in plain words", () => {
+  assert.equal(signInEmailError({ message: "email rate limit exceeded", status: 429, code: "over_email_send_rate_limit" }),
+    "Too many sign-in e-mails were sent recently. Please try again in about an hour.");
+  assert.equal(signInEmailError({ message: "email rate limit exceeded" }),
+    "Too many sign-in e-mails were sent recently. Please try again in about an hour.");
+  assert.equal(signInEmailError({ message: "For security purposes, you can only request this after 42 seconds.", status: 429 }),
+    "Please wait 42 seconds before asking for another sign-in e-mail.");
+  assert.equal(signInEmailError({ message: "Request rate limit reached", status: 429 }),
+    "Too many sign-in attempts. Please wait a few minutes and try again.");
+  assert.equal(signInEmailError(new Error("Failed to fetch")), "Could not send the sign-in e-mail: Failed to fetch");
+  assert.equal(signInEmailError(null), "Could not send the sign-in e-mail.");
 });

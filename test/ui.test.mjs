@@ -1978,3 +1978,16 @@ test("signing in from another tab clears the 'we sent you an e-mail' step", () =
     assert.ok(!app.html().includes("We sent a sign-in e-mail"));
   });
 });
+
+test("a rate-limited sign-in e-mail gets a plain explanation", () => {
+  const sync = { enabled: true, user: () => null, status: () => "idle", error: () => "",
+    sendCode: () => Promise.reject({ message: "email rate limit exceeded", status: 429, code: "over_email_send_rate_limit" }) };
+  const app = launch({ sync, inputs: { "auth-email": "me@example.com" } });
+  const alerts = [];
+  app.setAlert((m) => alerts.push(m));
+  const btn = app.click("auth-send");
+  return new Promise((r) => setImmediate(r)).then(() => {
+    assert.deepEqual(alerts, ["Too many sign-in e-mails were sent recently. Please try again in about an hour."]);
+    assert.equal(btn.disabled, false, "the button works again");
+  });
+});

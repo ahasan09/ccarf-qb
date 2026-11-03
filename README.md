@@ -188,6 +188,12 @@ across devices:
    `<p>Your login code: <strong>{{ .Token }}</strong></p>` to the
    **Magic link or OTP** template, keep the `{{ .ConfirmationURL }}` link,
    then set `emailCode: true` in `config.js`.
+   Supabase's built-in mailer is only for testing: it sends a handful of
+   e-mails per hour for the whole project, after which sign-in shows
+   "Too many sign-in e-mails were sent recently". Custom SMTP lifts that;
+   a free option needing no domain of your own is a Gmail account with
+   2-step verification and an app password (`smtp.gmail.com`, port 587).
+   Then raise **Authentication → Rate Limits → emails per hour**.
 4. In **Authentication → URL Configuration**, set the Site URL to where the
    app is hosted (e.g. `https://<you>.github.io/ccarf-qb/`).
 5. Copy the **Project URL** and **anon public key** from Project Settings →
