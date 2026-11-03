@@ -723,3 +723,19 @@ function parseProgressFile(text) {
   if (!known) return { error: "That file is not a progress backup from this app." };
   return { progress: normalizeProgress(raw) };
 }
+
+/* What to tell someone whose sign-in e-mail could not be sent. Supabase's
+ * own messages ("email rate limit exceeded") are written for developers. */
+function signInEmailError(err) {
+  var msg = String((err && err.message) || err || "");
+  var code = err && err.code;
+  var wait = /after (\d+) seconds?/i.exec(msg);
+  if (wait) return "Please wait " + wait[1] + " seconds before asking for another sign-in e-mail.";
+  if (code === "over_email_send_rate_limit" || /email rate limit/i.test(msg)) {
+    return "Too many sign-in e-mails were sent recently. Please try again in about an hour.";
+  }
+  if ((err && err.status === 429) || /rate limit/i.test(msg)) {
+    return "Too many sign-in attempts. Please wait a few minutes and try again.";
+  }
+  return "Could not send the sign-in e-mail" + (msg ? ": " + msg : ".");
+}

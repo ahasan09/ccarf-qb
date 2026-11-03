@@ -351,7 +351,7 @@ function handleAction(btn) {
         renderHome();
       }).catch(function (err) {
         btn.disabled = false;
-        alert("Could not send the code: " + (err && err.message ? err.message : err));
+        alert(signInEmailError(err));
       });
       return;
     }
