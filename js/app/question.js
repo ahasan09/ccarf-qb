@@ -24,7 +24,7 @@ function renderScenarioQuestion() {
     : "Scenario " + (block + 1) + " of " + session.scenarioIds.length +
       " · Question " + (session.current + 1) + " of " + total;
 
-  var html = '<div class="scn-screen">';
+  var html = '<div class="q-screen scn-screen">';
   html += '<div class="scn-top">' +
     '<div><strong>' + esc(sessionTitle()) + '</strong><span class="muted"> · ' + where + "</span></div>" +
     '<div class="row">' +
@@ -159,7 +159,9 @@ function renderQuestion() {
   var isPractice = session.mode === "practice";
   var showFeedback = isPractice && session.feedback === q.id;
 
-  var html = '<div class="quiz-header">' +
+  /* .q-screen is at least the window's height: the question area grows to
+   * fill it and the action bar stays pinned to the bottom edge. */
+  var html = '<div class="q-screen quiz-screen"><div class="quiz-header">' +
     "<div><strong>" + sessionTitle() + "</strong>" +
     '<span class="muted"> · Question ' + (session.current + 1) + " of " + total + "</span></div>" +
     '<div class="row">' +
@@ -260,7 +262,7 @@ function renderQuestion() {
         : session.mode === "exam" ? "Submit exam" : "Submit answers") + "</button>" +
       '<button class="btn" data-action="next"' + (session.current + 1 >= total ? " disabled" : "") + ">Next →</button>";
   }
-  html += "</div></div>";
+  html += "</div></div></div>";
 
   app.innerHTML = html;
   window.scrollTo(0, 0);
