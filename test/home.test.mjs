@@ -205,3 +205,36 @@ test("a null review update removes the entry", () => {
   s = applyMutations(s, [Mutations.recordReview({ q: null })]);
   assert.equal(s.review.q, undefined);
 });
+
+/* ---------------------------------------------------- study resources */
+const { validResources, RESOURCE_GROUPS } = app;
+
+test("validResources keeps https links with a title and a known group", () => {
+  const ok = { id: "a", group: "Official", title: "Guide", url: "https://example.com/g" };
+  const list = [
+    ok,
+    { id: "b", group: "Official", title: "Plain http", url: "http://example.com" },
+    { id: "c", group: "Official", title: "Script", url: "javascript:alert(1)" },
+    { id: "d", group: "Nope", title: "Bad group", url: "https://example.com" },
+    { id: "e", group: "Official", title: "", url: "https://example.com" },
+    { id: "a", group: "Official", title: "Duplicate id", url: "https://example.com/dup" },
+    null,
+  ];
+  assert.deepEqual(validResources(list), [ok]);
+  assert.deepEqual(validResources(undefined), []);
+  assert.ok(RESOURCE_GROUPS.includes("Official"));
+});
+
+test("the shipped resources file is all valid, tracking-free https links", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const ctx = { window: {} };
+  vm.runInNewContext(readFileSync(new URL("../resources.js", import.meta.url), "utf8"), ctx);
+  const list = ctx.window.STUDY_RESOURCES;
+  assert.ok(list.length >= 1);
+  assert.equal(validResources(list).length, list.length, "every entry passes validResources");
+  for (const r of list) {
+    assert.doesNotMatch(r.url, /[?&](utm_|rcm=|trackingId=)/, r.id + " carries tracking parameters");
+  }
+  assert.ok(list.some((r) => r.id === "exam-guide"), "the exam guide is listed");
+});

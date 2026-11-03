@@ -70,6 +70,7 @@ function launch(opts = {}) {
   const win = {
     QUESTION_BANK: opts.bank || bank(),
     MOCK_EXAMS: opts.exams || [],
+    STUDY_RESOURCES: opts.resources,
     SCENARIOS: opts.scenarios || SCENARIOS,
     SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
     CCARF_SYNC: opts.sync,
@@ -1332,4 +1333,49 @@ test("the sign-in chip opens the account section", () => {
   const app = launch({ sync: { enabled: true, user: () => null } });
   assert.ok(app.html().includes('data-action="open-section" data-id="h-acct"'));
   assert.ok(!app.html().includes('href="#acct"'));
+});
+
+const RESOURCES = [
+  { id: "exam-guide", group: "Official", title: "The Exam Guide", url: "https://example.com/guide.pdf", star: true, start: true },
+  { id: "course", group: "Official", title: "Intro <course>", url: "https://example.com/course", start: true },
+  { id: "kit", group: "Study guides", title: "Study kit", url: "https://example.com/kit", note: "Notes" },
+  { id: "src", group: "Practice & reviews", title: "Exam source", url: "https://example.com/src", exam: "imp" },
+  { id: "bad", group: "Official", title: "Bad", url: "javascript:alert(1)" },
+];
+
+test("the home page lists study resources in a folded section, grouped, opening in a new tab", () => {
+  const app = launch({ resources: RESOURCES, storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) } });
+  const html = app.html();
+  assert.ok(html.includes('id="h-resources"'), "a study resources section");
+  assert.ok(html.indexOf('id="h-resources"') < html.indexOf("Score history"), "it sits above score history");
+  assert.ok(html.includes("4 links"), "invalid entries are dropped from the count");
+  assert.ok(html.includes("Study guides") && html.includes("Practice &amp; reviews"));
+  assert.ok(html.includes('href="https://example.com/kit" target="_blank" rel="noopener noreferrer"'));
+  assert.ok(html.includes("Intro &lt;course&gt;"), "titles are escaped");
+  assert.ok(!html.includes("javascript:"), "unsafe links never render");
+});
+
+test("without resources the section is left out", () => {
+  const app = launch({ storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) } });
+  assert.ok(!app.html().includes('id="h-resources"'));
+});
+
+test("the first visit points at the starting resources", () => {
+  const app = launch({ resources: RESOURCES });
+  const html = app.html();
+  assert.ok(html.includes("Welcome"), "first-visit screen");
+  assert.ok(html.includes("h-start"), "a start-here line");
+  assert.ok(html.includes('href="https://example.com/guide.pdf"') && html.includes('href="https://example.com/course"'));
+});
+
+test("an imported exam links to its source resource", () => {
+  const questions = bank().slice(0, 5).map((q) => Object.assign({}, q, { id: "imp-" + q.id, exam: "imp" }));
+  const app = launch({
+    resources: RESOURCES,
+    exams: [{ id: "imp", name: "Imported", questions }],
+    storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) },
+  });
+  const html = app.html();
+  const row = html.slice(html.indexOf('id="h-imported"'));
+  assert.ok(row.includes('href="https://example.com/src"'), "source link on the imported exam row");
 });
