@@ -268,7 +268,7 @@ function homeCollapsed(progress) {
   var best = 0;
   history.forEach(function (h) { if (h.score > best) best = h.score; });
   var html = homeResources();
-  html += '<details class="card h-fold"><summary><b>Score history</b><span class="muted">' +
+  html += '<details class="card h-fold"' + foldAttrs("h-history") + '><summary><b>Score history</b><span class="muted">' +
     (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span>" + chev() + "</summary>";
   if (!history.length) {
     html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
@@ -297,7 +297,7 @@ function homeCollapsed(progress) {
 
   if (EXAMS.length) {
     var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
-    html += '<details class="card h-fold" id="h-imported"><summary><b>Imported mock exams</b><span class="muted">' +
+    html += '<details class="card h-fold"' + foldAttrs("h-imported") + '><summary><b>Imported mock exams</b><span class="muted">' +
       EXAMS.length + " tests · " + taken + " taken</span>" + chev() + "</summary>" +
       '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
       '<div class="domain-list">';
@@ -317,7 +317,7 @@ function homeCollapsed(progress) {
 
   var S = window.CCARF_SYNC;
   var signedIn = S && S.enabled && S.user();
-  html += '<details class="card h-fold" id="h-acct"><summary><b>Account &amp; sync</b><span class="muted">' +
+  html += '<details class="card h-fold"' + foldAttrs("h-acct") + '><summary><b>Account &amp; sync</b><span class="muted">' +
     (signedIn ? "Signed in · syncing" : "Progress on this device") + "</span>" + chev() + "</summary>" + accountCard() + "</details>";
   return html;
 }
@@ -385,7 +385,7 @@ function resourceLink(r, cls, text) {
 
 function homeResources() {
   if (!RESOURCES.length) return "";
-  var html = '<details class="card h-fold" id="h-resources"><summary><b>Study resources</b><span class="muted">' +
+  var html = '<details class="card h-fold"' + foldAttrs("h-resources") + '><summary><b>Study resources</b><span class="muted">' +
     RESOURCES.length + " link" + (RESOURCES.length === 1 ? "" : "s") + " · exam guide, courses, practice</span>" + chev() + "</summary>" +
     '<p class="muted">Material outside this app — links open in a new tab and need an internet connection.</p>';
   RESOURCE_GROUPS.forEach(function (g) {
@@ -445,13 +445,26 @@ function accountCard() {
       (st === "syncing" ? " disabled" : "") + ">" + (st === "syncing" ? "Syncing…" : "Sync now") + "</button>" +
       '<button class="btn ghost small" data-action="auth-signout">Sign out</button></div>';
   } else {
+    var emailCode = !!(window.CCARF_CONFIG && window.CCARF_CONFIG.emailCode);
     html += '<p class="muted auth-note">Sign in with your e-mail to back up progress and resume from any device.</p>' +
       '<div class="row"><input class="input" id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(pendingEmail || "") + '">' +
-      '<button class="btn primary" data-action="auth-send">' + (pendingEmail ? "Resend code" : "Send login code") + "</button></div>";
+      '<button class="btn primary" data-action="auth-send">' +
+      (pendingEmail ? "Resend e-mail" : emailCode ? "Email me a sign-in code" : "Email me a sign-in link") + "</button></div>";
     if (pendingEmail) {
-      html += '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">' +
-        '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>' +
-        '<p class="muted auth-note">Check your inbox — enter the code here, or just click the link in the e-mail.</p>';
+      /* Supabase's built-in mailer sends its default template, which holds
+       * only a link; the code exists in the e-mail only once a custom SMTP
+       * template adds {{ .Token }} (config.js emailCode). The link signs in
+       * whichever browser opens it, so say so. */
+      html += '<div class="auth-steps"><p>We sent a sign-in e-mail to <strong>' + esc(pendingEmail) + "</strong>.</p>" +
+        '<p class="muted auth-note">' +
+        (emailCode
+          ? "<b>Enter the code</b> from it below to sign in here. Or <b>click the link</b> in it instead — that only signs in the browser where you click it. "
+          : "<b>Open the link</b> in it in this browser to sign in here. The link only signs in the browser where you click it, so if your mail opens it on another device, sign in there or forward the e-mail to this one. ") +
+        "Nothing there? Check spam, or resend.</p></div>";
+      if (emailCode) {
+        html += '<div class="row" style="margin-top:10px"><input class="input" id="auth-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the e-mail">' +
+          '<button class="btn" data-action="auth-verify">Verify &amp; sign in</button></div>';
+      }
     }
   }
   var backup = LS.get(BACKUP_KEY, null);

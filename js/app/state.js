@@ -157,6 +157,14 @@ var session = null; // active session object
 var pendingEmail = null; // login code sent, awaiting verification
 var expandedMastery = 0; // domain whose subdomain breakdown is open (0 = none)
 var expandedPractice = 0; // domain whose practice subdomain list is open (0 = none)
+/* Open/closed state of collapsible <details> sections, by id. Screens are
+ * redrawn from scratch, so without this every redraw (a click, a sync, a
+ * theme change) would snap sections back to their default. */
+var foldState = {};
+function foldAttrs(id, openByDefault) {
+  var open = Object.prototype.hasOwnProperty.call(foldState, id) ? foldState[id] : !!openByDefault;
+  return ' id="' + id + '"' + (open ? " open" : "");
+}
 var customState = {
   domains: { 1: true, 2: true, 3: true, 4: true, 5: true },
   subs: {},        // "<domain>|<subKey>" -> true

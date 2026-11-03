@@ -153,9 +153,13 @@ across devices:
      for update using (auth.uid() = user_id);
    ```
 
-3. In **Authentication → Email Templates → Magic Link**, add the one-time
-   code to the template so the 6-digit code login works, e.g.
-   `<p>Your login code: {{ .Token }}</p>` (the magic link also works as is).
+3. Sign-in is by the e-mailed **magic link** out of the box. To also offer a
+   code box (handy when mail opens on a different device), the e-mail must
+   contain the code: set up custom SMTP (**Authentication → Emails → SMTP
+   Settings**; the built-in mailer can't use edited templates), add
+   `<p>Your login code: <strong>{{ .Token }}</strong></p>` to the
+   **Magic link or OTP** template, keep the `{{ .ConfirmationURL }}` link,
+   then set `emailCode: true` in `config.js`.
 4. In **Authentication → URL Configuration**, set the Site URL to where the
    app is hosted (e.g. `https://<you>.github.io/ccarf-qb/`).
 5. Copy the **Project URL** and **anon public key** from Project Settings →

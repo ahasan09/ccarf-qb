@@ -75,6 +75,7 @@ function launch(opts = {}) {
     SCENARIOS: opts.scenarios || SCENARIOS,
     SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
     CCARF_SYNC: opts.sync,
+    CCARF_CONFIG: opts.config,
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -106,7 +107,8 @@ function launch(opts = {}) {
     setTimeout: () => 1,
     clearTimeout: () => {},
     document: {
-      getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl : null),
+      getElementById: (id) => (id === "app" ? appEl : id === "ctx-menu" ? menuEl
+        : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
       createElement: () => ({}),
@@ -143,6 +145,11 @@ function launch(opts = {}) {
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
     menu: () => menuEl,
+    /* The user opening or closing a <details> section. */
+    toggle: (id, open) => {
+      const ev = { target: { tagName: "DETAILS", id, open } };
+      (appListeners.toggle || []).forEach((fn) => fn(ev));
+    },
     appEl,
     win,
     scripts,
@@ -1482,4 +1489,71 @@ test("both question layouts render inside a full-height screen with the action b
   app.click("practice-scenario", { scenario: "support" });
   html = app.html();
   assert.ok(html.startsWith('<div class="q-screen scn-screen">'), "scenario layout shares the screen class");
+});
+
+/* ---- sections stay as the user left them ---------------------------------- */
+const RETURNING = { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) };
+const isOpen = (html, id) => new RegExp('<details class="card h-fold" id="' + id + '" open>').test(html);
+
+test("an opened home section stays open when the page redraws", () => {
+  const app = launch({ storage: RETURNING, resources: RESOURCES });
+  assert.ok(!isOpen(app.html(), "h-resources"), "closed by default");
+  app.toggle("h-resources", true);
+  app.click("toggle-mastery", { domain: "2" });      // any redraw
+  assert.ok(isOpen(app.html(), "h-resources"), "still open after a redraw");
+  app.fireSyncEvent();                               // background sync redraw
+  assert.ok(isOpen(app.html(), "h-resources"), "still open after a sync");
+  assert.ok(!isOpen(app.html(), "h-history"), "other sections untouched");
+});
+
+test("closing a section is remembered too, and it survives a trip into a quiz", () => {
+  const app = launch({ storage: RETURNING });
+  app.toggle("h-history", true);
+  app.toggle("h-acct", true);
+  app.toggle("h-history", false);
+  app.click("practice", { domain: "3", sub: "3.1" });
+  app.click("quit");
+  assert.ok(!isOpen(app.html(), "h-history"));
+  assert.ok(isOpen(app.html(), "h-acct"));
+});
+
+test("a collapsed scenario panel stays collapsed on the next question", () => {
+  const app = launch();
+  app.click("practice-scenario", { scenario: "support" });
+  assert.ok(app.html().includes('<details id="scn-brief" open>'), "open by default");
+  app.toggle("scn-brief", false);
+  app.click("select", { opt: "0" });
+  assert.ok(app.html().includes('<details id="scn-brief">'), "stays collapsed after answering");
+  app.click("next");
+  assert.ok(app.html().includes('<details id="scn-brief">'), "and on the next question");
+});
+
+/* ---- e-mail sign-in --------------------------------------------------------- */
+async function sendSignIn(config) {
+  const sent = [];
+  const sync = { enabled: true, user: () => null, sendCode: async (e) => { sent.push(e); } };
+  const app = launch({ sync, config, storage: RETURNING, inputs: { "auth-email": "me@example.com" } });
+  const before = app.html();
+  app.click("auth-send");
+  await new Promise((r) => setImmediate(r));
+  return { before, html: app.html(), sent };
+}
+
+test("by default sign-in is by link: the card says so and shows no code box", async () => {
+  const { before, html, sent } = await sendSignIn(undefined);
+  assert.ok(before.includes("Email me a sign-in link"));
+  assert.deepEqual(sent, ["me@example.com"]);
+  assert.ok(html.includes("We sent a sign-in e-mail to <strong>me@example.com</strong>"), "names the address");
+  assert.ok(html.includes("<b>Open the link</b>"));
+  assert.ok(html.includes("only signs in the browser where you click it"));
+  assert.ok(!html.includes('id="auth-code"'), "no code box when the e-mail has no code");
+  assert.ok(html.includes("Resend e-mail"));
+});
+
+test("with emailCode on, the card offers the code box after the guidance", async () => {
+  const { before, html } = await sendSignIn({ emailCode: true });
+  assert.ok(before.includes("Email me a sign-in code"));
+  assert.ok(html.includes("<b>Enter the code</b>"));
+  assert.ok(html.indexOf("auth-steps") < html.indexOf('id="auth-code"'), "guidance comes before the code box");
+  assert.ok(html.includes('placeholder="Code from the e-mail"'), "no fixed code length");
 });
