@@ -1089,7 +1089,43 @@ test("right-click does not strike in ordinary practice", () => {
   const app = launch();
   app.click("practice", { domain: "1" });
   app.rightClick(1);
-  assert.equal(app.store().snapshot().session.strikes, undefined);
+  app.click("strike", { opt: "1" });
+  assert.equal(Object.keys(app.store().snapshot().session.strikes).length, 0);
+  assert.ok(!app.html().includes("strike-btn"), "no strike buttons either");
+});
+
+test("mock exams strike through on right-click too, and keep strikes on resume", () => {
+  const storage = {};
+  const app = launch({ storage });
+  app.click("start-exam");
+  const id = app.store().snapshot().session.questions[0].id;
+  app.rightClick(3);
+  assert.deepEqual(app.store().snapshot().session.strikes[id], [3]);
+  assert.match(app.html(), /class="option struck"[^>]*data-opt="3"/);
+  assert.equal((app.html().match(/class="strike-btn"/g) || []).length, 4, "touch buttons");
+  assert.ok(app.html().includes("Right-click an option to strike it through"));
+  app.click("select", { opt: "3" });
+  assert.match(app.html(), /class="option selected struck"/, "a struck option can still be picked");
+  app.click("quit");
+  const again = launch({ storage });
+  again.click("resume");
+  assert.deepEqual(again.store().snapshot().session.strikes[id], [3]);
+  again.rightClick(3);
+  assert.deepEqual(again.store().snapshot().session.strikes[id], []);
+});
+
+test("a mock exam saved before strikes existed can still strike after resuming", () => {
+  const storage = {};
+  const app = launch({ storage });
+  app.click("start-exam");
+  const snap = JSON.parse(storage["ccarf.progress"]);
+  delete snap.session.strikes; // as written by an older version
+  storage["ccarf.progress"] = JSON.stringify(snap);
+  const old = launch({ storage });
+  old.click("resume");
+  old.rightClick(0);
+  const sess = old.store().snapshot().session;
+  assert.deepEqual(sess.strikes[sess.questions[0].id], [0]);
 });
 
 test("the review filter starts at All again after resuming", () => {

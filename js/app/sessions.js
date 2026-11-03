@@ -18,6 +18,7 @@ function newSession(mode, questions, durationMs) {
     }),
     answers: questions.reduce(function (acc, q) { acc[q.id] = null; return acc; }, {}),
     flagged: {},
+    strikes: {}, // options struck through, per question id
     current: 0,
     startedAt: now,
     deadline: durationMs ? now + durationMs : null,
@@ -205,8 +206,18 @@ function isScenarioMode(mode) {
   return mode === "scenario" || mode === "scenario-practice";
 }
 
+/* Striking options out works wherever answers are not revealed straight
+ * away: mock, imported, custom, retry and weak-drill sessions and scenario
+ * exams — and scenario practice, as before. Not in plain practice, where
+ * the answer shows on the first click. */
+function canStrike(mode) {
+  return mode !== "practice";
+}
+
 /* Crossing an option out is only a visual aid: the answer stays. */
 function toggleStrike(optIdx) {
+  if (!canStrike(session.mode)) return;
+  if (!session.strikes) session.strikes = {};
   var id = session.questions[session.current].id;
   var list = (session.strikes[id] || []).slice();
   var at = list.indexOf(optIdx);
