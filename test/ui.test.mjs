@@ -1584,6 +1584,21 @@ test("closing a section is remembered too, and it survives a trip into a quiz", 
   assert.ok(!isOpen(app.html(), "h-history"));
 });
 
+test("By objective and Practice fold: open by default, and a closed one stays closed", () => {
+  const app = launch({ storage: RETURNING });
+  const colOpen = (html, id) => new RegExp('<details class="card h-col" id="' + id + '" open>').test(html);
+  let html = app.html();
+  for (const id of ["h-objectives", "h-practice"]) {
+    assert.ok(colOpen(html, id), id + " open by default");
+    assert.match(html, new RegExp('id="' + id + '" open><summary class="h-col-head"><h2 class="h-h2">'), id + " has a clickable heading");
+  }
+  app.toggle("h-practice", false);
+  app.click("toggle-mastery", { domain: "2" });      // any redraw
+  html = app.html();
+  assert.ok(!colOpen(html, "h-practice"), "Practice stays closed");
+  assert.ok(colOpen(html, "h-objectives"), "By objective untouched");
+});
+
 test("a collapsed scenario panel stays collapsed on the next question", () => {
   const app = launch();
   app.click("practice-scenario", { scenario: "support" });

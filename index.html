@@ -617,6 +617,12 @@
   .h-pct { font-family: var(--mono); font-size: .85rem; text-align: right; }
   .h-cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
   .h-col { padding: 20px 22px; }
+  .h-col-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; margin: -4px 0 4px; }
+  .h-col-head::-webkit-details-marker { display: none; }
+  .h-col-head .h-h2 { margin: 0; }
+  .h-col-head:focus-visible { outline: 2.5px solid var(--pen); outline-offset: 4px; border-radius: 6px; }
+  .h-col:not([open]) { align-self: start; }
+  .h-col:not([open]) > .h-col-head { margin: 0; }
   .h-dom { border-top: 1px solid var(--line); }
   .h-dom-head { display: grid; grid-template-columns: auto 1fr 140px 44px auto; gap: 12px; align-items: center; width: 100%; padding: 10px 0;
     border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
