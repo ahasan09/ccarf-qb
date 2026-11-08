@@ -170,8 +170,27 @@ var expandedMastery = 0; // domain whose subdomain breakdown is open (0 = none)
 var expandedPractice = 0; // domain whose practice subdomain list is open (0 = none)
 /* Open/closed state of collapsible <details> sections, by id. Screens are
  * redrawn from scratch, so without this every redraw (a click, a sync, a
- * theme change) would snap sections back to their default. */
-var foldState = {};
+ * theme change) would snap sections back to their default. Home sections
+ * are also saved in this browser so a reload keeps them; the account menu
+ * is a popup, not a section, so it always starts closed. */
+var FOLDS_KEY = "ccarf.folds";
+function isSavedFold(id) { return /^h-/.test(id) && id !== "h-acct"; }
+var foldState = (function () {
+  var saved = LS.get(FOLDS_KEY, {}), out = {};
+  if (saved && typeof saved === "object") {
+    Object.keys(saved).forEach(function (id) {
+      if (isSavedFold(id) && typeof saved[id] === "boolean") out[id] = saved[id];
+    });
+  }
+  return out;
+})();
+function setFold(id, open) {
+  foldState[id] = open;
+  if (!isSavedFold(id)) return;
+  var saved = {};
+  Object.keys(foldState).forEach(function (k) { if (isSavedFold(k)) saved[k] = foldState[k]; });
+  LS.set(FOLDS_KEY, saved);
+}
 function foldAttrs(id, openByDefault) {
   var open = Object.prototype.hasOwnProperty.call(foldState, id) ? foldState[id] : !!openByDefault;
   return ' id="' + id + '"' + (open ? " open" : "");
