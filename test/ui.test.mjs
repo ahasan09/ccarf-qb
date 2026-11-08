@@ -1565,7 +1565,7 @@ const RETURNING = { "ccarf.progress": JSON.stringify({ history: [], attempted: [
 const isOpen = (html, id) => new RegExp('<details class="card h-fold" id="' + id + '" open>').test(html);
 
 test("an opened home section stays open when the page redraws", () => {
-  const app = launch({ storage: RETURNING, resources: RESOURCES });
+  const app = launch({ storage: { ...RETURNING }, resources: RESOURCES });
   assert.ok(!isOpen(app.html(), "h-resources"), "closed by default");
   app.toggle("h-resources", true);
   app.click("toggle-mastery", { domain: "2" });      // any redraw
@@ -1576,7 +1576,7 @@ test("an opened home section stays open when the page redraws", () => {
 });
 
 test("closing a section is remembered too, and it survives a trip into a quiz", () => {
-  const app = launch({ storage: RETURNING });
+  const app = launch({ storage: { ...RETURNING } });
   app.toggle("h-history", true);
   app.toggle("h-history", false);
   app.click("practice", { domain: "3", sub: "3.1" });
@@ -1585,7 +1585,7 @@ test("closing a section is remembered too, and it survives a trip into a quiz", 
 });
 
 test("By objective and Practice fold: open by default, and a closed one stays closed", () => {
-  const app = launch({ storage: RETURNING });
+  const app = launch({ storage: { ...RETURNING } });
   const colOpen = (html, id) => new RegExp('<details class="card h-col" id="' + id + '" open>').test(html);
   let html = app.html();
   for (const id of ["h-objectives", "h-practice"]) {
@@ -1597,6 +1597,27 @@ test("By objective and Practice fold: open by default, and a closed one stays cl
   html = app.html();
   assert.ok(!colOpen(html, "h-practice"), "Practice stays closed");
   assert.ok(colOpen(html, "h-objectives"), "By objective untouched");
+});
+
+test("folded home sections are remembered after a reload; the account menu is not", () => {
+  const first = launch({ storage: { ...RETURNING } });
+  first.toggle("h-practice", false);
+  first.toggle("h-resources", true);
+  first.toggle("h-acct", true);
+  first.toggle("scn-brief", false);
+  const saved = JSON.parse(first.storage["ccarf.folds"]);
+  assert.deepEqual(saved, { "h-practice": false, "h-resources": true }, "only home sections are saved");
+
+  const html = launch({ storage: { ...first.storage }, resources: RESOURCES }).html();  // a reload
+  assert.ok(!/id="h-practice" open/.test(html), "Practice still closed");
+  assert.ok(/id="h-objectives" open/.test(html), "By objective keeps its default");
+  assert.ok(isOpen(html, "h-resources"), "an opened section stays open too");
+  assert.ok(!/id="h-acct" open/.test(html), "the account menu starts closed");
+});
+
+test("a broken saved fold state is ignored", () => {
+  const html = launch({ storage: { ...RETURNING, "ccarf.folds": "not json" } }).html();
+  assert.ok(/id="h-practice" open/.test(html));
 });
 
 test("a collapsed scenario panel stays collapsed on the next question", () => {
@@ -1614,7 +1635,7 @@ test("a collapsed scenario panel stays collapsed on the next question", () => {
 async function sendSignIn(config) {
   const sent = [];
   const sync = { enabled: true, user: () => null, sendCode: async (e) => { sent.push(e); } };
-  const app = launch({ sync, config, storage: RETURNING, inputs: { "auth-email": "me@example.com" } });
+  const app = launch({ sync, config, storage: { ...RETURNING }, inputs: { "auth-email": "me@example.com" } });
   const before = app.html();
   app.click("auth-send");
   await new Promise((r) => setImmediate(r));
@@ -1953,7 +1974,7 @@ test("the account card says how visits are counted, unless counting is off", () 
 
 test("score history is the last section on the home screen", () => {
   const { sync } = adminSync({ stats: STATS });
-  const html = launch({ sync, resources: RESOURCES, storage: RETURNING }).html();
+  const html = launch({ sync, resources: RESOURCES, storage: { ...RETURNING } }).html();
   const at = (id) => html.indexOf('id="' + id + '"');
   assert.ok(at("h-history") > 0);
   for (const id of ["h-resources", "h-visitors"]) {

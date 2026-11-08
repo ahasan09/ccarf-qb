@@ -185,7 +185,7 @@ app.addEventListener("input", function (ev) {
  * "toggle" doesn't bubble, hence the capture listener. */
 app.addEventListener("toggle", function (ev) {
   var el = ev.target;
-  if (el && el.tagName === "DETAILS" && el.id) foldState[el.id] = el.open;
+  if (el && el.tagName === "DETAILS" && el.id) setFold(el.id, el.open);
 }, true);
 
 app.addEventListener("click", function (ev) {
