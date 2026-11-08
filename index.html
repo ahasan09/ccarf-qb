@@ -615,7 +615,10 @@
   .h-meter { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
   .h-meter > i { display: block; height: 100%; border-radius: 99px; }
   .h-pct { font-family: var(--mono); font-size: .85rem; text-align: right; }
-  .h-cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+  /* The grid gap spaces the two cards, so they drop their own bottom margin
+   * (stacked on a phone it doubled the gap) and the grid supplies it once. */
+  .h-cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: stretch; margin-bottom: 16px; }
+  .h-cols > .card { margin-bottom: 0; }
   .h-col { padding: 20px 22px; }
   .h-col-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; margin: -4px 0 4px; }
   .h-col-head::-webkit-details-marker { display: none; }
