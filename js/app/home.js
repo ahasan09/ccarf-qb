@@ -192,7 +192,7 @@ function homeObjectives(progress, acc) {
     seenAll += row.attempted; rightAll += row.correct; totalAll += row.total;
   }
   var pc = function (a, b) { return b ? Math.round((a / b) * 100) : 0; };
-  var html = '<section class="card h-col"><h2 class="h-h2">By objective</h2>' +
+  var html = '<details class="card h-col"' + foldAttrs("h-objectives", true) + '>' + colHead("By objective") +
     '<p class="h-sub">Bar = accuracy in your exams. Open a domain for its task statements.</p>' +
     '<p class="h-bank">Question bank: Coverage ' + pc(seenAll, totalAll) + "% (" + seenAll + " of " + totalAll + " seen) · " +
     "Accuracy " + pc(rightAll, seenAll) + "% (" + rightAll + " of " + seenAll + " right) · " +
@@ -228,7 +228,13 @@ function homeObjectives(progress, acc) {
     }
     html += "</div>";
   }
-  return html + "</section>";
+  return html + "</details>";
+}
+
+/* By objective and Practice fold like the sections below them; open by
+ * default, and foldAttrs keeps a closed one closed across redraws. */
+function colHead(title) {
+  return '<summary class="h-col-head"><h2 class="h-h2">' + title + "</h2>" + chev() + "</summary>";
 }
 
 function scenarioRows(best) {
@@ -243,7 +249,7 @@ function scenarioRows(best) {
 function homePractice(progress, now, lookup) {
   var due = dueReviewIds(progress.review, now).filter(function (id) { return byId[id]; }).length;
   var savedIds = progress.saved.filter(function (id) { return byId[id]; });
-  var html = '<section class="card h-col"><h2 class="h-h2">Practice</h2><p class="h-sub">Untimed, with feedback after each answer.</p>' +
+  var html = '<details class="card h-col"' + foldAttrs("h-practice", true) + '>' + colHead("Practice") + '<p class="h-sub">Untimed, with feedback after each answer.</p>' +
     '<button class="h-row' + (due ? " h-due" : "") + '" data-action="start-review"' + (due ? "" : " disabled") + ">" +
     '<span>⟳ Due for review</span><span class="muted">' + (due ? due + " today" : "none due") + "</span></button>" +
     '<button class="h-row" data-action="start-saved"' + (savedIds.length ? "" : " disabled") + ">" +
@@ -255,7 +261,7 @@ function homePractice(progress, now, lookup) {
   html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
     '<button class="h-row" data-action="search"><span>🔍 Search questions</span><span class="muted">by keyword →</span></button>' +
     '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
-  return html + "</section>";
+  return html + "</details>";
 }
 
 function homeCollapsed(progress) {
