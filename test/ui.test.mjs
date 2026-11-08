@@ -1405,7 +1405,7 @@ test("account & sync is a dropdown on the header chip, not a section at the bott
 
   const { sync } = adminSync({ admin: false });
   const signedIn = launch({ sync }).html();
-  assert.match(signedIn, /<summary class="signed-chip"[^>]*><span class="dot">●<\/span> admin@example\.com/);
+  assert.match(signedIn, /<summary class="signed-chip"[^>]*><span class="dot">●<\/span> <span class="chip-email">admin@example\.com/);
   assert.ok(signedIn.includes('data-action="auth-signout"'));
   assert.ok(!signedIn.includes("Visitor stats ↓"), "no admin link for a regular account");
 

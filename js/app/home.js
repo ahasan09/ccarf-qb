@@ -331,7 +331,7 @@ function isAdminUser(S) {
 function accountMenu(S) {
   var user = S && S.enabled && S.user();
   var label = user
-    ? '<span class="dot">●</span> ' + esc(user.email || "signed in") + " " + chev(false, true)
+    ? '<span class="dot">●</span> <span class="chip-email">' + esc(user.email || "signed in") + "</span> " + chev(false, true)
     : (S && S.enabled ? "Sign in" : "Backup") + " " + chev(false, true);
   return '<details class="h-menu acct-menu"' + foldAttrs("h-acct") + ">" +
     '<summary class="' + (user ? "signed-chip" : "btn ghost small") + '" title="Account &amp; sync">' + label + "</summary>" +
