@@ -676,6 +676,7 @@ function accountCard() {
       '<button class="btn ghost small" data-action="auth-signout">Sign out</button></div>';
   } else {
     var emailCode = !!(window.CCARF_CONFIG && window.CCARF_CONFIG.emailCode);
+    if (authNotice) html += '<p class="auth-notice" role="alert">' + esc(authNotice) + "</p>";
     html += '<p class="muted auth-note">Sign in with your e-mail to back up progress and resume from any device.</p>' +
       '<div class="row"><input class="input" id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" value="' + esc(pendingEmail || "") + '">' +
       '<button class="btn primary" data-action="auth-send">' +

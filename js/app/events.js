@@ -383,6 +383,7 @@ function handleAction(btn) {
       btn.disabled = true;
       window.CCARF_SYNC.sendCode(email).then(function () {
         pendingEmail = email;
+        authNotice = null;
         renderHome();
       }).catch(function (err) {
         btn.disabled = false;
@@ -444,6 +445,7 @@ window.addEventListener("ccarf:auth", function () {
 window.addEventListener("ccarf:signin", function () {
   foldState["h-acct"] = false;
   pendingEmail = null;
+  authNotice = null;
 });
 
 /* Signing out must not leave one account's progress on screen for the
@@ -506,6 +508,10 @@ function syncRoute() {
   if (want === null) return;
   var have = location.hash === "#" ? "" : location.hash;
   if (want === have) return;
+  /* A sign-in link's tokens are still waiting for the Supabase client,
+   * which clears them itself once read. Rewriting the address now would
+   * throw the session away and leave the person signed out. */
+  if (isAuthHash(have)) return;
   var url = want || location.pathname + location.search;
   /* A finished or left quiz is not a place to go Back to. */
   if (routing || have === "#/quiz") window.history.replaceState(null, "", url);
@@ -556,7 +562,7 @@ if (!BANK.length) {
    * address opens the tab used last, as an installed app would. */
   var startHash = typeof location !== "undefined" && location.hash ? location.hash : "";
   routing = true;
-  try { if (startHash && startHash !== "#") goRoute(parseRoute(startHash)); else renderHome(); } finally { routing = false; }
+  try { if (startHash && startHash !== "#" && !isAuthHash(startHash)) goRoute(parseRoute(startHash)); else renderHome(); } finally { routing = false; }
   if (window.performance && performance.mark) performance.mark("app-ready");
   loadReferencedExams(Store.snapshot()).then(function () {
     if (view === "home") renderHome();

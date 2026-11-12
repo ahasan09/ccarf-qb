@@ -2475,3 +2475,25 @@ test("exam bottom bars have short labels for phones and keep their full names", 
   html = app.html();
   assert.match(html, /<span class="lbl-long">Submit exam<\/span> ?<span class="lbl-short">Submit<\/span>/);
 });
+
+test("a sign-in link's tokens stay in the address for the Supabase client", () => {
+  const tokens = "#access_token=abc&expires_in=3600&refresh_token=def&token_type=bearer&type=magiclink";
+  const b = fakeBrowser(tokens);
+  const app = b.bind(launch({ location: b.location, history: b.history, storage: { ...RETURNING } }));
+  assert.equal(b.location.hash, tokens, "the router must not rewrite the address before Supabase reads it");
+  assert.match(app.html(), /data-tab="today" aria-current="page"/, "the page still opens normally");
+  assert.ok(!app.html().includes("auth-notice"));
+});
+
+test("a refused sign-in link opens the account menu with the reason and cleans the address", () => {
+  const b = fakeBrowser("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+  const sync = { enabled: true, user: () => null, status: () => "idle", error: () => "", sendCode: () => Promise.resolve() };
+  const app = b.bind(launch({ location: b.location, history: b.history, sync, inputs: { "auth-email": "me@example.com" } }));
+  assert.equal(b.location.hash, "", "the error is taken out of the address");
+  assert.ok(app.html().includes('<details class="h-menu acct-menu" id="h-acct" open>'), "the account menu is open");
+  assert.match(app.html(), /class="auth-notice" role="alert">That sign-in link has expired or was already used/);
+  app.click("auth-send");
+  return Promise.resolve().then(() => {
+    assert.ok(!app.html().includes("auth-notice"), "asking for a new link clears the notice");
+  });
+});
