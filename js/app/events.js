@@ -277,8 +277,10 @@ function handleAction(btn) {
       Store.mutate(Mutations.setExamDate(got || null));
       return renderHome();
     }
+    case "tab": closeMenus(null); return setTab(btn.dataset.tab);
     case "open-section": {
       closeMenus(null);
+      if (btn.dataset.tab && btn.dataset.tab !== currentTab()) { homeTab = btn.dataset.tab; renderHome(); }
       var sec = document.getElementById(btn.dataset.id);
       if (sec) { sec.open = true; if (sec.scrollIntoView) sec.scrollIntoView({ behavior: "smooth" }); }
       return;

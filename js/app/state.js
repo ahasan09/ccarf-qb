@@ -234,7 +234,7 @@ function cycleTheme() {
  * from the keyboard, or a section toggle) is drawn again, focus returns to
  * it, so keyboard and screen-reader users keep their place instead of
  * starting over from the top of the page. */
-var FOCUS_KEYS = ["opt", "index", "domain", "sub", "scenario", "exam", "id", "filter", "pool", "date", "scope"];
+var FOCUS_KEYS = ["tab", "opt", "index", "domain", "sub", "scenario", "exam", "id", "filter", "pool", "date", "scope"];
 function paint(html) {
   var sel = focusSelector(document.activeElement);
   app.innerHTML = html;

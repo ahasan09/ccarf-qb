@@ -620,17 +620,10 @@
   .h-cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: stretch; margin-bottom: 16px; }
   .h-cols > .card { margin-bottom: 0; }
   .h-col { padding: 20px 22px; }
-  .h-col-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; margin: -4px 0 4px; }
-  .h-col-head::-webkit-details-marker { display: none; }
-  .h-col-head .h-h2 { margin: 0; }
-  .h-col-head:focus-visible { outline: 2.5px solid var(--pen); outline-offset: 4px; border-radius: 6px; }
-  .h-col:not([open]) { align-self: start; }
-  .h-col:not([open]) > .h-col-head { margin: 0; }
   .h-dom { border-top: 1px solid var(--line); }
   .h-dom-head { display: grid; grid-template-columns: auto 1fr 140px 44px auto; gap: 12px; align-items: center; width: 100%; padding: 10px 0;
     border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
   .h-dom-head small { font-size: .78rem; }
-  .h-bank-seen { display: block; }
   .h-objs { margin: 0 0 10px 44px; }
   .h-obj { display: grid; grid-template-columns: 1fr 90px 40px auto; gap: 10px; align-items: center; font-size: .86rem; padding: 5px 0; }
   .h-obj .btn { padding: 3px 10px; font-size: .78rem; }
@@ -651,7 +644,28 @@
   .h-step { border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 12px 14px; font-size: .88rem; color: var(--graphite); }
   .h-step b { display: block; color: var(--ink); margin-bottom: 4px; }
   .h-date { text-align: center; padding: 26px 16px; line-height: 1.8; }
-  @media (min-width: 900px) { #app:has(.h-ready) { max-width: 1120px; } }
+  /* home tabs: a row under the header; a bottom bar on phones */
+  .h-tabs { display: flex; gap: 4px; margin: -4px 0 20px; border-bottom: 1px solid var(--line); }
+  .h-tab { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 14px 11px; margin-bottom: -1px;
+    border: 0; border-bottom: 2.5px solid transparent; background: none; color: var(--graphite); font: inherit; font-weight: 700; cursor: pointer; }
+  .h-tab:hover { color: var(--ink); }
+  .h-tab[aria-current="page"] { color: var(--pen); border-bottom-color: var(--pen); }
+  .h-tab:focus-visible { outline: 2.5px solid var(--pen); outline-offset: -2px; border-radius: 8px; }
+  .h-tab-badge { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--pen); color: var(--card);
+    font-size: .72rem; line-height: 1.5; text-align: center; }
+  .h-exam span small { display: block; color: var(--graphite); font-size: .8rem; margin-top: 2px; }
+  .h-exam-main { border-color: var(--pen); }
+  @media (min-width: 900px) { #app:has(.h-page) { max-width: 1120px; } }
+  @media (max-width: 680px) {
+    #app:has(.h-tabs) { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+    .h-tabs { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; margin: 0; gap: 0;
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+      background: var(--card); border-top: 1px solid var(--line-strong); border-bottom: 0; }
+    .h-tab { flex-direction: column; gap: 2px; padding: 6px 2px; margin: 0; border-bottom: 0; font-size: .72rem; font-weight: 600; border-radius: 10px; }
+    .h-tab[aria-current="page"] { background: var(--pen-soft); }
+    .h-tab-badge { position: absolute; top: 2px; left: calc(50% + 6px); font-size: .66rem; min-width: 18px; padding: 0 5px; }
+  }
   @media (max-width: 760px) {
     .h-ready, .h-cols, .h-steps { grid-template-columns: 1fr; }
     .h-weak { grid-template-columns: 1fr 48px auto; }
