@@ -2460,3 +2460,18 @@ test("on a phone the scenario text folds after the first question of each scenar
   wide.click("next");
   assert.ok(/<details id="scn-brief" open>/.test(wide.html()), "wide screens keep it open");
 });
+
+test("exam bottom bars have short labels for phones and keep their full names", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  app.click("start-scenario-exam");
+  let html = app.html();
+  assert.ok(html.includes('aria-label="Previous question"'), "the arrow-only Previous is named");
+  assert.match(html, /<span class="lbl-long">Answered 0 of 60 · Flagged 0<\/span> ?<span class="lbl-short">0\/60<\/span>/);
+  assert.match(html, /<span class="lbl-long">Review all<\/span> ?<span class="lbl-short">Review<\/span>/);
+  app.click("toggle-flag");
+  assert.match(app.html(), /<span class="lbl-short">0\/60 · ⚑1<\/span>/, "flags show once there are some");
+  app.click("quit");
+  app.click("start-exam");
+  html = app.html();
+  assert.match(html, /<span class="lbl-long">Submit exam<\/span> ?<span class="lbl-short">Submit<\/span>/);
+});

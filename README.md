@@ -86,10 +86,11 @@ Modes:
   120 minutes, pass at 720. Details below.
 - **Practice by scenario** — untimed practice on one scenario, with a note
   for every option after each answer.
-- **On a phone**, question screens keep to one top line (a counter such as
-  "S1 · 2 / 60", the timer, and icon buttons for Comment, Flag, Save and
-  Exit), and a scenario's text is shown in full on its first question, then
-  folded to its name (one tap opens it).
+- **On a phone**, question screens keep one slim bar at the top (a counter
+  such as "S1 · 2 / 60", the timer, and icon buttons for Comment, Flag, Save
+  and Exit) and one at the bottom (an arrow for Previous, "12/60 · ⚑2",
+  Review or Submit, Next), both edge to edge, and a scenario's text is shown
+  in full on its first question, then folded to its name (one tap opens it).
 - **Unmapped questions** — the 300 questions not mapped to an exam-guide
   subdomain are kept in `questions/unmapped/`. They are not loaded with the
   page and not used anywhere in the app (practice, exams, search, review

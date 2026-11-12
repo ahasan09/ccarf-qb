@@ -78,8 +78,7 @@ function renderScenarioQuestion() {
   html += "</section></div>";
 
   html += '<div class="scn-bottom">' +
-    (isPractice ? "<span></span>" :
-      '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>");
+    (isPractice ? "<span></span>" : prevButton());
   if (isPractice) {
     html += showFeedback
       ? (session.current + 1 < total
@@ -88,11 +87,13 @@ function renderScenarioQuestion() {
       : '<span class="scn-mid"><span class="muted">Pick an answer to see the notes</span>' + kbdHint(sq.order.length, false, true) + "</span>";
   } else {
     var flaggedCount = Object.keys(session.flagged).filter(function (k) { return session.flagged[k]; }).length;
-    html += '<span class="scn-mid"><span class="muted">Answered ' + answeredCount(session) + " of " + total +
-      " · Flagged " + flaggedCount + "</span>" + kbdHint(sq.order.length, true, true) + "</span>" +
-      '<div class="row"><button class="btn" data-action="review-all">Review all</button>' +
+    html += '<span class="scn-mid"><span class="muted">' +
+      twoLabels("Answered " + answeredCount(session) + " of " + total + " · Flagged " + flaggedCount,
+        answeredCount(session) + "/" + total + (flaggedCount ? " · ⚑" + flaggedCount : "")) +
+      "</span>" + kbdHint(sq.order.length, true, true) + "</span>" +
+      '<div class="row"><button class="btn" data-action="review-all">' + twoLabels("Review all", "Review") + "</button>" +
       '<button class="btn primary" data-action="next">' +
-      (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
+      (session.current + 1 >= total ? twoLabels("Review &amp; submit →", "Submit →") : "Next →") + "</button></div>";
   }
   html += "</div></div>";
 
@@ -196,6 +197,15 @@ function saveButton(qid) {
   var saved = Store.snapshot().saved.indexOf(qid) !== -1;
   return barButton("toggle-saved", "star", saved ? "Saved" : "Save", saved ? " saved-on" : "");
 }
+/* Bottom bar pieces: words on wide screens, short forms on phones. */
+function prevButton() {
+  return '<button class="btn qprev" data-action="prev" aria-label="Previous question"' + (session.current === 0 ? " disabled" : "") +
+    '>←<span class="lbl-long"> Previous</span></button>';
+}
+function twoLabels(long, short) {
+  return '<span class="lbl-long">' + long + '</span><span class="lbl-short">' + short + "</span>";
+}
+
 /* Long title for wide screens, a short counter for phones. */
 function whereLine(title, longWhere, shortWhere) {
   return '<div class="q-where"><strong class="lbl-long">' + esc(title) + '</strong><span class="muted lbl-long"> · ' + longWhere +
@@ -323,7 +333,7 @@ function renderQuestion() {
 
   var hint = kbdHint(sq.order.length, !isPractice, !isPractice);
   html += '<div class="quiz-footer">' +
-    (isPractice ? "" : '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>") +
+    (isPractice ? "" : prevButton()) +
     hint +
     '<div class="row">';
   if (isPractice) {
@@ -337,8 +347,8 @@ function renderQuestion() {
   } else {
     var allAnswered = answeredSoFar >= total;
     html += '<button class="btn primary" data-action="submit">' +
-      (allAnswered ? "Finish &amp; see results"
-        : session.mode === "exam" ? "Submit exam" : "Submit answers") + "</button>" +
+      (allAnswered ? twoLabels("Finish &amp; see results", "Finish")
+        : twoLabels(session.mode === "exam" ? "Submit exam" : "Submit answers", "Submit")) + "</button>" +
       '<button class="btn" data-action="next"' + (session.current + 1 >= total ? " disabled" : "") + ">Next →</button>";
   }
   html += "</div></div></div>";
