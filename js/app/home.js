@@ -370,6 +370,9 @@ var ICON_PATHS = {
   star: '<path d="m12 3.5 2.6 5.3 5.9.86-4.25 4.14 1 5.86L12 16.9l-5.25 2.76 1-5.86L3.5 9.66l5.9-.86z"/>',
   miss: '<circle cx="12" cy="12" r="8.5"/><path d="m9 9 6 6M15 9l-6 6"/>',
   quiz: '<path d="M4 6h16M4 12h10M4 18h7"/><path d="m16 16 2 2 3.5-4"/>',
+  flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+  comment: '<path d="M4 5h16v11H9l-4 4z"/>',
+  exit: '<path d="M14 5h5v14h-5"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/>',
 };
 function icon(name) {
   return '<svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +

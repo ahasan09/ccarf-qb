@@ -505,6 +505,12 @@
   .scn-top { position: sticky; top: 0; z-index: 10; }
   .scn-bottom { position: sticky; bottom: 0; z-index: 10; }
   .btn.flag-on { color: var(--flag); border-color: var(--flag); background: var(--flag-soft); }
+  /* question top bar: words on wide screens, a counter and icons on phones */
+  .qbtn { display: inline-flex; align-items: center; gap: 6px; }
+  .qbtn .ico { margin: 0; color: currentColor; }
+  .qbtn.saved-on .ico { fill: currentColor; color: var(--flag); }
+  .lbl-short { display: none; }
+  .q-where { min-width: 0; }
   .scn-screen, .scn-body, .scn-question { min-width: 0; }
   .scn-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: stretch; }
   /* The panel fills the column's full height; the scenario text inside it
@@ -587,6 +593,11 @@
     .scn-body { grid-template-columns: minmax(0, 1fr); }
     .scn-question { padding: 16px; }
     .scn-top, .scn-bottom { padding: 8px 10px; }
+    /* bars run edge to edge on a phone, like the mock exam's, with no gaps */
+    .scn-screen { padding-top: 0; gap: 10px; }
+    .scn-top, .scn-bottom { margin: 0 -12px; border-radius: 0; border-left: 0; border-right: 0; }
+    .scn-top { border-top: 0; }
+    .scn-bottom { margin-bottom: 0; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); border-bottom: 0; }
     .scn-panel > details { position: static; max-height: none; }
     .scn-hint { display: none; }
   }
@@ -770,8 +781,23 @@
     .builder-domain .domain-row .btn { margin-left: auto; }
     .question-card { padding: 18px; }
     .score-card { gap: 18px; padding: 20px; }
-    .quiz-header { margin: 0 -12px 12px; padding: 10px 12px; }
-    .quiz-footer { margin: auto -12px 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .quiz-header { margin: 0 -12px 12px; padding: 8px 12px; }
+    .lbl-long { display: none; }
+    .lbl-short { display: inline; font-family: var(--mono); font-size: .9rem; white-space: nowrap; }
+    .quiz-header .row, .scn-top .row { gap: 4px; flex-wrap: nowrap; }
+    .qbtn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+    /* one-row bottom bars */
+    .quiz-footer, .scn-bottom { flex-wrap: nowrap; gap: 8px; }
+    .quiz-footer { padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); }
+    .quiz-footer .btn, .scn-bottom .btn { padding: 9px 14px; white-space: nowrap; }
+    .quiz-footer > .row, .scn-bottom .row { flex-wrap: nowrap; gap: 8px; }
+    .qprev { flex: none; width: 44px; padding: 9px 0 !important; }
+    .scn-mid { flex: 1; min-width: 0; }
+    .scn-mid .lbl-short { font-size: .82rem; }
+    .navigator { margin-bottom: 8px; padding: 2px 2px 4px; }
+    .progress { margin-bottom: 8px; }
+    .timer { padding: 4px 8px; font-size: .9rem; }
+    .quiz-footer { margin: auto -12px 0; }
     .history { font-size: 0.82rem; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -794,16 +820,9 @@
 <!-- Screen-reader announcements (js/app/state.js announce()): it lives
      outside #app, so redrawing the screen never resets it. -->
 <div id="sr-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-<script src="questions/domain1.js"></script>
-<script src="questions/domain2.js"></script>
-<script src="questions/domain3.js"></script>
-<script src="questions/domain4.js"></script>
-<script src="questions/domain5.js"></script>
-<script src="questions/domain1-set2.js"></script>
-<script src="questions/domain2-set2.js"></script>
-<script src="questions/domain3-set2.js"></script>
-<script src="questions/domain4-set2.js"></script>
-<script src="questions/domain5-set2.js"></script>
+<!-- The 300 questions without an exam-guide objective are in
+     questions/unmapped/ and are not loaded here; js/app/state.js fetches
+     them only for old attempts or sessions that used them. -->
 <script src="questions/extra-set.js"></script>
 <script src="questions/domain1-gap.js"></script>
 <script src="questions/domain2-gap.js"></script>

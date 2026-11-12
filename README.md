@@ -1,7 +1,8 @@
 # CCAR-F Question Bank
 
 Exam prep for the Claude Certified Architect (Foundations) certification —
-877 questions (including 40 select-two items) across the five exam domains, with
+577 questions mapped to the exam guide's objectives (including 40 select-two
+items) across the five exam domains, with
 realistic timed mock exams, scoring, review, and retry-failed drilling — plus a
 separate 383-question **scenario bank** and a **Scenario exam** that mirrors the
 real exam's format (see [Scenario exam](#scenario-exam)).
@@ -85,9 +86,16 @@ Modes:
   120 minutes, pass at 720. Details below.
 - **Practice by scenario** — untimed practice on one scenario, with a note
   for every option after each answer.
+- **On a phone**, question screens keep one slim bar at the top (a counter
+  such as "S1 · 2 / 60", the timer, and icon buttons for Comment, Flag, Save
+  and Exit) and one at the bottom (an arrow for Previous, "12/60 · ⚑2",
+  Review or Submit, Next), both edge to edge, and a scenario's text is shown
+  in full on its first question, then folded to its name (one tap opens it).
 - **Unmapped questions** — the 300 questions not mapped to an exam-guide
-  subdomain stay in `questions/` but are not used anywhere in the app
-  (practice, exams, search, review lists or coverage figures).
+  subdomain are kept in `questions/unmapped/`. They are not loaded with the
+  page and not used anywhere in the app (practice, exams, search, review
+  lists or coverage figures); the app fetches them only to reopen an old
+  attempt or finish a session that used them.
 - **Retry failed** — after any session, re-quiz only the questions you got
   wrong, repeatable until none remain.
 - **Drill weak questions** — every question you have ever missed collects
@@ -340,9 +348,11 @@ run, check-ins fail quietly and nobody sees the card.
   shortcuts until they finish). These are classic scripts sharing
   globals, not ES modules, so `index.html` still opens from `file://`; keep
   the order in `index.html`, `sw.js` and `test/engine.mjs` in step.
-- `questions/domain1.js` … `domain5.js` — original question sets (49/32/36/36/27)
-- `questions/domain1-set2.js` … `domain5-set2.js` — harder expansion sets
-  (32/22/24/24/18)
+- `questions/unmapped/domain1.js` … `domain5.js` and `domain1-set2.js` …
+  `domain5-set2.js` — the original and expansion sets (300 questions), none
+  mapped to an exam-guide objective; not loaded with the page.
+  `test/validate-bank.mjs` checks every question in `questions/` has a
+  subdomain and every one here has none.
 - `questions/extra-set.js` — 480 additional questions (tagged with
   `subdomain`)
 - `questions/domain1-gap.js` … `domain5-gap.js` — 57 targeted questions

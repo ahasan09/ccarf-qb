@@ -77,6 +77,7 @@ function launch(opts = {}) {
     CCARF_SYNC: opts.sync,
     CCARF_CONFIG: opts.config,
     history: opts.history,
+    ...(opts.win || {}),
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -146,6 +147,7 @@ function launch(opts = {}) {
     storage,
     store: () => win.CCARF_STORE,
     bank: () => win.QUESTION_BANK,
+    window: win,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     firePopState: () => win.dispatchEvent(new ctx.CustomEvent("popstate")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
@@ -565,10 +567,10 @@ test("reviewing a past attempt does not disturb current progress", () => {
 test("a question can be saved and later studied from the home screen", () => {
   const app = launch();
   app.click("start-exam");
-  assert.ok(app.html().includes("☆ Save"), "a save control is offered");
+  assert.ok(app.html().includes('aria-label="Save"'), "a save control is offered");
 
   app.click("toggle-saved");
-  assert.ok(app.html().includes("★ Saved"), "the control reflects the saved state");
+  assert.ok(app.html().includes('aria-label="Saved"'), "the control reflects the saved state");
   assert.equal(app.store().snapshot().saved.length, 1);
 
   app.click("quit");
@@ -585,7 +587,7 @@ test("saving the same question twice removes it", () => {
   app.click("toggle-saved");
   app.click("toggle-saved");
   assert.equal(app.store().snapshot().saved.length, 0);
-  assert.ok(app.html().includes("☆ Save"));
+  assert.ok(app.html().includes('aria-label="Save"'));
 });
 
 test("the custom builder can narrow a domain to chosen subdomains", () => {
@@ -2396,4 +2398,80 @@ test("adjacent inline elements get a space, so words never run together without 
   assert.ok(!/Practice all of D1\d/.test(text), "row label and count apart");
   app.click("practice", { domain: "1" });
   assert.ok(app.html().includes('<span class="opt-letter"></span>'), "an empty marker gets no stray space");
+});
+
+/* ---- the unmapped archive is fetched only when needed --------------------- */
+test("a normal visit never fetches the unmapped archive", async () => {
+  const app = launch({ storage: { ...RETURNING } });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(app.scripts.filter((t) => /questions\/unmapped\//.test(t.src)).length, 0);
+});
+
+test("an old attempt with archived questions fetches the archive, then can be reviewed", async () => {
+  const old = { id: "old-q1", domain: 1, question: "Archived?", options: ["A", "B", "C", "D"], answer: 0, explanation: "Because." };
+  const entry = { date: "2026-10-01T10:00:00.000Z", score: 500, pass: false, correct: 1, total: 1, examName: "Supplementary mock",
+    items: [{ id: "old-q1", given: 0 }] };
+  const app = launch({ storage: { "ccarf.progress": JSON.stringify({ history: [entry] }) } });
+  await new Promise((r) => setImmediate(r));
+  const asked = app.scripts.filter((t) => /questions\/unmapped\//.test(t.src));
+  assert.equal(asked.length, 10, "the ten archived files are requested");
+  app.window.QUESTION_BANK.push(old);                // what the files do when they load
+  asked.forEach((t) => t.onload());
+  await new Promise((r) => setImmediate(r));
+  app.click("review-attempt", { date: entry.date });
+  assert.ok(app.html().includes("Archived?"), "the old attempt opens");
+  tab(app, "practice");
+  assert.ok(!app.html().includes("Archived?") && app.html().includes("0 of 100 answered"), "archived questions stay hidden");
+});
+
+/* ---- question top bar on phones ------------------------------------------ */
+test("the question top bar has a short counter and named icon buttons for phones", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  app.click("start-exam");
+  let html = app.html();
+  assert.match(html, /<span class="lbl-short">1 \/ 60<\/span>/, "short counter");
+  assert.match(html, /<strong class="lbl-long">Mock Exam<\/strong>/, "full title for wide screens");
+  for (const name of ["Flag for review", "Save", "Exit"]) assert.ok(html.includes('aria-label="' + name + '"'), name + " keeps its name");
+  app.click("quit");
+  app.click("start-scenario-exam");
+  html = app.html();
+  assert.match(html, /<span class="lbl-short"><b>S1<\/b> · 1 \/ 60<\/span>/, "scenario and question");
+  assert.ok(html.includes('aria-label="Comment"'));
+});
+
+test("on a phone the scenario text folds after the first question of each scenario", () => {
+  const narrow = { matchMedia: () => ({ matches: true }) };
+  const app = launch({ storage: { ...RETURNING }, win: narrow });
+  app.click("start-scenario-exam");
+  const open = () => /<details id="scn-brief" open>/.test(app.html());
+  assert.ok(open(), "shown in full on the first question");
+  app.click("next");
+  assert.ok(!open(), "folded on the next one");
+  app.toggle("scn-brief", true);
+  app.click("toggle-flag");                            // any redraw of the same question
+  assert.ok(open(), "once opened it stays open on that question");
+  const sess = app.store().snapshot().session;
+  const firstOfNext = sess.questions.findIndex((s, i) => i > 0 && s.id.split("-")[1] !== sess.questions[0].id.split("-")[1]);
+  app.click("jump", { index: String(firstOfNext) });
+  assert.ok(open(), "a new scenario starts open again");
+
+  const wide = launch({ storage: { ...RETURNING } });
+  wide.click("start-scenario-exam");
+  wide.click("next");
+  assert.ok(/<details id="scn-brief" open>/.test(wide.html()), "wide screens keep it open");
+});
+
+test("exam bottom bars have short labels for phones and keep their full names", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  app.click("start-scenario-exam");
+  let html = app.html();
+  assert.ok(html.includes('aria-label="Previous question"'), "the arrow-only Previous is named");
+  assert.match(html, /<span class="lbl-long">Answered 0 of 60 · Flagged 0<\/span> ?<span class="lbl-short">0\/60<\/span>/);
+  assert.match(html, /<span class="lbl-long">Review all<\/span> ?<span class="lbl-short">Review<\/span>/);
+  app.click("toggle-flag");
+  assert.match(app.html(), /<span class="lbl-short">0\/60 · ⚑1<\/span>/, "flags show once there are some");
+  app.click("quit");
+  app.click("start-exam");
+  html = app.html();
+  assert.match(html, /<span class="lbl-long">Submit exam<\/span> ?<span class="lbl-short">Submit<\/span>/);
 });

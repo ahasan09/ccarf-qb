@@ -25,17 +25,17 @@ function renderScenarioQuestion() {
     : "Scenario " + (block + 1) + " of " + session.scenarioIds.length +
       " · Question " + (session.current + 1) + " of " + total;
 
+  var shortWhere = (isPractice ? "" : "<b>S" + (block + 1) + "</b> · ") + (session.current + 1) + " / " + total;
+  foldBriefOnPhone(q);
   var html = '<div class="q-screen scn-screen">';
-  html += '<div class="scn-top">' +
-    '<div><strong>' + esc(sessionTitle()) + '</strong><span class="muted"> · ' + where + "</span></div>" +
+  html += '<div class="scn-top">' + whereLine(sessionTitle(), where, shortWhere) +
     '<div class="row">' +
     timerHtml() +
     (isPractice
       ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
-      : '<button class="btn ghost small" data-action="comment">' + (comment ? "💬 Edit comment" : "💬 Comment") + "</button>") +
-    '<button class="btn ghost small' + (session.flagged[q.id] ? " flag-on" : "") + '" data-action="toggle-flag">' +
-    (session.flagged[q.id] ? "⚑ Flagged" : "⚑ Flag for review") + "</button>" +
-    '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
+      : barButton("comment", "comment", comment ? "Edit comment" : "Comment")) +
+    barButton("toggle-flag", "flag", session.flagged[q.id] ? "Flagged" : "Flag for review", session.flagged[q.id] ? " flag-on" : "") +
+    exitButton() +
     "</div></div>";
 
   html += '<div class="scn-body">' +
@@ -78,8 +78,7 @@ function renderScenarioQuestion() {
   html += "</section></div>";
 
   html += '<div class="scn-bottom">' +
-    (isPractice ? "<span></span>" :
-      '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>");
+    (isPractice ? "<span></span>" : prevButton());
   if (isPractice) {
     html += showFeedback
       ? (session.current + 1 < total
@@ -88,11 +87,13 @@ function renderScenarioQuestion() {
       : '<span class="scn-mid"><span class="muted">Pick an answer to see the notes</span>' + kbdHint(sq.order.length, false, true) + "</span>";
   } else {
     var flaggedCount = Object.keys(session.flagged).filter(function (k) { return session.flagged[k]; }).length;
-    html += '<span class="scn-mid"><span class="muted">Answered ' + answeredCount(session) + " of " + total +
-      " · Flagged " + flaggedCount + "</span>" + kbdHint(sq.order.length, true, true) + "</span>" +
-      '<div class="row"><button class="btn" data-action="review-all">Review all</button>' +
+    html += '<span class="scn-mid"><span class="muted">' +
+      twoLabels("Answered " + answeredCount(session) + " of " + total + " · Flagged " + flaggedCount,
+        answeredCount(session) + "/" + total + (flaggedCount ? " · ⚑" + flaggedCount : "")) +
+      "</span>" + kbdHint(sq.order.length, true, true) + "</span>" +
+      '<div class="row"><button class="btn" data-action="review-all">' + twoLabels("Review all", "Review") + "</button>" +
       '<button class="btn primary" data-action="next">' +
-      (session.current + 1 >= total ? "Review &amp; submit →" : "Next →") + "</button></div>";
+      (session.current + 1 >= total ? twoLabels("Review &amp; submit →", "Submit →") : "Next →") + "</button></div>";
   }
   html += "</div></div>";
 
@@ -180,6 +181,53 @@ function optionTags(isCorrect, picked) {
     (picked && !isCorrect ? ' <span class="tag">your answer</span>' : "");
 }
 
+/* ------------------------------------------------- question top bar */
+/* On a phone the top bar is one line: a short counter, the timer and icon
+ * buttons. The words (.lbl-long) show on wider screens; aria-label keeps
+ * each button's full name for screen readers either way. */
+function barButton(action, iconName, label, extraClass) {
+  return '<button class="btn ghost small qbtn' + (extraClass || "") + '" data-action="' + action + '" aria-label="' + esc(label) +
+    '" title="' + esc(label) + '">' + icon(iconName) + '<span class="lbl-long">' + esc(label) + "</span></button>";
+}
+function exitButton() {
+  return '<button class="btn exit small qbtn" data-action="quit" aria-label="Exit" title="Exit">' + icon("exit") +
+    '<span class="lbl-long">Exit</span></button>';
+}
+function saveButton(qid) {
+  var saved = Store.snapshot().saved.indexOf(qid) !== -1;
+  return barButton("toggle-saved", "star", saved ? "Saved" : "Save", saved ? " saved-on" : "");
+}
+/* Bottom bar pieces: words on wide screens, short forms on phones. */
+function prevButton() {
+  return '<button class="btn qprev" data-action="prev" aria-label="Previous question"' + (session.current === 0 ? " disabled" : "") +
+    '>←<span class="lbl-long"> Previous</span></button>';
+}
+function twoLabels(long, short) {
+  return '<span class="lbl-long">' + long + '</span><span class="lbl-short">' + short + "</span>";
+}
+
+/* Long title for wide screens, a short counter for phones. */
+function whereLine(title, longWhere, shortWhere) {
+  return '<div class="q-where"><strong class="lbl-long">' + esc(title) + '</strong><span class="muted lbl-long"> · ' + longWhere +
+    '</span><span class="lbl-short">' + shortWhere + "</span></div>";
+}
+
+/* On a phone the scenario text sits above the question; it is shown in full
+ * on the first question of each scenario and folded to its name after
+ * that (one tap opens it). Wide screens keep it open beside the question. */
+var briefShownFor = null;
+function isNarrow() {
+  return !!(window.matchMedia && window.matchMedia("(max-width: 680px)").matches);
+}
+function foldBriefOnPhone(q) {
+  var key = session.startedAt + ":" + session.current;
+  if (key === briefShownFor) return;
+  briefShownFor = key;
+  if (!isNarrow()) return;
+  var prev = session.current > 0 ? byId[session.questions[session.current - 1].id] : null;
+  foldState["scn-brief"] = !prev || prev.scenario !== q.scenario;
+}
+
 function renderQuestion() {
   announceQuestion();
   if (isScenarioMode(session.mode)) return renderScenarioQuestion();
@@ -198,16 +246,14 @@ function renderQuestion() {
   /* .q-screen is at least the window's height: the question area grows to
    * fill it and the action bar stays pinned to the bottom edge. */
   var html = '<div class="q-screen quiz-screen"><div class="quiz-header">' +
-    "<div><strong>" + sessionTitle() + "</strong>" +
-    '<span class="muted"> · Question ' + (session.current + 1) + " of " + total + "</span></div>" +
+    whereLine(sessionTitle(), "Question " + (session.current + 1) + " of " + total, (session.current + 1) + " / " + total) +
     '<div class="row">' +
     timerHtml() +
     (isPractice
       ? '<span class="tally"><span class="pill ok">✓ ' + session.tally.correct + '</span><span class="pill bad">✗ ' + session.tally.wrong + "</span></span>"
-      : '<button class="btn ghost small" data-action="toggle-flag">' + (session.flagged[q.id] ? "🚩 Flagged" : "Flag for review") + "</button>") +
-    '<button class="btn ghost small" data-action="toggle-saved" title="Keep this question to study later">' +
-    (Store.snapshot().saved.indexOf(q.id) !== -1 ? "★ Saved" : "☆ Save") + "</button>" +
-    '<button class="btn exit small" data-action="quit">Exit ↩</button>' +
+      : barButton("toggle-flag", "flag", session.flagged[q.id] ? "Flagged" : "Flag for review", session.flagged[q.id] ? " flag-on" : "")) +
+    saveButton(q.id) +
+    exitButton() +
     "</div></div>";
 
   var answeredSoFar = answeredCount(session);
@@ -287,7 +333,7 @@ function renderQuestion() {
 
   var hint = kbdHint(sq.order.length, !isPractice, !isPractice);
   html += '<div class="quiz-footer">' +
-    (isPractice ? "" : '<button class="btn" data-action="prev"' + (session.current === 0 ? " disabled" : "") + ">← Previous</button>") +
+    (isPractice ? "" : prevButton()) +
     hint +
     '<div class="row">';
   if (isPractice) {
@@ -301,8 +347,8 @@ function renderQuestion() {
   } else {
     var allAnswered = answeredSoFar >= total;
     html += '<button class="btn primary" data-action="submit">' +
-      (allAnswered ? "Finish &amp; see results"
-        : session.mode === "exam" ? "Submit exam" : "Submit answers") + "</button>" +
+      (allAnswered ? twoLabels("Finish &amp; see results", "Finish")
+        : twoLabels(session.mode === "exam" ? "Submit exam" : "Submit answers", "Submit")) + "</button>" +
       '<button class="btn" data-action="next"' + (session.current + 1 >= total ? " disabled" : "") + ">Next →</button>";
   }
   html += "</div></div></div>";

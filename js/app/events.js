@@ -344,6 +344,12 @@ function handleAction(btn) {
       var wanted = btn.dataset.date;
       var entry = null;
       Store.snapshot().history.forEach(function (h) { if (h.date === wanted) entry = h; });
+      if (entry && !entry.examId && missingReferencedIds({ history: [entry] }).length) {
+        return loadArchive().then(
+          function () { reviewStoredAttempt(wanted); },
+          function () { notify("That attempt's questions could not be loaded. Check your connection and try again."); }
+        );
+      }
       if (entry && entry.examId && examById[entry.examId] && !examById[entry.examId].questions) {
         return loadExam(entry.examId).then(
           function () { reviewStoredAttempt(wanted); },

@@ -1,5 +1,5 @@
 /* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v32";
+const VERSION = "v33";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
@@ -18,16 +18,6 @@ const CORE = [
   "sync.js",
   "icon.svg",
   "manifest.webmanifest",
-  "questions/domain1.js",
-  "questions/domain2.js",
-  "questions/domain3.js",
-  "questions/domain4.js",
-  "questions/domain5.js",
-  "questions/domain1-set2.js",
-  "questions/domain2-set2.js",
-  "questions/domain3-set2.js",
-  "questions/domain4-set2.js",
-  "questions/domain5-set2.js",
   "questions/extra-set.js",
   "questions/domain1-gap.js",
   "questions/domain2-gap.js",
