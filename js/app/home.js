@@ -34,9 +34,12 @@ function renderHome() {
     '<rect width="128" height="128" rx="28" fill="var(--pen)"/>' +
     '<circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/>' +
     '<circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Prep</div>' +
+    '<button class="h-search" data-action="search" aria-label="Search questions" aria-keyshortcuts="/">' + icon("search") +
+    '<span class="h-search-text">Search questions</span><kbd>/</kbd></button>' +
     '<span class="controls">' + acctChip +
-    '<button class="btn icon" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="Switch theme">' +
-    THEME_ICONS[currentTheme()] + "</button></span></div>";
+    '<button class="btn h-theme" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="' +
+    THEME_TITLES[currentTheme()] + '">' + THEME_ICONS[currentTheme()] + '<span class="h-theme-label">' +
+    THEME_NAMES[currentTheme()] + "</span></button></span></div>";
 
   /* Everyone gets the same tabs; only the top card differs, and parts
    * that need data (Next best step) appear once there is some. */
@@ -236,10 +239,14 @@ function heroCta(progress, saved, acc, now, firstVisit) {
     '<div class="h-cta">' + main + rest + "</div>" + scenarioExamNote();
 }
 
+/* Colour is backed by words: each bar says weak, close or on track to
+ * screen readers and on hover, and the By objective note explains it. */
+function meterStatus(pct) { return pct >= 72 ? "on track" : pct >= 50 ? "close" : "weak"; }
 function meter(pct) {
-  if (pct === null) return '<div class="h-meter"></div>';
+  if (pct === null) return '<div class="h-meter" role="img" aria-label="No answers yet"></div>';
   var c = pct >= 72 ? "var(--pass)" : pct >= 50 ? "var(--flag)" : "var(--fail)";
-  return '<div class="h-meter"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
+  var label = pct + "% right, " + meterStatus(pct);
+  return '<div class="h-meter" role="img" aria-label="' + label + '" title="' + label + '"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
 }
 
 function homeNextStep(acc) {
@@ -265,7 +272,7 @@ function homeObjectives(progress, acc) {
   }
   var pc = function (a, b) { return b ? Math.round((a / b) * 100) : 0; };
   var html = '<section class="card h-col" id="h-objectives"><h2 class="h-h2">By objective</h2>' +
-    '<p class="h-sub">Bar = accuracy in your exams. Open a domain for its task statements.</p>' +
+    '<p class="h-sub">Bars show accuracy in your exams: green is on track (72%+, the pass level), amber is close (50–71%), red is weak. Open a domain for its task statements.</p>' +
     '<p class="h-bank">Question bank: ' + seenAll + " of " + totalAll + " answered" +
     (seenAll ? " · " + pc(rightAll, seenAll) + "% right" : "") + "</p>";
   for (var d = 1; d <= 5; d++) {
@@ -305,21 +312,45 @@ function scenarioRows(best) {
   }).join("");
 }
 
+/* Small line icons, drawn with the text colour. */
+var ICON_PATHS = {
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+  review: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4.5h-4.5"/>',
+  star: '<path d="m12 3.5 2.6 5.3 5.9.86-4.25 4.14 1 5.86L12 16.9l-5.25 2.76 1-5.86L3.5 9.66l5.9-.86z"/>',
+  miss: '<circle cx="12" cy="12" r="8.5"/><path d="m9 9 6 6M15 9l-6 6"/>',
+  quiz: '<path d="M4 6h16M4 12h10M4 18h7"/><path d="m16 16 2 2 3.5-4"/>',
+};
+function icon(name) {
+  return '<svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON_PATHS[name] + "</svg>";
+}
+
 function homePractice(progress, now, lookup) {
   var due = dueReviewIds(progress.review, now).filter(isListed).length;
   var savedIds = progress.saved.filter(isListed);
-  var html = '<section class="card h-col" id="h-practice"><h2 class="h-h2">Practice</h2><p class="h-sub">Untimed, with feedback after each answer.</p>' +
-    '<button class="h-row' + (due ? " h-due" : "") + '" data-action="start-review"' + (due ? "" : " disabled") + ">" +
-    '<span>⟳ Due for review</span><span class="muted">' + (due ? due + " today" : "none due") + "</span></button>" +
-    '<button class="h-row" data-action="start-saved"' + (savedIds.length ? "" : " disabled") + ">" +
-    '<span>☆ Saved questions</span><span class="muted">' + savedIds.length + "</span></button>";
   var weakIds = progress.weak.filter(isListed);
-  if (weakIds.length) {
-    html += '<button class="h-row" data-action="start-weak"><span>Missed questions</span><span class="muted">' +
-      weakIds.length + "</span></button>";
+  var html = '<section class="card h-col" id="h-practice"><h2 class="h-h2">Practice</h2>' +
+    '<p class="h-sub">Learn mode: untimed, with the answer and explanation after each question.</p>';
+  /* Lists only appear once they have something in them. */
+  if (due) {
+    html += '<button class="h-row h-due" data-action="start-review"><span>' + icon("review") + "Due for review</span>" +
+      '<span class="muted">' + due + " today</span></button>";
   }
-  html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
-    '<button class="h-row" data-action="search"><span>🔍 Search questions</span><span class="muted">by keyword →</span></button>' +
+  if (savedIds.length) {
+    html += '<button class="h-row" data-action="start-saved"><span>' + icon("star") + "Saved questions</span>" +
+      '<span class="muted">' + savedIds.length + "</span></button>";
+  }
+  if (weakIds.length) {
+    html += '<button class="h-row" data-action="start-weak"><span>' + icon("miss") + "Missed questions</span>" +
+      '<span class="muted">' + weakIds.length + "</span></button>";
+  }
+  if (!due && !savedIds.length && !weakIds.length) {
+    html += '<p class="h-empty">Questions you save, miss, or that come back for review will be listed here.</p>';
+  }
+  html += '<button class="h-row" data-action="custom-builder"><span>' + icon("quiz") + "Custom quiz</span>" +
+    '<span class="muted">build →</span></button>' +
+    '<button class="h-row" data-action="search"><span>' + icon("search") + "Search questions</span>" +
+    '<span class="muted">by keyword →</span></button>' +
     '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
   return html + "</section>";
 }

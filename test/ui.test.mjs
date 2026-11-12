@@ -167,8 +167,8 @@ function launch(opts = {}) {
     type: (id, value) => {
       (appListeners.input || []).forEach((fn) => fn({ target: { id, value } }));
     },
-    key: (key) => {
-      const ev = { key, preventDefault() {}, target: { tagName: "BODY", closest: () => null } };
+    key: (key, target) => {
+      const ev = { key, preventDefault() {}, target: target || { tagName: "BODY", closest: () => null } };
       (docListeners.keydown || []).forEach((fn) => fn(ev));
     },
   };
@@ -745,7 +745,7 @@ test("saved, missed and due lists skip unmapped questions kept from before", () 
     history: [], attempted: ["d1-q1"], saved: ["d1-q25", "d1-q3"], weak: ["d1-q26", "d1-q27"], review: due,
   }) });
   const html = tab(app, "practice");
-  assert.match(html, /☆ Saved questions<\/span><span class="muted">1</, "one saved question listed");
+  assert.match(html, /Saved questions<\/span><span class="muted">1</, "one saved question listed");
   assert.ok(!html.includes('data-action="start-weak"'), "only unmapped missed questions: no drill");
   assert.ok(html.includes("1 today"), "one question due, not two");
   app.click("start-saved");
@@ -1301,8 +1301,8 @@ test("a fresh visitor sees the same home sections as a returning one", () => {
   assert.ok(!app.html().includes("Next best step"), "no weak objectives without answers");
   const html = allTabs(app);
   for (const id of ["h-objectives", "h-practice", "h-history"]) assert.ok(html.includes('id="' + id + '"'), id);
-  for (const a of ['data-action="toggle-mastery"', 'data-action="custom-builder"', 'data-action="search"',
-    'data-action="start-review"', 'data-action="start-saved"']) assert.ok(html.includes(a), a);
+  for (const a of ['data-action="toggle-mastery"', 'data-action="custom-builder"', 'data-action="search"']) assert.ok(html.includes(a), a);
+  assert.ok(html.includes("will be listed here"), "empty lists explained in one line");
   assert.equal(html.split('data-action="practice-scenario"').length - 1, SCENARIOS.length, "each scenario listed once");
 });
 
@@ -1366,8 +1366,8 @@ test("the returning home keeps every way in", () => {
   seedHistory(app, [700]);
   const html = allTabs(app);
   for (const a of ['data-action="start-scenario-exam"', 'data-action="start-exam"',
-    'data-action="custom-builder"', 'data-action="practice-scenario"', 'data-action="start-review"',
-    'data-action="start-saved"', 'data-action="toggle-mastery"']) assert.ok(html.includes(a), a);
+    'data-action="custom-builder"', 'data-action="practice-scenario"', 'data-action="search"',
+    'data-action="toggle-mastery"']) assert.ok(html.includes(a), a);
   assert.ok(html.includes("By objective") && html.includes("Score history") && html.includes("Account"));
   tab(app, "practice");
   app.click("toggle-mastery", { domain: "2" });
@@ -2090,4 +2090,52 @@ test("a rate-limited sign-in e-mail gets a plain explanation", () => {
     assert.deepEqual(alerts, ["Too many sign-in e-mails were sent recently. Please try again in about an hour."]);
     assert.equal(btn.disabled, false, "the button works again");
   });
+});
+
+/* ---- search everywhere, quiet lists, labelled bars ------------------------ */
+test("search sits in the header on every tab", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  for (const t of ["today", "practice", "exams", "resources"]) {
+    assert.match(tab(app, t), /<button class="h-search" data-action="search" aria-label="Search questions" aria-keyshortcuts="\/">/, t);
+  }
+  app.click("search");
+  assert.ok(app.html().includes('id="search-q"'), "it opens the search screen");
+});
+
+test("/ opens search, but not mid-quiz or while typing", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  app.key("/", { tagName: "INPUT", closest: () => null });
+  assert.ok(!app.html().includes('id="search-q"'), "typing a slash into a box is just typing");
+  app.key("/");
+  assert.ok(app.html().includes('id="search-q"'), "from home");
+  app.click("home");
+  app.click("practice", { domain: "1" });
+  app.key("/");
+  assert.ok(!app.html().includes('id="search-q"') && app.html().includes('data-action="select"'), "not during a quiz");
+});
+
+test("practice lists appear only once they have something in them", () => {
+  const entry = { due: 0, step: 1, updatedAt: 1 };
+  let html = tab(launch({ storage: { ...RETURNING } }), "practice");
+  for (const a of ["start-review", "start-saved", "start-weak"]) assert.ok(!html.includes('data-action="' + a + '"'), a + " hidden");
+  assert.ok(html.includes("will be listed here"));
+  html = tab(launch({ storage: { "ccarf.progress": JSON.stringify({ attempted: ["d1-q1"], saved: ["d1-q3"], review: { "d1-q2": entry } }) } }), "practice");
+  assert.ok(html.includes('data-action="start-review"') && html.includes('data-action="start-saved"'));
+  assert.ok(!html.includes('data-action="start-weak"') && !html.includes("will be listed here"));
+  assert.ok(!/[⟳☆🔍]/u.test(html), "icons are SVG, not emoji");
+});
+
+test("objective bars say weak, close or on track, not just a colour", () => {
+  const app = launch();
+  seedHistory(app, [700]);
+  const html = tab(app, "practice");
+  assert.match(html, /class="h-meter" role="img" aria-label="(\d+% right, (weak|close|on track)|No answers yet)"/);
+  assert.ok(html.includes("green is on track"), "the colours are explained");
+});
+
+test("the theme button names the current theme", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  assert.match(app.html(), /<span class="h-theme-label">Auto<\/span>/);
+  app.click("cycle-theme");
+  assert.match(app.html(), /aria-label="Theme: Light \(click for Dark\)">[^<]*<span class="h-theme-label">Light/);
 });
