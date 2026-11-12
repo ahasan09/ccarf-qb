@@ -285,3 +285,17 @@ test("recording activity twice, or merging two devices, never double-counts", ()
   assert.ok(!s.activity["2026-11-12"], "older than 60 days is dropped");
   assert.deepEqual(normalizeProgress({ activity: { "bad": ["x"], "2026-11-12": [1, "ok"] } }).activity, { "2026-11-12": ["ok"] });
 });
+
+test("fields from a newer app version survive normalising, mutations and merges", () => {
+  const { normalizeProgress, applyMutations, Mutations, mergeProgress } = app;
+  const raw = { history: [], future: { goals: [1, 2] }, flag: true };
+  const s = normalizeProgress(raw);
+  assert.deepEqual(s.future, { goals: [1, 2] });
+  assert.equal(s.flag, true);
+  const after = applyMutations(s, [Mutations.toggleSaved("q1"), Mutations.recordAnswer("q2", true)]);
+  assert.deepEqual(after.future, { goals: [1, 2] }, "an older client's write keeps it");
+  const merged = mergeProgress({ future: "old", a: 1 }, { future: "new" });
+  assert.equal(merged.future, "new", "the second copy wins");
+  assert.equal(merged.a, 1);
+  assert.ok(!("ccarf.history" in normalizeProgress({ "ccarf.history": [] })), "legacy keys are not carried");
+});
