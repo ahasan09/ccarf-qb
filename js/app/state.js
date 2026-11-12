@@ -8,7 +8,9 @@
  * ones (those with a subdomain) are used. The unmapped ones stay on disk and
  * in byId, so old attempts and sessions that used them still open, but
  * they never appear in practice, exams, search or the review lists. */
-var FULL_BANK = window.QUESTION_BANK || [];
+/* A copy: archived questions loaded later (below) are added to the
+ * global array, and must not change the startup count or the bank. */
+var FULL_BANK = (window.QUESTION_BANK || []).slice();
 var BANK = filterByTagging(FULL_BANK, true);
 /* Imported exams are deliberately kept out of BANK: they never feed the
  * practice pools, custom quizzes, mastery or the weak-question drill.
@@ -85,6 +87,46 @@ function loadExam(examId) {
 
 /* Load every exam referenced by stored progress, so a resumed session, a
  * saved question or a past attempt still resolves after a reload. */
+/* The 300 questions not mapped to an exam-guide objective live in
+ * questions/unmapped/ and are not loaded at start. They are fetched only
+ * when stored progress refers to them — an old supplementary attempt or an
+ * unfinished session — so those can still be reviewed or finished. They
+ * join byId but stay hidden, as before. */
+var ARCHIVE_FILES = [1, 2, 3, 4, 5].reduce(function (list, d) {
+  return list.concat(["questions/unmapped/domain" + d + ".js", "questions/unmapped/domain" + d + "-set2.js"]);
+}, []);
+var archiveLoad = null;
+
+function loadScript(src) {
+  return new Promise(function (resolve, reject) {
+    var tag = document.createElement("script");
+    tag.src = src;
+    tag.onload = resolve;
+    tag.onerror = function () { reject(new Error("Could not load " + src)); };
+    document.head.appendChild(tag);
+  });
+}
+
+function loadArchive() {
+  if (!archiveLoad) {
+    archiveLoad = Promise.all(ARCHIVE_FILES.map(loadScript)).then(function () {
+      (window.QUESTION_BANK || []).forEach(function (q) {
+        if (!byId[q.id]) { byId[q.id] = q; hiddenIds[q.id] = true; }
+      });
+    }, function (err) { archiveLoad = null; throw err; });
+  }
+  return archiveLoad;
+}
+
+/* Ids a stored attempt or session needs that are not loaded yet. */
+function missingReferencedIds(progress) {
+  var ids = [];
+  var note = function (id) { if (id && !byId[id]) ids.push(id); };
+  if (progress.session) (progress.session.questions || []).forEach(function (s) { note(s && s.id); });
+  (progress.history || []).forEach(function (h) { (h.items || []).forEach(function (it) { note(it.id); }); });
+  return ids;
+}
+
 function loadReferencedExams(progress) {
   var ids = {};
   var note = function (id) { if (id && examById[id]) ids[id] = true; };
@@ -92,10 +134,12 @@ function loadReferencedExams(progress) {
   (progress.history || []).forEach(function (h) { note(h.examId); });
   (progress.saved || []).forEach(function (qid) { note(String(qid).split("-")[0]); });
   var pending = Object.keys(ids).filter(function (id) { return !examById[id].questions; });
-  if (!pending.length) return Promise.resolve();
   return Promise.all(pending.map(function (id) {
     return loadExam(id).catch(function () { return null; });
-  }));
+  })).then(function () {
+    /* Anything still unknown once imported exams are in is archived. */
+    if (missingReferencedIds(progress).length) return loadArchive().catch(function () { return null; });
+  });
 }
 
 var LS = {

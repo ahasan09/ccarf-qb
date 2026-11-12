@@ -6,7 +6,7 @@
 "use strict";
 
 var EXAM_DRAW_COUNTS = { 1: 16, 2: 11, 3: 12, 4: 12, 5: 9 };
-var EXPECTED_BANK_SIZE = 877; // kept honest by test/validate-bank.mjs
+var EXPECTED_BANK_SIZE = 577; // questions loaded at start; kept honest by test/validate-bank.mjs
 var PASS_SCORE = 720;
 var EXAM_DURATION_MS = 120 * 60 * 1000;
 var DOMAIN_NAMES = {

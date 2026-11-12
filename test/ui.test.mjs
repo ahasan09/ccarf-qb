@@ -146,6 +146,7 @@ function launch(opts = {}) {
     storage,
     store: () => win.CCARF_STORE,
     bank: () => win.QUESTION_BANK,
+    window: win,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
     firePopState: () => win.dispatchEvent(new ctx.CustomEvent("popstate")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
@@ -2396,4 +2397,28 @@ test("adjacent inline elements get a space, so words never run together without 
   assert.ok(!/Practice all of D1\d/.test(text), "row label and count apart");
   app.click("practice", { domain: "1" });
   assert.ok(app.html().includes('<span class="opt-letter"></span>'), "an empty marker gets no stray space");
+});
+
+/* ---- the unmapped archive is fetched only when needed --------------------- */
+test("a normal visit never fetches the unmapped archive", async () => {
+  const app = launch({ storage: { ...RETURNING } });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(app.scripts.filter((t) => /questions\/unmapped\//.test(t.src)).length, 0);
+});
+
+test("an old attempt with archived questions fetches the archive, then can be reviewed", async () => {
+  const old = { id: "old-q1", domain: 1, question: "Archived?", options: ["A", "B", "C", "D"], answer: 0, explanation: "Because." };
+  const entry = { date: "2026-10-01T10:00:00.000Z", score: 500, pass: false, correct: 1, total: 1, examName: "Supplementary mock",
+    items: [{ id: "old-q1", given: 0 }] };
+  const app = launch({ storage: { "ccarf.progress": JSON.stringify({ history: [entry] }) } });
+  await new Promise((r) => setImmediate(r));
+  const asked = app.scripts.filter((t) => /questions\/unmapped\//.test(t.src));
+  assert.equal(asked.length, 10, "the ten archived files are requested");
+  app.window.QUESTION_BANK.push(old);                // what the files do when they load
+  asked.forEach((t) => t.onload());
+  await new Promise((r) => setImmediate(r));
+  app.click("review-attempt", { date: entry.date });
+  assert.ok(app.html().includes("Archived?"), "the old attempt opens");
+  tab(app, "practice");
+  assert.ok(!app.html().includes("Archived?") && app.html().includes("0 of 100 answered"), "archived questions stay hidden");
 });
