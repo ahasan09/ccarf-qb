@@ -2133,7 +2133,7 @@ test("objective bars say weak, close or on track, not just a colour", () => {
   seedHistory(app, [700]);
   const html = tab(app, "practice");
   assert.match(html, /class="h-meter" role="img" aria-label="(\d+% right, (weak|close|on track)|No answers yet)"/);
-  assert.ok(html.includes("green is on track"), "the colours are explained");
+  assert.ok(html.includes("Green is on track"), "the colours are explained");
 });
 
 test("the theme button names the current theme", () => {
@@ -2267,4 +2267,23 @@ test("a bookmarked address opens that tab or screen", () => {
   assert.ok(launch({ location: search.location, history: search.history }).html().includes('id="search-q"'));
   const stale = fakeBrowser("#/results");
   assert.ok(launch({ location: stale.location, history: stale.history, storage: { ...RETURNING } }).html().includes("h-tabs"), "nothing to show: home");
+});
+
+test("practice alone fills the objective bars, and the line under each name gives both sources", () => {
+  const guideBank = bank().map((q) => Object.assign({}, q,
+    { subdomain: q.domain === 1 ? "1.1 Design and implement agentic loops for autonomous task execution" : q.subdomain }));
+  const app = launch({ bank: guideBank });
+  app.click("practice", { domain: "1", sub: "1.1" });
+  app.click("select", { opt: "0" }); // right
+  app.click("next");
+  app.click("select", { opt: "1" }); // wrong
+  app.click("quit");
+  let html = tab(app, "practice");
+  assert.match(html, /D1<\/span><span>[^<]*<small class="h-score-line">Practice 50%<\/small>/, "domain line names its source");
+  assert.match(html, /aria-label="50% right in practice, close"/, "the bar is filled from practice");
+  assert.match(html, /D2<\/span><span>[^<]*<small class="h-score-line">No answers yet/);
+
+  app.click("toggle-mastery", { domain: "1" });
+  html = app.html();
+  assert.match(html, /1\.1 Design and implement agentic loops for autonomous task execution<small class="h-score-line">Practice 50%/, "objective line too");
 });

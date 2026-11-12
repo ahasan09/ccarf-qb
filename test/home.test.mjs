@@ -90,7 +90,7 @@ test("review and exam-date mutations apply", () => {
 });
 
 /* ------------------------------------------------------------ Task 2 */
-const { examAttempts, predictedScore, objectiveAccuracy, weakestObjectives, objectiveDrillIds, bestScenarioScores } = app;
+const { examAttempts, predictedScore, objectiveAccuracy, practiceAccuracy, weakestObjectives, objectiveDrillIds, bestScenarioScores } = app;
 
 const hist = (scores) => scores.map((score, i) => ({ date: `2026-10-0${i + 1}T00:00:00Z`, score, items: [] }));
 
@@ -237,4 +237,14 @@ test("the shipped resources file is all valid, tracking-free https links", async
     assert.doesNotMatch(r.url, /[?&](utm_|rcm=|trackingId=)/, r.id + " carries tracking parameters");
   }
   assert.ok(list.some((r) => r.id === "exam-guide"), "the exam guide is listed");
+});
+
+test("practiceAccuracy counts answered bank questions per objective, right if ever right", () => {
+  const sub = SUBDOMAINS[0];
+  const bank = [
+    { id: "a", subdomain: sub }, { id: "b", subdomain: sub }, { id: "c", subdomain: sub },
+    { id: "d", subdomain: "9.9 Not in the guide" }, { id: "e" },
+  ];
+  assert.deepEqual(practiceAccuracy(bank, ["a"], ["a", "b", "d", "e"]), { [sub]: { correct: 1, total: 2 } });
+  assert.deepEqual(practiceAccuracy(bank, [], []), {});
 });

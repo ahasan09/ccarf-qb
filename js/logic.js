@@ -513,6 +513,22 @@ function objectiveAccuracy(history, lookup) {
   return acc;
 }
 
+/* Practice accuracy per objective: of the bank questions answered outside
+ * exams, how many were got right at least once. Same shape as
+ * objectiveAccuracy, so the two can be shown side by side. */
+function practiceAccuracy(bank, correctEverIds, attemptedIds) {
+  var correct = indexIds(correctEverIds);
+  var seen = indexIds(attemptedIds);
+  var acc = {};
+  (bank || []).forEach(function (q) {
+    if (SUBDOMAINS.indexOf(q.subdomain) < 0 || !(seen[q.id] || correct[q.id])) return;
+    var row = acc[q.subdomain] || (acc[q.subdomain] = { correct: 0, total: 0 });
+    row.total++;
+    if (correct[q.id]) row.correct++;
+  });
+  return acc;
+}
+
 function weakestObjectives(acc, limit, minAnswered) {
   limit = limit || 3;
   minAnswered = minAnswered || 3;
