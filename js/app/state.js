@@ -235,10 +235,26 @@ function cycleTheme() {
  * from the keyboard, or a section toggle) is drawn again, focus returns to
  * it, so keyboard and screen-reader users keep their place instead of
  * starting over from the top of the page. */
+/* Screens are built as strings with no whitespace between tags. Where two
+ * inline elements sit side by side (a label and its count, a name and its
+ * score line), only CSS keeps their words apart, so copied text, reader
+ * view, a screen reader or a page whose styles have not loaded read
+ * "Saved questions1". A space goes between adjacent inline elements, and
+ * before a <small> that follows text. In flex rows, where most of these
+ * sit, the browser ignores it, so nothing moves on screen. */
+var INLINE_TAGS = "span|b|strong|small|em|i|a|button|kbd|label|time";
+/* Only where neither side already has one: no space before the closing
+ * tag, and none at the start of the next element's text. */
+var INLINE_GAP = new RegExp("(?<!\\s)(</(?:" + INLINE_TAGS + ")>)(?=<(?:" + INLINE_TAGS + ")(?:\\s[^>]*)?>(?!\\s))", "g");
+var SMALL_AFTER_TEXT = /([^\s>])(<small(?:\s[^>]*)?>)(?!\s)/g;
+function spaced(html) {
+  return html.replace(INLINE_GAP, "$1 ").replace(SMALL_AFTER_TEXT, "$1 $2");
+}
+
 var FOCUS_KEYS = ["tab", "opt", "index", "domain", "sub", "scenario", "exam", "id", "filter", "pool", "date", "scope"];
 function paint(html) {
   var sel = focusSelector(document.activeElement);
-  app.innerHTML = html;
+  app.innerHTML = spaced(html);
   var el = sel && app.querySelector(sel);
   if (el && el.focus) el.focus({ preventScroll: true });
   if (typeof syncRoute === "function") syncRoute();

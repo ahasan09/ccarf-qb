@@ -259,12 +259,12 @@ function searchHits() {
 
 function renderSearch() {
   view = "search";
-  app.innerHTML = '<div class="quiz-header"><div><strong>Search questions</strong></div>' +
+  app.innerHTML = spaced('<div class="quiz-header"><div><strong>Search questions</strong></div>' +
     '<button class="btn ghost small" data-action="home">← Home</button></div>' +
     '<div class="card"><label class="search-label" for="search-q">Find questions by keyword — e.g. <i>tool_choice</i>, <i>hooks</i>, <i>CLAUDE.md</i></label>' +
     '<input class="input search-input" id="search-q" type="search" autocomplete="off" value="' + esc(searchQuery) + '" autofocus>' +
     '<p class="muted search-note">Searches the question bank and the scenario questions (text, options, explanations and objectives). Imported exams are not included.</p></div>' +
-    '<div id="search-results" aria-live="polite">' + searchResultsHtml() + "</div>";
+    '<div id="search-results" aria-live="polite">' + searchResultsHtml() + "</div>");
   syncRoute();
   var input = document.getElementById("search-q");
   if (input && input.focus) {
@@ -277,7 +277,7 @@ function renderSearch() {
 function updateSearch(query) {
   searchQuery = String(query || "");
   var box = document.getElementById("search-results");
-  if (box) box.innerHTML = searchResultsHtml();
+  if (box) box.innerHTML = spaced(searchResultsHtml());
   else renderSearch();
 }
 
