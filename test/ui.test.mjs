@@ -749,7 +749,7 @@ test("saved, missed and due lists skip unmapped questions kept from before", () 
     history: [], attempted: ["d1-q1"], saved: ["d1-q25", "d1-q3"], weak: ["d1-q26", "d1-q27"], review: due,
   }) });
   const html = tab(app, "practice");
-  assert.match(html, /Saved questions<\/span><span class="muted">1</, "one saved question listed");
+  assert.match(html, /Saved questions<\/span> <span class="muted">1</, "one saved question listed");
   assert.ok(!html.includes('data-action="start-weak"'), "only unmapped missed questions: no drill");
   assert.ok(html.includes("1 today"), "one question due, not two");
   app.click("start-saved");
@@ -1315,7 +1315,7 @@ test("after an exam the readiness panel shows a weighted predicted score and ver
   seedHistory(app, [600, 700, 800]);
   const html = app.html();
   assert.ok(!html.includes('data-action="start-diagnostic"'), "returning layout");
-  assert.ok(html.includes(">717<"), "weighted score shown");
+  assert.match(html, />717 ?</, "weighted score shown");
   assert.ok(html.includes("Borderline"));
   assert.ok(html.includes("last 3 exams"));
   assert.ok(html.includes("<polyline"), "trend chart drawn");
@@ -1326,7 +1326,7 @@ test("imported-only history shows a score but no next step", () => {
   const app = launch();
   seedHistory(app, [800], { kind: null, name: "Practice Test 1", items: [{ id: "pt1-q001", given: 0 }] });
   const html = app.html();
-  assert.ok(html.includes(">800<"));
+  assert.match(html, />800 ?</);
   assert.ok(!html.includes("Next best step"));
 });
 
@@ -1409,7 +1409,7 @@ test("imported attempts never feed the weakest objectives", () => {
   const app = launch({ exams: [{ id: "imp", name: "Imported", questions }] });
   const items = questions.slice(0, 5).map((q) => ({ id: q.id, given: 1 }));
   seedHistory(app, [500], { kind: null, name: "Imported", items });
-  assert.ok(app.html().includes(">500<"), "the score still counts");
+  assert.match(app.html(), />500 ?</, "the score still counts");
   assert.ok(!app.html().includes("Next best step"));
 });
 
@@ -2280,13 +2280,13 @@ test("practice alone fills the objective bars, and the line under each name give
   app.click("select", { opt: "1" }); // wrong
   app.click("quit");
   let html = tab(app, "practice");
-  assert.match(html, /D1<\/span><span>[^<]*<small class="h-score-line">Practice 50%<\/small>/, "domain line names its source");
+  assert.match(html, /D1<\/span> <span>[^<]* <small class="h-score-line">Practice 50%<\/small>/, "domain line names its source");
   assert.match(html, /aria-label="50% right in practice, close"/, "the bar is filled from practice");
-  assert.match(html, /D2<\/span><span>[^<]*<small class="h-score-line">No answers yet/);
+  assert.match(html, /D2<\/span> <span>[^<]* <small class="h-score-line">No answers yet/);
 
   app.click("toggle-mastery", { domain: "1" });
   html = app.html();
-  assert.match(html, /1\.1 Design and implement agentic loops for autonomous task execution<small class="h-score-line">Practice 50%/, "objective line too");
+  assert.match(html, /1\.1 Design and implement agentic loops for autonomous task execution <small class="h-score-line">Practice 50%/, "objective line too");
 });
 
 test("after an exam, the weakest objectives can be practised straight from the results", () => {
@@ -2337,7 +2337,7 @@ test("score history also renders as cards for phones", () => {
   const html = tab(app, "exams");
   assert.ok(html.includes('class="table-scroll history-scroll"'), "the table for wide screens");
   assert.equal((html.match(/class="history-card"/g) || []).length, 2, "one card per attempt");
-  assert.match(html, /class="hc-score"><strong>760<\/strong><span class="badge pass">PASS/);
+  assert.match(html, /class="hc-score"><strong>760<\/strong> <span class="badge pass">PASS/);
 });
 
 /* ---- screen readers on the question screens ------------------------------ */
@@ -2385,4 +2385,15 @@ test("the welcome card is short: one action, one sentence, an optional date", ()
   assert.ok(!card.includes("h-steps") && !card.includes("All exams"), "no step boxes, no extra links");
   assert.ok(card.includes("Optional: set your exam date") && card.includes('data-action="edit-exam-date"'));
   assert.ok(card.includes("h-start"), "the starting resources stay");
+});
+
+test("adjacent inline elements get a space, so words never run together without CSS", () => {
+  const app = launch({ storage: { ...RETURNING, "ccarf.progress": JSON.stringify({ attempted: ["d1-q1"], saved: ["d1-q1"] }) } });
+  const html = tab(app, "practice");
+  const text = html.replace(/<[^>]+>/g, "");          // what an unstyled reader gets
+  assert.ok(text.includes("Saved questions 1"), "label and count apart");
+  assert.ok(/Agentic Architecture &amp; Orchestration No answers yet/.test(text), "name and score line apart");
+  assert.ok(!/Practice all of D1\d/.test(text), "row label and count apart");
+  app.click("practice", { domain: "1" });
+  assert.ok(app.html().includes('<span class="opt-letter"></span>'), "an empty marker gets no stray space");
 });
