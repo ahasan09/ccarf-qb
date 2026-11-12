@@ -265,6 +265,7 @@ function renderSearch() {
     '<input class="input search-input" id="search-q" type="search" autocomplete="off" value="' + esc(searchQuery) + '" autofocus>' +
     '<p class="muted search-note">Searches the question bank and the scenario questions (text, options, explanations and objectives). Imported exams are not included.</p></div>' +
     '<div id="search-results" aria-live="polite">' + searchResultsHtml() + "</div>";
+  syncRoute();
   var input = document.getElementById("search-q");
   if (input && input.focus) {
     input.focus();

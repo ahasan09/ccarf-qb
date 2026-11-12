@@ -469,6 +469,76 @@ if ("serviceWorker" in navigator &&
   navigator.serviceWorker.register("sw.js").catch(function () {});
 }
 
+/* ----------------------------------------------------------- routing */
+/* Each screen has its own address (#/practice, #/search, #/quiz …; Today is
+ * the bare page), so the browser's Back and Forward move between screens
+ * instead of leaving the app, and a tab can be bookmarked. paint() calls
+ * syncRoute() after every redraw; popstate takes the user to the address. */
+var ROUTE_SCREENS = { search: 1, custom: 1, quiz: 1, results: 1, review: 1 };
+var routing = false; // true while following Back/Forward: replace, don't push
+
+function routeFor() {
+  if (view === "home") return currentTab() === "today" ? "" : "#/" + currentTab();
+  if (view === "quiz" || view === "scenario-review") return "#/quiz";
+  if (view === "results") return "#/results";
+  if (view === "review") return "#/review";
+  if (view === "search" || view === "custom") return "#/" + view;
+  return null;
+}
+
+function parseRoute(hash) {
+  var name = String(hash || "").replace(/^#\/?/, "");
+  if (!name) return { tab: "today" };
+  if (HOME_TABS.some(function (t) { return t[0] === name; })) return { tab: name };
+  if (ROUTE_SCREENS[name]) return { screen: name };
+  return { tab: "today" };
+}
+
+function syncRoute() {
+  if (!window.history || !window.history.pushState || typeof location === "undefined" || location.hash === undefined) return;
+  var want = routeFor();
+  if (want === null) return;
+  var have = location.hash === "#" ? "" : location.hash;
+  if (want === have) return;
+  var url = want || location.pathname + location.search;
+  /* A finished or left quiz is not a place to go Back to. */
+  if (routing || have === "#/quiz") window.history.replaceState(null, "", url);
+  else window.history.pushState(null, "", url);
+}
+
+function goRoute(r) {
+  if (r.tab) { homeTab = r.tab; LS.set(TAB_KEY, r.tab); return renderHome(); }
+  switch (r.screen) {
+    case "search": return renderSearch();
+    case "custom": return renderCustomBuilder();
+    case "quiz": return Store.snapshot().session ? resumeSession() : renderHome();
+    case "results": return lastFinished ? renderResults(lastFinished) : renderHome();
+    case "review": return lastFinished ? renderReview() : renderHome();
+  }
+  return renderHome();
+}
+
+function followRoute() {
+  var d = dialogEl();
+  if (d && d.open) d.close("");
+  closeMenus(null);
+  var r = parseRoute(location.hash);
+  var inQuiz = (view === "quiz" || view === "scenario-review") && session;
+  if (inQuiz && r.screen !== "quiz") {
+    /* Back out of a quiz: ask, as the Exit button does. On no, stay. */
+    return ask({ title: "Exit?", text: "Exit? Your progress is saved — resume from the home screen.", ok: "Exit", cancel: "Keep going" },
+      function () {
+        routing = true;
+        try { exitSession(); goRoute(r); } finally { routing = false; }
+      },
+      function () { if (window.history && window.history.pushState) window.history.pushState(null, "", "#/quiz"); });
+  }
+  routing = true;
+  try { goRoute(r); } finally { routing = false; }
+}
+
+window.addEventListener("popstate", followRoute);
+
 var bankErrors = validateBank(FULL_BANK);
 if (!BANK.length) {
   app.innerHTML = '<div class="card"><h2>No questions loaded</h2><p>Make sure the files in <code>questions/</code> are present.</p></div>';
@@ -476,7 +546,11 @@ if (!BANK.length) {
   if (bankErrors.length) {
     console.warn("Question bank validation issues:", bankErrors);
   }
-  renderHome();
+  /* Open at the address in the URL (a bookmarked tab or screen); a plain
+   * address opens the tab used last, as an installed app would. */
+  var startHash = typeof location !== "undefined" && location.hash ? location.hash : "";
+  routing = true;
+  try { if (startHash && startHash !== "#") goRoute(parseRoute(startHash)); else renderHome(); } finally { routing = false; }
   loadReferencedExams(Store.snapshot()).then(function () {
     if (view === "home") renderHome();
   });

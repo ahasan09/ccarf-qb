@@ -76,6 +76,7 @@ function launch(opts = {}) {
     SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
     CCARF_SYNC: opts.sync,
     CCARF_CONFIG: opts.config,
+    history: opts.history,
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -93,7 +94,7 @@ function launch(opts = {}) {
     console,
     Date: opts.Date || Date, Math, JSON, Object, Array, Number, String, Boolean, Promise,
     navigator: {},
-    location: { protocol: "file:", hostname: "" },
+    location: opts.location || { protocol: "file:", hostname: "" },
     CustomEvent: class { constructor(type) { this.type = type; } },
     localStorage: {
       getItem: (k) => (k in storage ? storage[k] : null),
@@ -145,6 +146,7 @@ function launch(opts = {}) {
     store: () => win.CCARF_STORE,
     bank: () => win.QUESTION_BANK,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
+    firePopState: () => win.dispatchEvent(new ctx.CustomEvent("popstate")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
     /* The user opening or closing a <details> section. */
     toggle: (id, open) => {
@@ -2197,4 +2199,72 @@ test("the exam date is picked with a date field", () => {
   app.click("edit-exam-date");
   dialog.answer(true, "");
   assert.equal(app.store().snapshot().examDate, null, "an empty date clears it");
+});
+
+/* ---- addresses: Back and Forward move between screens -------------------- */
+/* A browser history: pushState/replaceState set the hash, back() and
+ * forward() move along it and fire popstate as a browser does. */
+function fakeBrowser(hash = "") {
+  const location = { protocol: "file:", hostname: "", pathname: "/", search: "", hash };
+  const entries = [hash];
+  let at = 0;
+  let fire = null;
+  const history = {
+    pushState(_s, _t, url) { entries.splice(at + 1); entries.push(url.startsWith("#") ? url : ""); at++; location.hash = entries[at]; },
+    replaceState(_s, _t, url) { entries[at] = url.startsWith("#") ? url : ""; location.hash = entries[at]; },
+    back() { if (at > 0) { at--; location.hash = entries[at]; fire(); } },
+    forward() { if (at < entries.length - 1) { at++; location.hash = entries[at]; fire(); } },
+    get length() { return entries.length; },
+  };
+  return { location, history, bind(app) { fire = () => app.firePopState(); return app; } };
+}
+
+test("each tab and screen has an address, and Back retraces them", () => {
+  const b = fakeBrowser();
+  const app = b.bind(launch({ location: b.location, history: b.history, storage: { ...RETURNING } }));
+  assert.equal(b.location.hash, "", "Today is the plain address");
+  tab(app, "practice");
+  assert.equal(b.location.hash, "#/practice");
+  tab(app, "exams");
+  app.click("search");
+  assert.equal(b.location.hash, "#/search");
+  b.history.back();
+  assert.match(app.html(), /data-tab="exams" aria-current="page"/, "Back returns to Exams");
+  b.history.back();
+  assert.match(app.html(), /data-tab="practice" aria-current="page"/);
+  b.history.forward();
+  assert.match(app.html(), /data-tab="exams" aria-current="page"/, "Forward works too");
+});
+
+test("Back during a quiz asks before leaving, and a finished quiz is skipped by Back", () => {
+  const b = fakeBrowser();
+  const dialog = fakeDialog();
+  const app = b.bind(launch({ location: b.location, history: b.history, dialog, storage: { ...RETURNING } }));
+  tab(app, "practice");
+  app.click("practice", { domain: "1" });
+  assert.equal(b.location.hash, "#/quiz");
+  b.history.back();
+  assert.ok(dialog.open, "asks first");
+  dialog.answer(false);
+  assert.equal(b.location.hash, "#/quiz", "staying puts the quiz back in the address");
+  assert.ok(app.html().includes('data-action="select"'));
+  b.history.back();
+  dialog.answer(true);
+  assert.match(app.html(), /data-tab="practice" aria-current="page"/, "leaving goes back to Practice");
+  assert.ok(app.store().snapshot().session, "the session is kept to resume");
+
+  app.click("resume");
+  completeSession(app);
+  assert.equal(b.location.hash, "#/results");
+  b.history.back();
+  assert.match(app.html(), /data-tab="practice" aria-current="page"/, "Back from results skips the finished quiz");
+});
+
+test("a bookmarked address opens that tab or screen", () => {
+  const exams = fakeBrowser("#/exams");
+  assert.match(launch({ location: exams.location, history: exams.history, storage: { ...RETURNING } }).html(), /data-tab="exams" aria-current="page"/);
+  const search = fakeBrowser("#/search");
+  assert.ok(launch({ location: search.location, history: search.history }).html().includes('id="search-q"'));
+  const stale = fakeBrowser("#/results");
+  assert.ok(launch({ location: stale.location, history: stale.history, storage: { ...RETURNING } }).html().includes("h-tabs"), "nothing to show: home");
 });
