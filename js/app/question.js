@@ -343,6 +343,7 @@ function submitSession() {
     grade: grade,
     timeSpent: session.timeSpent || {},
     timed: !!session.deadline,
+    objective: session.objective || null,
   };
 
   var separate = session.separate === true || session.mode === "imported" || isScenarioMode(session.mode);

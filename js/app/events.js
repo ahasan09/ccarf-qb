@@ -200,7 +200,7 @@ function handleAction(btn) {
   var action = btn.dataset.action;
 
   switch (action) {
-    case "start-exam": return startExam(btn.dataset.scope || "mapped");
+    case "start-exam": return startExam();
     case "start-imported": return startImportedExam(btn.dataset.exam);
     case "practice-imported": return startImportedPractice(btn.dataset.exam);
     case "start-weak": return startWeak();
@@ -440,7 +440,7 @@ if ("serviceWorker" in navigator &&
   navigator.serviceWorker.register("sw.js").catch(function () {});
 }
 
-var bankErrors = validateBank(BANK);
+var bankErrors = validateBank(FULL_BANK);
 if (!BANK.length) {
   app.innerHTML = '<div class="card"><h2>No questions loaded</h2><p>Make sure the files in <code>questions/</code> are present.</p></div>';
 } else {

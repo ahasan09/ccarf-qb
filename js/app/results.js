@@ -82,11 +82,22 @@ function renderResults(finished) {
   } else {
     html += '<span class="badge big pass">All correct — nothing to retry 🎉</span>';
   }
+  html += moreOnObjective(finished.objective);
   html += '<button class="btn" data-action="show-review">Review answers</button>' +
     '<button class="btn ghost" data-action="home">Home</button></div>';
 
   paint(html);
   lastFinished = finished;
+}
+
+/* After practising an objective's scenario questions, offer its bank
+ * questions as the next step. */
+function moreOnObjective(sub) {
+  if (!sub) return "";
+  var code = sub.split(" ")[0], d = Number(code.split(".")[0]);
+  var n = filterBySubKey(BANK, d, code).length;
+  return n ? '<button class="btn" data-action="practice" data-domain="' + d + '" data-sub="' + esc(code) + '">' +
+    "More on " + esc(code) + " · " + n + " question" + (n === 1 ? "" : "s") + "</button>" : "";
 }
 
 /* Timed sessions: average time per question against the even-pace budget,
@@ -110,7 +121,7 @@ function paceCard(finished) {
 function sessionResultLabel(mode) {
   switch (mode) {
     case "retry": return "Retry session — keep going until everything is green";
-    case "weak": return "Weak questions drill";
+    case "weak": return "Missed questions";
     case "practice": return "Practice session complete";
     case "custom": return "Custom quiz complete";
     case "scenario-practice": return "Scenario practice complete";
