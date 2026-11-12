@@ -551,6 +551,7 @@ if (!BANK.length) {
   var startHash = typeof location !== "undefined" && location.hash ? location.hash : "";
   routing = true;
   try { if (startHash && startHash !== "#") goRoute(parseRoute(startHash)); else renderHome(); } finally { routing = false; }
+  if (window.performance && performance.mark) performance.mark("app-ready");
   loadReferencedExams(Store.snapshot()).then(function () {
     if (view === "home") renderHome();
   });

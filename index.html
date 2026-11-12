@@ -11,7 +11,13 @@
 <meta name="theme-color" content="#17191c" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<!-- Fonts load without holding up the first paint; text shows in the
+     fallback font until they arrive (display=swap). -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@500;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"></noscript>
+<!-- A chosen light/dark theme applies before anything paints, so the
+     loading screen never flashes in the other theme. -->
+<script>try { var t = JSON.parse(localStorage.getItem("ccarf.theme")); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
 <style>
   :root {
     --paper: #f6f7f4;
@@ -659,6 +665,14 @@
   .h-step { border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 12px 14px; font-size: .88rem; color: var(--graphite); }
   .h-step b { display: block; color: var(--ink); margin-bottom: 4px; }
   .h-date { text-align: center; padding: 26px 16px; line-height: 1.8; }
+  /* loading screen in index.html, until the app draws */
+  .boot-card { padding: 24px; }
+  .boot-title { font-weight: 700; margin: 0 0 14px; }
+  .boot-bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .boot-bar i { display: block; height: 100%; width: 40%; border-radius: 99px; background: var(--pen); animation: boot-slide 1.3s ease-in-out infinite; }
+  .boot-note { font-size: .86rem; margin: 14px 0 0; }
+  @keyframes boot-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
   /* in-app dialogs (js/app/dialog.js) */
   .app-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: 16px;
     background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
@@ -769,7 +783,14 @@
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <!-- Shown while the question bank downloads; the app replaces it. -->
+  <div class="boot" role="status">
+    <div class="h-top"><div class="h-brand"><svg width="30" height="30" viewBox="0 0 128 128" aria-hidden="true"><rect width="128" height="128" rx="28" fill="var(--pen)"/><circle cx="64" cy="64" r="34" fill="none" stroke="var(--paper)" stroke-width="7"/><circle cx="64" cy="64" r="19" fill="var(--paper)"/></svg>CCAR-F Prep</div></div>
+    <div class="card boot-card"><p class="boot-title">Loading the question bank…</p><div class="boot-bar" aria-hidden="true"><i></i></div>
+      <p class="muted boot-note">The first visit downloads about 1,200 questions. They are then kept on this device, so the app also works offline.</p></div>
+  </div>
+</div>
 <dialog id="app-dialog" class="app-dialog"></dialog>
 <script src="questions/domain1.js"></script>
 <script src="questions/domain2.js"></script>
