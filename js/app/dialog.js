@@ -75,9 +75,11 @@ function ask(spec, onYes, onNo) {
   if (confirm(spec.text)) onYes(); else if (onNo) onNo();
 }
 
-/* A question with one field. done(value) gets the text, or null if cancelled. */
+/* A question with one field. done(value) gets the text, or null if cancelled.
+ * spec.text is the browser-prompt wording; the dialog shows the field's
+ * label instead, plus spec.note if given. */
 function askValue(spec, done) {
-  var shown = openDialog({ title: spec.title, text: spec.text, ok: spec.ok || "Save", cancel: "Cancel", input: spec.input },
+  var shown = openDialog({ title: spec.title, text: spec.note || "", ok: spec.ok || "Save", cancel: "Cancel", input: spec.input },
     function (ok, value) { done(ok ? value : null); });
   if (shown) return;
   done(prompt(spec.text || spec.title, spec.input.value || ""));

@@ -20,6 +20,13 @@ the Practice tab shows how many questions are due. The header holds
 **Search questions** (press `/` from any screen except a running quiz),
 the Account & sync chip and the theme button, which names the current theme.
 
+Every tab and screen has its own address (`#/practice`, `#/exams`,
+`#/search`, `#/quiz`, `#/results` …; Today is the plain page), so the
+browser's Back and Forward move between screens and a tab can be
+bookmarked. Back during a quiz asks before leaving, and a finished quiz is
+skipped. Questions and warnings (exit, submit, discard, the exam date) open
+in an in-app dialog rather than the browser's own boxes.
+
 **Today**
 
 - **First visit** — a 20-question **diagnostic** (2 scenarios × 10, 40 min,
@@ -27,9 +34,10 @@ the Account & sync chip and the theme button, which names the current theme.
   resources.
 - **Your readiness** — a predicted score (the last five exams, newest weighted
   most: 5,4,3,2,1) with a verdict (**Likely pass** ≥ 760, **Borderline**
-  680–759, **Not yet** below), the countdown to your exam date, a trend chart
-  of recent scores against the 720 line, and a link to review your last
-  attempt.
+  680–759, **Not yet** below), the countdown to your exam date with a daily
+  target ("About 24 new questions a day covers the rest of the bank"), a
+  trend chart of recent scores against the 720 line, and a link to review
+  your last attempt. Without a score yet, it points at the diagnostic.
 - **One main action** — a single main button, chosen by where you are:
   **Continue** an unfinished session, **Start diagnostic** on a first visit,
   **Review N due questions**, **Practise your weakest objective**, or
@@ -38,13 +46,17 @@ the Account & sync chip and the theme button, which names the current theme.
   three answered), each with **Practise**: up to 8 scenario questions on that
   objective with a note on every option, then the objective's bank questions
   are offered from the results screen.
+- **Your week** — once you have answered something: the last seven days as a
+  shaded strip, today's and the week's counts, and your streak of days in a
+  row.
 
 **Practice**
 
-- **By objective** — accuracy in your exams for each domain and each of the
-  30 task statements, one **Practise** button per objective and **Practice
-  all** per domain. Above it: how many bank questions you have answered and
-  the percent right.
+- **By objective** — accuracy for each domain and each of the 30 task
+  statements: from your exams when you have taken some, otherwise from
+  practice, with both given under each name ("Exams 64% · Practice 80%").
+  One **Practise** button per objective and **Practice all** per domain.
+  Above it: how many bank questions you have answered and the percent right.
 - **Practice** (learn mode) — **Due for review**, Saved questions and missed
   questions, each shown once it has something in it, then Custom quiz,
   **Search questions**, and the six scenarios with your best score in each.
@@ -67,6 +79,8 @@ Modes:
   subdomain, 120-minute timer, flag-for-review, navigator grid.
   Scored out of 1000; pass at 720 (44+ correct), with per-domain breakdown
   and full answer review with explanations. Exit mid-exam and resume later.
+  After any exam, **Practise your weak spots** lists up to three objectives
+  below 72%, each one click from a practice set.
 - **Scenario exam** — the real exam's format: four scenarios × 15 questions,
   120 minutes, pass at 720. Details below.
 - **Practice by scenario** — untimed practice on one scenario, with a note
