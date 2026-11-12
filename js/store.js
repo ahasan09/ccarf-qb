@@ -53,6 +53,19 @@ var Mutations = {
       },
     };
   },
+  /* The day is fixed when the answer is given, so a replay lands on the
+   * same day; adding ids to a set is safe to repeat. */
+  recordActivity: function (day, ids) {
+    return {
+      key: null,
+      apply: function (s) {
+        if (!ids || !ids.length) return;
+        s.activity = s.activity || {};
+        s.activity[day] = unionIds(s.activity[day] || [], ids);
+        s.activity = pruneActivity(s.activity, day);
+      },
+    };
+  },
   setExamDate: function (date) {
     return { key: "examDate", apply: function (s) { s.examDate = date || null; } };
   },
@@ -79,6 +92,7 @@ var Mutations = {
         s.attempted = merged.attempted;
         s.saved = merged.saved;
         s.review = mergeReview(s.review, backup && backup.review);
+        s.activity = mergeActivity(s.activity, backup && backup.activity);
         if (!s.examDate && merged.examDate) s.examDate = merged.examDate;
         if (!s.session && merged.session) s.session = merged.session;
       },

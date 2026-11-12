@@ -59,6 +59,7 @@ function renderHome() {
     var cta = heroCta(progress, saved, acc, now, firstVisit);
     html += firstVisit ? homeFirstVisit(progress, cta) : homeReadiness(progress, now, cta);
     html += homeNextStep(acc);
+    html += homeWeek(progress, now);
     var S = window.CCARF_SYNC;
     if (isAdminUser(S)) html += visitorCard(S);
   }
@@ -66,6 +67,28 @@ function renderHome() {
   html += '<footer class="site-footer">Practice material for personal study. ' +
     "Not affiliated with Anthropic or Pearson VUE.</footer>";
   paint(html);
+}
+
+/* The last 7 days at a glance: a strip of days, the streak, and counts. */
+function homeWeek(progress, now) {
+  var a = activitySummary(progress.activity, now);
+  if (!a.any) return "";
+  var top = Math.max.apply(null, a.week.map(function (w) { return w.count; }).concat([1]));
+  var cells = a.week.map(function (w, i) {
+    var d = new Date(w.day + "T12:00:00");
+    var name = d.toLocaleDateString(undefined, { weekday: "short" });
+    var full = d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
+    var level = w.count ? Math.max(1, Math.ceil((4 * w.count) / top)) : 0;
+    return '<li class="h-day lvl' + level + (i === 6 ? " today" : "") + '" title="' + esc(full) + ": " + w.count + " answered" + '">' +
+      '<span class="h-day-box" aria-hidden="true">' + (w.count || "") + "</span>" +
+      '<span class="h-day-name">' + esc(name) + '</span><span class="sr-only">' + esc(full) + ": " + w.count + " questions answered</span></li>";
+  }).join("");
+  var streak = a.streak
+    ? "<b>" + a.streak + "-day streak</b>" + (a.today ? "" : " · answer a question today to keep it")
+    : "No streak yet · answer a question today to start one";
+  return '<section class="card h-col h-week" id="h-week"><h2 class="h-h2">Your week</h2>' +
+    '<p class="h-sub">' + streak + " · " + a.today + " today · " + a.weekTotal + " this week</p>" +
+    '<ol class="h-days">' + cells + "</ol></section>";
 }
 
 /* ------------------------------------------------------------- tabs */

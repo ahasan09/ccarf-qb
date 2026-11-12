@@ -561,6 +561,16 @@
   .tile.unanswered { border-style: dashed; border-color: var(--fail); }
   .tile.flagged { border-color: var(--flag); box-shadow: inset 0 -3px 0 var(--flag); }
   .obj-row, .scn-row { margin-top: 12px; }
+  .h-days { list-style: none; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin: 6px 0 0; padding: 0; }
+  .h-day { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .h-day-box { display: grid; place-items: center; width: 100%; max-width: 54px; aspect-ratio: 1; border-radius: 10px;
+    border: 1.5px solid var(--line); font-family: var(--mono); font-size: .8rem; font-weight: 700; color: var(--ink); }
+  .h-day.lvl1 .h-day-box { background: color-mix(in srgb, var(--pen) 18%, transparent); border-color: transparent; }
+  .h-day.lvl2 .h-day-box { background: color-mix(in srgb, var(--pen) 38%, transparent); border-color: transparent; }
+  .h-day.lvl3 .h-day-box { background: color-mix(in srgb, var(--pen) 62%, transparent); border-color: transparent; color: var(--card); }
+  .h-day.lvl4 .h-day-box { background: var(--pen); border-color: transparent; color: var(--card); }
+  .h-day.today .h-day-box { outline: 2px solid var(--pen); outline-offset: 2px; }
+  .h-day-name { font-size: .74rem; color: var(--graphite); }
   .weak-spot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
   .weak-spot small { display: block; font-size: .8rem; margin-top: 2px; }
   .weak-spot .btn { flex: none; }

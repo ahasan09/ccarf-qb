@@ -2313,3 +2313,19 @@ test("with an exam date set, Today gives a daily target", () => {
   assert.match(html, /<span class="h-plan">About 10 new questions a day covers the rest of the bank \(98 left\)\.<\/span>/);
   assert.ok(!launch({ storage: { ...RETURNING } }).html().includes("h-plan"), "no date, no plan");
 });
+
+test("answering questions builds Your week on Today", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  assert.ok(!app.html().includes('id="h-week"'), "hidden before any activity");
+  app.click("practice", { domain: "1" });
+  app.click("select", { opt: "0" });
+  app.click("next");
+  app.click("select", { opt: "0" });
+  app.click("quit");
+  tab(app, "today");
+  const html = app.html();
+  assert.ok(html.includes('id="h-week"'));
+  assert.ok(html.includes("<b>1-day streak</b> · 2 today · 2 this week"));
+  assert.equal((html.match(/class="h-day /g) || []).length, 7, "seven days");
+  assert.match(html, /class="h-day lvl4 today"/, "today is marked and filled");
+});

@@ -369,7 +369,61 @@ function breakdownBy(questions, answers, keyFn) {
  * of a merge guessing what was deleted. */
 
 function emptyProgress() {
-  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null, review: {}, examDate: null };
+  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null, review: {}, examDate: null, activity: {} };
+}
+
+/* ------------------------------------------------------------ activity */
+/* Which questions were answered on which day: { "YYYY-MM-DD": [ids] }.
+ * Sets of ids rather than counts, so replaying a change after a sync, or
+ * merging two devices, never counts an answer twice. Kept for 60 days. */
+var ACTIVITY_DAYS = 60;
+
+function localDay(ms) {
+  var d = new Date(ms);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function dayShift(day, delta) {
+  var p = day.split("-");
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + delta));
+  return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+}
+
+function pruneActivity(activity, today) {
+  var cutoff = dayShift(today, -(ACTIVITY_DAYS - 1));
+  var out = {};
+  Object.keys(activity || {}).forEach(function (day) { if (day >= cutoff) out[day] = activity[day]; });
+  return out;
+}
+
+function mergeActivity(a, b) {
+  var out = {};
+  [a || {}, b || {}].forEach(function (src) {
+    Object.keys(src).forEach(function (day) { out[day] = unionIds(out[day] || [], src[day]); });
+  });
+  var days = Object.keys(out).sort();
+  return days.length ? pruneActivity(out, days[days.length - 1]) : out;
+}
+
+/* Today, the last 7 days (oldest first, for a strip) and the streak: days
+ * in a row with an answer, ending today — or yesterday, so a streak is
+ * not shown as broken before today's study. */
+function activitySummary(activity, now) {
+  activity = activity || {};
+  var today = localDay(now);
+  var count = function (day) { return (activity[day] || []).length; };
+  var week = [];
+  for (var i = 6; i >= 0; i--) { var day = dayShift(today, -i); week.push({ day: day, count: count(day) }); }
+  var streak = 0;
+  var cur = count(today) ? today : dayShift(today, -1);
+  while (count(cur)) { streak++; cur = dayShift(cur, -1); }
+  return {
+    today: count(today),
+    weekTotal: week.reduce(function (n, w) { return n + w.count; }, 0),
+    week: week,
+    streak: streak,
+    any: Object.keys(activity).some(function (d) { return count(d) > 0; }),
+  };
 }
 
 /* A real calendar date in YYYY-MM-DD form (rejects 2026-02-30 etc.). */
@@ -432,6 +486,12 @@ function normalizeProgress(raw) {
     });
   }
   if (isValidDate(raw.examDate)) s.examDate = raw.examDate;
+  if (raw.activity && typeof raw.activity === "object") {
+    Object.keys(raw.activity).forEach(function (day) {
+      var ids = raw.activity[day];
+      if (isValidDate(day) && Array.isArray(ids)) s.activity[day] = unionIds([], ids.filter(function (id) { return typeof id === "string"; }));
+    });
+  }
   return s;
 }
 
@@ -476,6 +536,7 @@ function mergeProgress(a, b) {
       : (b.session.startedAt || 0) > (a.session.startedAt || 0) ? b.session : a.session,
     review: mergeReview(a.review, b.review),
     examDate: b.examDate || a.examDate,
+    activity: mergeActivity(a.activity, b.activity),
   };
 }
 
