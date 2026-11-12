@@ -241,6 +241,7 @@ function paint(html) {
   app.innerHTML = html;
   var el = sel && app.querySelector(sel);
   if (el && el.focus) el.focus({ preventScroll: true });
+  if (typeof syncRoute === "function") syncRoute();
 }
 function focusSelector(el) {
   if (!el || !el.dataset || !el.dataset.action) return null;

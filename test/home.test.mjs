@@ -90,7 +90,7 @@ test("review and exam-date mutations apply", () => {
 });
 
 /* ------------------------------------------------------------ Task 2 */
-const { examAttempts, predictedScore, objectiveAccuracy, weakestObjectives, objectiveDrillIds, bestScenarioScores } = app;
+const { examAttempts, predictedScore, objectiveAccuracy, practiceAccuracy, weakestObjectives, objectiveDrillIds, bestScenarioScores } = app;
 
 const hist = (scores) => scores.map((score, i) => ({ date: `2026-10-0${i + 1}T00:00:00Z`, score, items: [] }));
 
@@ -237,4 +237,51 @@ test("the shipped resources file is all valid, tracking-free https links", async
     assert.doesNotMatch(r.url, /[?&](utm_|rcm=|trackingId=)/, r.id + " carries tracking parameters");
   }
   assert.ok(list.some((r) => r.id === "exam-guide"), "the exam guide is listed");
+});
+
+test("practiceAccuracy counts answered bank questions per objective, right if ever right", () => {
+  const sub = SUBDOMAINS[0];
+  const bank = [
+    { id: "a", subdomain: sub }, { id: "b", subdomain: sub }, { id: "c", subdomain: sub },
+    { id: "d", subdomain: "9.9 Not in the guide" }, { id: "e" },
+  ];
+  assert.deepEqual(practiceAccuracy(bank, ["a"], ["a", "b", "d", "e"]), { [sub]: { correct: 1, total: 2 } });
+  assert.deepEqual(practiceAccuracy(bank, [], []), {});
+});
+
+test("studyPlan spreads the unanswered bank over the days left", () => {
+  const { studyPlan } = app;
+  assert.equal(studyPlan(null, 100), null);
+  assert.equal(studyPlan(-2, 100), null, "a past date gives nothing");
+  assert.match(studyPlan(0, 100), /^Exam day/);
+  assert.equal(studyPlan(18, 430), "About 24 new questions a day covers the rest of the bank (430 left).");
+  assert.equal(studyPlan(10, 3), "About 1 new question a day covers the rest of the bank (3 left).");
+  assert.match(studyPlan(5, 0), /answered every bank question/);
+});
+
+test("activitySummary counts today, the week and the streak", () => {
+  const { activitySummary, localDay } = app;
+  const now = new Date(2026, 10, 12, 15).getTime(); // 12 Nov 2026, local
+  const act = { "2026-11-12": ["a", "b"], "2026-11-11": ["c"], "2026-11-10": ["d"], "2026-11-08": ["e"], "2026-10-01": ["old"] };
+  const s = activitySummary(act, now);
+  assert.equal(localDay(now), "2026-11-12");
+  assert.equal(s.today, 2);
+  assert.equal(s.weekTotal, 5, "only the last 7 days");
+  assert.equal(s.streak, 3, "12, 11, 10 — the gap on the 9th ends it");
+  assert.deepEqual(s.week.map((w) => w.count), [0, 0, 1, 0, 1, 1, 2]);
+  assert.equal(activitySummary({ "2026-11-11": ["c"] }, now).streak, 1, "a streak ending yesterday still counts");
+  assert.equal(activitySummary({}, now).any, false);
+});
+
+test("recording activity twice, or merging two devices, never double-counts", () => {
+  const { applyMutations, Mutations, mergeProgress, normalizeProgress } = app;
+  let s = applyMutations(app.emptyProgress(), [Mutations.recordActivity("2026-11-12", ["a", "b"])]);
+  s = applyMutations(s, [Mutations.recordActivity("2026-11-12", ["a"])]);
+  assert.deepEqual(s.activity["2026-11-12"].sort(), ["a", "b"]);
+  const merged = mergeProgress({ activity: { "2026-11-12": ["a"] } }, { activity: { "2026-11-12": ["a", "c"], "2026-11-11": ["d"] } });
+  assert.deepEqual(merged.activity["2026-11-12"].sort(), ["a", "c"]);
+  assert.deepEqual(merged.activity["2026-11-11"], ["d"]);
+  s = applyMutations(s, [Mutations.recordActivity("2027-03-01", ["z"])]);
+  assert.ok(!s.activity["2026-11-12"], "older than 60 days is dropped");
+  assert.deepEqual(normalizeProgress({ activity: { "bad": ["x"], "2026-11-12": [1, "ok"] } }).activity, { "2026-11-12": ["ok"] });
 });

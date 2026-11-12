@@ -76,6 +76,7 @@ function launch(opts = {}) {
     SCENARIO_BANK: opts.scenarioBank || scenarioBank(),
     CCARF_SYNC: opts.sync,
     CCARF_CONFIG: opts.config,
+    history: opts.history,
     addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); },
     dispatchEvent: (ev) => { (listeners[ev.type] || []).forEach((fn) => fn(ev)); },
     scrollTo: () => {},
@@ -93,7 +94,7 @@ function launch(opts = {}) {
     console,
     Date: opts.Date || Date, Math, JSON, Object, Array, Number, String, Boolean, Promise,
     navigator: {},
-    location: { protocol: "file:", hostname: "" },
+    location: opts.location || { protocol: "file:", hostname: "" },
     CustomEvent: class { constructor(type) { this.type = type; } },
     localStorage: {
       getItem: (k) => (k in storage ? storage[k] : null),
@@ -109,6 +110,7 @@ function launch(opts = {}) {
     clearTimeout: () => {},
     document: {
       getElementById: (id) => (id === "app" ? appEl
+        : id === "app-dialog" && opts.dialog ? opts.dialog
         : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
@@ -144,6 +146,7 @@ function launch(opts = {}) {
     store: () => win.CCARF_STORE,
     bank: () => win.QUESTION_BANK,
     fireSyncEvent: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:auth")),
+    firePopState: () => win.dispatchEvent(new ctx.CustomEvent("popstate")),
     fireSignOut: () => win.dispatchEvent(new ctx.CustomEvent("ccarf:signout")),
     /* The user opening or closing a <details> section. */
     toggle: (id, open) => {
@@ -2130,7 +2133,7 @@ test("objective bars say weak, close or on track, not just a colour", () => {
   seedHistory(app, [700]);
   const html = tab(app, "practice");
   assert.match(html, /class="h-meter" role="img" aria-label="(\d+% right, (weak|close|on track)|No answers yet)"/);
-  assert.ok(html.includes("green is on track"), "the colours are explained");
+  assert.ok(html.includes("Green is on track"), "the colours are explained");
 });
 
 test("the theme button names the current theme", () => {
@@ -2138,4 +2141,191 @@ test("the theme button names the current theme", () => {
   assert.match(app.html(), /<span class="h-theme-label">Auto<\/span>/);
   app.click("cycle-theme");
   assert.match(app.html(), /aria-label="Theme: Light \(click for Dark\)">[^<]*<span class="h-theme-label">Light/);
+});
+
+/* ---- in-app dialogs ------------------------------------------------------- */
+/* A stand-in for <dialog>: records what is shown and lets a test answer. */
+function fakeDialog() {
+  const d = {
+    open: false, innerHTML: "", returnValue: "", field: null,
+    showModal() { this.open = true; },
+    close(v) { this.open = false; if (v !== undefined) this.returnValue = v; if (this.onclose) this.onclose(); },
+    setAttribute() {}, removeAttribute() {},
+    querySelector(sel) { return sel === "#dlg-input" ? this.field : null; },
+    answer(ok, value) { if (this.field && value !== undefined) this.field.value = value; this.close(ok ? "ok" : ""); },
+  };
+  return d;
+}
+
+test("confirmations use the in-app dialog, not the browser's", () => {
+  const dialog = fakeDialog();
+  let native = 0;
+  const app = launch({ dialog, confirm: () => { native++; return true; }, storage: { ...RETURNING } });
+  app.click("practice", { domain: "1" });
+  app.click("quit");
+  assert.ok(dialog.open, "the dialog opens");
+  assert.ok(dialog.innerHTML.includes("Keep going") && dialog.innerHTML.includes(">Exit<"), "plain button labels");
+  dialog.answer(false);
+  assert.ok(app.html().includes('data-action="select"'), "cancel keeps the quiz on screen");
+  app.click("quit");
+  dialog.answer(true);
+  assert.ok(app.html().includes("h-tabs"), "yes goes home");
+  assert.equal(native, 0, "the browser's confirm() is never used");
+});
+
+test("starting something new over a saved session asks, then starts it on yes", () => {
+  const dialog = fakeDialog();
+  const app = launch({ dialog, storage: { ...RETURNING } });
+  app.click("practice", { domain: "1" });
+  app.click("select", { opt: "0" });
+  app.click("quit"); dialog.answer(true);
+  app.click("start-exam");
+  assert.ok(dialog.open && dialog.innerHTML.includes("Keep my session"));
+  dialog.answer(false);
+  assert.equal(app.store().snapshot().session.mode, "practice", "no keeps the old session");
+  app.click("start-exam");
+  dialog.answer(true);
+  assert.equal(app.store().snapshot().session.mode, "exam", "yes starts the exam");
+});
+
+test("the exam date is picked with a date field", () => {
+  const dialog = fakeDialog();
+  dialog.field = { value: "" };
+  const app = launch({ dialog, storage: { ...RETURNING } });
+  app.click("edit-exam-date");
+  assert.ok(dialog.innerHTML.includes('type="date"'), "a native date picker");
+  dialog.answer(true, "2030-01-15");
+  assert.equal(app.store().snapshot().examDate, "2030-01-15");
+  app.click("edit-exam-date");
+  dialog.answer(true, "");
+  assert.equal(app.store().snapshot().examDate, null, "an empty date clears it");
+});
+
+/* ---- addresses: Back and Forward move between screens -------------------- */
+/* A browser history: pushState/replaceState set the hash, back() and
+ * forward() move along it and fire popstate as a browser does. */
+function fakeBrowser(hash = "") {
+  const location = { protocol: "file:", hostname: "", pathname: "/", search: "", hash };
+  const entries = [hash];
+  let at = 0;
+  let fire = null;
+  const history = {
+    pushState(_s, _t, url) { entries.splice(at + 1); entries.push(url.startsWith("#") ? url : ""); at++; location.hash = entries[at]; },
+    replaceState(_s, _t, url) { entries[at] = url.startsWith("#") ? url : ""; location.hash = entries[at]; },
+    back() { if (at > 0) { at--; location.hash = entries[at]; fire(); } },
+    forward() { if (at < entries.length - 1) { at++; location.hash = entries[at]; fire(); } },
+    get length() { return entries.length; },
+  };
+  return { location, history, bind(app) { fire = () => app.firePopState(); return app; } };
+}
+
+test("each tab and screen has an address, and Back retraces them", () => {
+  const b = fakeBrowser();
+  const app = b.bind(launch({ location: b.location, history: b.history, storage: { ...RETURNING } }));
+  assert.equal(b.location.hash, "", "Today is the plain address");
+  tab(app, "practice");
+  assert.equal(b.location.hash, "#/practice");
+  tab(app, "exams");
+  app.click("search");
+  assert.equal(b.location.hash, "#/search");
+  b.history.back();
+  assert.match(app.html(), /data-tab="exams" aria-current="page"/, "Back returns to Exams");
+  b.history.back();
+  assert.match(app.html(), /data-tab="practice" aria-current="page"/);
+  b.history.forward();
+  assert.match(app.html(), /data-tab="exams" aria-current="page"/, "Forward works too");
+});
+
+test("Back during a quiz asks before leaving, and a finished quiz is skipped by Back", () => {
+  const b = fakeBrowser();
+  const dialog = fakeDialog();
+  const app = b.bind(launch({ location: b.location, history: b.history, dialog, storage: { ...RETURNING } }));
+  tab(app, "practice");
+  app.click("practice", { domain: "1" });
+  assert.equal(b.location.hash, "#/quiz");
+  b.history.back();
+  assert.ok(dialog.open, "asks first");
+  dialog.answer(false);
+  assert.equal(b.location.hash, "#/quiz", "staying puts the quiz back in the address");
+  assert.ok(app.html().includes('data-action="select"'));
+  b.history.back();
+  dialog.answer(true);
+  assert.match(app.html(), /data-tab="practice" aria-current="page"/, "leaving goes back to Practice");
+  assert.ok(app.store().snapshot().session, "the session is kept to resume");
+
+  app.click("resume");
+  completeSession(app);
+  assert.equal(b.location.hash, "#/results");
+  b.history.back();
+  assert.match(app.html(), /data-tab="practice" aria-current="page"/, "Back from results skips the finished quiz");
+});
+
+test("a bookmarked address opens that tab or screen", () => {
+  const exams = fakeBrowser("#/exams");
+  assert.match(launch({ location: exams.location, history: exams.history, storage: { ...RETURNING } }).html(), /data-tab="exams" aria-current="page"/);
+  const search = fakeBrowser("#/search");
+  assert.ok(launch({ location: search.location, history: search.history }).html().includes('id="search-q"'));
+  const stale = fakeBrowser("#/results");
+  assert.ok(launch({ location: stale.location, history: stale.history, storage: { ...RETURNING } }).html().includes("h-tabs"), "nothing to show: home");
+});
+
+test("practice alone fills the objective bars, and the line under each name gives both sources", () => {
+  const guideBank = bank().map((q) => Object.assign({}, q,
+    { subdomain: q.domain === 1 ? "1.1 Design and implement agentic loops for autonomous task execution" : q.subdomain }));
+  const app = launch({ bank: guideBank });
+  app.click("practice", { domain: "1", sub: "1.1" });
+  app.click("select", { opt: "0" }); // right
+  app.click("next");
+  app.click("select", { opt: "1" }); // wrong
+  app.click("quit");
+  let html = tab(app, "practice");
+  assert.match(html, /D1<\/span><span>[^<]*<small class="h-score-line">Practice 50%<\/small>/, "domain line names its source");
+  assert.match(html, /aria-label="50% right in practice, close"/, "the bar is filled from practice");
+  assert.match(html, /D2<\/span><span>[^<]*<small class="h-score-line">No answers yet/);
+
+  app.click("toggle-mastery", { domain: "1" });
+  html = app.html();
+  assert.match(html, /1\.1 Design and implement agentic loops for autonomous task execution<small class="h-score-line">Practice 50%/, "objective line too");
+});
+
+test("after an exam, the weakest objectives can be practised straight from the results", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  completeSession(app, { correct: false });
+  app.click("submit"); // from the scenario review screen
+  let html = app.html();
+  assert.ok(html.includes("Practise your weak spots"));
+  assert.match(html, /class="weak-spot">[^]*?data-action="drill-objective" data-sub="1\.1 Design and implement agentic loops/);
+  assert.ok(html.indexOf("Practise your weak spots") < html.indexOf("By objective"), "it comes right after the score");
+
+  const good = launch();
+  good.click("start-scenario-exam");
+  completeSession(good, { correct: true });
+  good.click("submit");
+  html = good.html();
+  assert.ok(html.includes("at 72% or above") && !html.includes('class="weak-spot"'), "nothing weak: says so");
+});
+
+test("with an exam date set, Today gives a daily target", () => {
+  const inTen = new Date(Date.now() + 10 * 86400000);
+  const date = inTen.getFullYear() + "-" + String(inTen.getMonth() + 1).padStart(2, "0") + "-" + String(inTen.getDate()).padStart(2, "0");
+  const html = launch({ storage: { "ccarf.progress": JSON.stringify({ attempted: ["d1-q1", "d1-q2"], examDate: date }) } }).html();
+  assert.match(html, /<span class="h-plan">About 10 new questions a day covers the rest of the bank \(98 left\)\.<\/span>/);
+  assert.ok(!launch({ storage: { ...RETURNING } }).html().includes("h-plan"), "no date, no plan");
+});
+
+test("answering questions builds Your week on Today", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  assert.ok(!app.html().includes('id="h-week"'), "hidden before any activity");
+  app.click("practice", { domain: "1" });
+  app.click("select", { opt: "0" });
+  app.click("next");
+  app.click("select", { opt: "0" });
+  app.click("quit");
+  tab(app, "today");
+  const html = app.html();
+  assert.ok(html.includes('id="h-week"'));
+  assert.ok(html.includes("<b>1-day streak</b> · 2 today · 2 this week"));
+  assert.equal((html.match(/class="h-day /g) || []).length, 7, "seven days");
+  assert.match(html, /class="h-day lvl4 today"/, "today is marked and filled");
 });

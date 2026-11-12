@@ -561,6 +561,19 @@
   .tile.unanswered { border-style: dashed; border-color: var(--fail); }
   .tile.flagged { border-color: var(--flag); box-shadow: inset 0 -3px 0 var(--flag); }
   .obj-row, .scn-row { margin-top: 12px; }
+  .h-days { list-style: none; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin: 6px 0 0; padding: 0; }
+  .h-day { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .h-day-box { display: grid; place-items: center; width: 100%; max-width: 54px; aspect-ratio: 1; border-radius: 10px;
+    border: 1.5px solid var(--line); font-family: var(--mono); font-size: .8rem; font-weight: 700; color: var(--ink); }
+  .h-day.lvl1 .h-day-box { background: color-mix(in srgb, var(--pen) 18%, transparent); border-color: transparent; }
+  .h-day.lvl2 .h-day-box { background: color-mix(in srgb, var(--pen) 38%, transparent); border-color: transparent; }
+  .h-day.lvl3 .h-day-box { background: color-mix(in srgb, var(--pen) 62%, transparent); border-color: transparent; color: var(--card); }
+  .h-day.lvl4 .h-day-box { background: var(--pen); border-color: transparent; color: var(--card); }
+  .h-day.today .h-day-box { outline: 2px solid var(--pen); outline-offset: 2px; }
+  .h-day-name { font-size: .74rem; color: var(--graphite); }
+  .weak-spot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .weak-spot small { display: block; font-size: .8rem; margin-top: 2px; }
+  .weak-spot .btn { flex: none; }
   .scn-review-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
   .scn-review-list .review-card { margin: 0; }
   @media (max-width: 680px) {
@@ -587,6 +600,7 @@
   .h-verdict.fail { background: var(--fail-soft); color: var(--fail); }
   .h-meta { color: var(--graphite); margin: 12px 0 0; line-height: 1.6; }
   .h-meta b { color: var(--ink); }
+  .h-plan { color: var(--ink); }
   .h-link { border: 0; background: none; padding: 0; font: inherit; color: var(--pen); text-decoration: underline; cursor: pointer; }
   .h-cta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
   .h-cta-main { font-size: 1.02rem; padding: 12px 22px; }
@@ -624,6 +638,7 @@
   .h-dom-head { display: grid; grid-template-columns: auto 1fr 140px 44px auto; gap: 12px; align-items: center; width: 100%; padding: 10px 0;
     border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
   .h-dom-head small { font-size: .78rem; }
+  .h-score-line { display: block; font-size: .76rem; color: var(--graphite); margin-top: 1px; }
   .h-objs { margin: 0 0 10px 44px; }
   .h-obj { display: grid; grid-template-columns: 1fr 90px 40px auto; gap: 10px; align-items: center; font-size: .86rem; padding: 5px 0; }
   .h-obj .btn { padding: 3px 10px; font-size: .78rem; }
@@ -644,6 +659,20 @@
   .h-step { border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 12px 14px; font-size: .88rem; color: var(--graphite); }
   .h-step b { display: block; color: var(--ink); margin-bottom: 4px; }
   .h-date { text-align: center; padding: 26px 16px; line-height: 1.8; }
+  /* in-app dialogs (js/app/dialog.js) */
+  .app-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: 16px;
+    background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+  .app-dialog::backdrop { background: rgb(10 12 16 / .55); }
+  .dlg { padding: 22px 22px 18px; }
+  .dlg-title { font-family: var(--display); font-size: 1.15rem; margin: 0 0 8px; }
+  .dlg-text { margin: 0 0 4px; color: var(--graphite); line-height: 1.55; }
+  .dlg-label { display: block; font-size: .84rem; color: var(--graphite); margin: 12px 0 6px; }
+  .dlg-input { width: 100%; box-sizing: border-box; font: inherit; }
+  textarea.dlg-input { resize: vertical; min-height: 90px; }
+  .dlg-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .btn.danger { background: var(--fail); border-color: var(--fail); color: var(--card); }
+  .btn.danger:hover:not(:disabled) { filter: brightness(1.08); color: var(--card); }
+
   /* header search: a field-like button that opens the search screen */
   .h-top { gap: 12px; }
   .h-search { flex: 0 1 340px; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 8px 0 12px;
@@ -721,6 +750,7 @@
 </head>
 <body>
 <div id="app"></div>
+<dialog id="app-dialog" class="app-dialog"></dialog>
 <script src="questions/domain1.js"></script>
 <script src="questions/domain2.js"></script>
 <script src="questions/domain3.js"></script>
@@ -755,6 +785,7 @@
 <script src="js/logic.js"></script>
 <script src="js/store.js"></script>
 <script src="js/app/state.js"></script>
+<script src="js/app/dialog.js"></script>
 <script src="js/app/home.js"></script>
 <script src="js/app/sessions.js"></script>
 <script src="js/app/question.js"></script>

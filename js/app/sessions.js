@@ -60,11 +60,11 @@ function startImportedExam(examId) {
   if (!exam.questions) {
     return loadExam(examId).then(
       function () { startImportedExam(examId); },
-      function () { alert("That exam could not be loaded. Check your connection and try again."); }
+      function () { notify("That exam could not be loaded. Check your connection and try again."); }
     );
   }
   if (!exam.questions.length) return;
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startImportedExam, arguments)) return;
   session = newSession("imported", exam.questions, EXAM_DURATION_MS);
   session.examId = exam.id;
   session.examName = exam.name;
@@ -83,11 +83,11 @@ function startImportedPractice(examId) {
   if (!exam.questions) {
     return loadExam(examId).then(
       function () { startImportedPractice(examId); },
-      function () { alert("That exam could not be loaded. Check your connection and try again."); }
+      function () { notify("That exam could not be loaded. Check your connection and try again."); }
     );
   }
   if (!exam.questions.length) return;
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startImportedPractice, arguments)) return;
   session = newSession("practice", exam.questions, null);
   session.examId = exam.id;
   session.examName = exam.name;
@@ -96,18 +96,26 @@ function startImportedPractice(examId) {
   renderQuestion();
 }
 
-function okToReplaceSaved() {
-  return !Store.snapshot().session ||
-    confirm("You have a session in progress. Starting a new one will discard it. Continue?");
+/* Starting something new replaces an unfinished session, so ask first.
+ * Returns true when it is fine to go ahead now. Otherwise it asks, and on
+ * yes discards the old session and calls retry(...args) to start again. */
+function okToReplaceSaved(retry, args) {
+  if (!Store.snapshot().session) return true;
+  ask({ title: "Replace your session?", text: "You have a session in progress. Starting a new one will discard it. Continue?",
+    ok: "Discard and start", cancel: "Keep my session", danger: true }, function () {
+    Store.mutate(Mutations.clearSession());
+    if (retry) retry.apply(null, args || []);
+  });
+  return false;
 }
 
 function startExam() {
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startExam, arguments)) return;
   var questions;
   try {
     questions = drawExam(BANK, EXAM_DRAW_COUNTS);
   } catch (e) {
-    alert("Question bank problem: " + e.message);
+    notify("Question bank problem: " + e.message);
     return;
   }
   session = newSession("exam", questions, EXAM_DURATION_MS);
@@ -120,11 +128,11 @@ function startExam() {
 var DIAGNOSTIC = { count: 2, perScenario: 10, ms: 40 * 60 * 1000 };
 
 function startScenarioExam(diagnostic) {
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startScenarioExam, arguments)) return;
   var drawn = drawScenarioExam(SCENARIOS, SCENARIO_BANK,
     usedScenarioQuestionIds(Store.snapshot().history), null, diagnostic ? DIAGNOSTIC : null);
   if (!drawn) {
-    alert("The scenario exam needs at least four scenarios with " + SCENARIO_BLOCK + " questions each.");
+    notify("The scenario exam needs at least four scenarios with " + SCENARIO_BLOCK + " questions each.");
     return;
   }
   reviewFilter = "all";
@@ -142,8 +150,8 @@ function startScenarioExam(diagnostic) {
 /* Untimed, one scenario (or a set of missed questions), with every
  * option's note shown after each answer. Questions not yet met in a
  * scenario exam come first. */
-function startScenarioPractice(scenarioId, ids, title) {
-  if (!okToReplaceSaved()) return;
+function startScenarioPractice(scenarioId, ids, title, objective) {
+  if (!okToReplaceSaved(startScenarioPractice, arguments)) return;
   var pool = ids
     ? ids.map(function (id) { return byId[id]; }).filter(Boolean)
     : SCENARIO_BANK.filter(function (q) { return q.scenario === scenarioId; });
@@ -155,6 +163,7 @@ function startScenarioPractice(scenarioId, ids, title) {
   session.scenarioId = scenarioId || null;
   session.missed = !!ids;
   session.practiceTitle = title || null;
+  session.objective = objective || null;
   session.strikes = {};
   session.comments = {};
   session.separate = true;
@@ -183,7 +192,7 @@ function startReview() {
   if (scn.length) return startScenarioPractice(null, scn, "Due for review");
   var rest = due.map(function (id) { return byId[id]; });
   if (!rest.length) return;
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startReview, arguments)) return;
   session = newSession("practice", shuffle(rest), false);
   session.savedDrill = true;
   session.reviewDrill = true;
@@ -198,11 +207,7 @@ function drillObjective(sub) {
   var ids = objectiveDrillIds(SCENARIO_BANK, sub, usedScenarioQuestionIds(Store.snapshot().history));
   /* Scenario questions with notes first; the results screen then offers
    * the bank questions on the same objective. */
-  if (ids.length) {
-    startScenarioPractice(null, ids, "Practice — " + sub);
-    if (session) session.objective = sub;
-    return;
-  }
+  if (ids.length) return startScenarioPractice(null, ids, "Practice — " + sub, sub);
   var code = sub.split(" ")[0];
   return startPractice(Number(code.split(".")[0]), code);
 }
@@ -260,6 +265,7 @@ function renderSearch() {
     '<input class="input search-input" id="search-q" type="search" autocomplete="off" value="' + esc(searchQuery) + '" autofocus>' +
     '<p class="muted search-note">Searches the question bank and the scenario questions (text, options, explanations and objectives). Imported exams are not included.</p></div>' +
     '<div id="search-results" aria-live="polite">' + searchResultsHtml() + "</div>";
+  syncRoute();
   var input = document.getElementById("search-q");
   if (input && input.focus) {
     input.focus();
@@ -305,7 +311,7 @@ function startSearchPractice(pool) {
   if (!hits.length) return;
   var title = "Search: “" + searchQuery.trim() + "”";
   if (pool === "scenario") return startScenarioPractice(null, hits.map(function (q) { return q.id; }), title);
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startSearchPractice, arguments)) return;
   session = newSession("practice", shuffle(hits), false);
   session.practiceTitle = title;
   persistSession();
@@ -379,8 +385,8 @@ function renderCustomBuilder() {
 
 function startCustom() {
   var pool = selectCustomQuestions(BANK, customState);
-  if (!pool.length) { alert("Nothing matches those filters — pick at least one domain."); return; }
-  if (!okToReplaceSaved()) return;
+  if (!pool.length) { notify("Nothing matches those filters — pick at least one domain."); return; }
+  if (!okToReplaceSaved(startCustom, arguments)) return;
   var count = customState.count === "all" ? pool.length : Number(customState.count);
   var questions = shuffle(pool).slice(0, Math.min(count, pool.length));
   session = newSession("custom", questions, customState.timed ? questions.length * 2 * 60 * 1000 : null);
@@ -392,10 +398,10 @@ function startCustom() {
 function startRetry(wrongIds) {
   var questions = shuffle(wrongIds.map(function (id) { return byId[id]; }).filter(Boolean));
   if (!questions.length) {
-    alert("Those questions are no longer in the loaded bank.");
+    notify("Those questions are no longer in the loaded bank.");
     return renderHome();
   }
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startRetry, arguments)) return;
   session = newSession("retry", questions, false);
   persistSession();
   renderQuestion();
@@ -405,7 +411,7 @@ function startSaved() {
   var saved = Store.snapshot().saved.filter(isListed)
     .map(function (id) { return byId[id]; })
     .filter(Boolean);
-  if (!saved.length || !okToReplaceSaved()) return;
+  if (!saved.length || !okToReplaceSaved(startSaved, arguments)) return;
   session = newSession("practice", shuffle(saved), null);
   session.savedDrill = true;
   /* The list can mix bank and imported questions, so only bank ones are
@@ -416,14 +422,14 @@ function startSaved() {
 
 function startWeak() {
   var weak = Store.snapshot().weak.filter(isListed).map(function (id) { return byId[id]; });
-  if (!weak.length || !okToReplaceSaved()) return;
+  if (!weak.length || !okToReplaceSaved(startWeak, arguments)) return;
   session = newSession("weak", shuffle(weak), false);
   persistSession();
   renderQuestion();
 }
 
 function startPractice(domain, subKey) {
-  if (!okToReplaceSaved()) return;
+  if (!okToReplaceSaved(startPractice, arguments)) return;
   var pool = shuffle(filterBySubKey(BANK, domain, subKey || null));
   if (!pool.length) return;
   session = newSession("practice", pool, false);
@@ -442,7 +448,7 @@ function loadSavedSession() {
   var usable = (saved.questions || []).filter(function (s) { return byId[s.id]; });
   if (!usable.length) {
     Store.mutate(Mutations.clearSession());
-    alert("That session referred to questions this version no longer has, so it was discarded.");
+    notify("That session referred to questions this version no longer has, so it was discarded.");
     return false;
   }
   saved.questions = usable;

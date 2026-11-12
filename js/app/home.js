@@ -59,6 +59,7 @@ function renderHome() {
     var cta = heroCta(progress, saved, acc, now, firstVisit);
     html += firstVisit ? homeFirstVisit(progress, cta) : homeReadiness(progress, now, cta);
     html += homeNextStep(acc);
+    html += homeWeek(progress, now);
     var S = window.CCARF_SYNC;
     if (isAdminUser(S)) html += visitorCard(S);
   }
@@ -66,6 +67,28 @@ function renderHome() {
   html += '<footer class="site-footer">Practice material for personal study. ' +
     "Not affiliated with Anthropic or Pearson VUE.</footer>";
   paint(html);
+}
+
+/* The last 7 days at a glance: a strip of days, the streak, and counts. */
+function homeWeek(progress, now) {
+  var a = activitySummary(progress.activity, now);
+  if (!a.any) return "";
+  var top = Math.max.apply(null, a.week.map(function (w) { return w.count; }).concat([1]));
+  var cells = a.week.map(function (w, i) {
+    var d = new Date(w.day + "T12:00:00");
+    var name = d.toLocaleDateString(undefined, { weekday: "short" });
+    var full = d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
+    var level = w.count ? Math.max(1, Math.ceil((4 * w.count) / top)) : 0;
+    return '<li class="h-day lvl' + level + (i === 6 ? " today" : "") + '" title="' + esc(full) + ": " + w.count + " answered" + '">' +
+      '<span class="h-day-box" aria-hidden="true">' + (w.count || "") + "</span>" +
+      '<span class="h-day-name">' + esc(name) + '</span><span class="sr-only">' + esc(full) + ": " + w.count + " questions answered</span></li>";
+  }).join("");
+  var streak = a.streak
+    ? "<b>" + a.streak + "-day streak</b>" + (a.today ? "" : " · answer a question today to keep it")
+    : "No streak yet · answer a question today to start one";
+  return '<section class="card h-col h-week" id="h-week"><h2 class="h-h2">Your week</h2>' +
+    '<p class="h-sub">' + streak + " · " + a.today + " today · " + a.weekTotal + " this week</p>" +
+    '<ol class="h-days">' + cells + "</ol></section>";
 }
 
 /* ------------------------------------------------------------- tabs */
@@ -101,6 +124,13 @@ function tabBar(tab, due) {
       '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
       t[2] + "</svg><span>" + t[1] + "</span>" + badge + "</button>";
   }).join("") + "</nav>";
+}
+
+/* Bank questions not yet answered (ever right counts as answered). */
+function bankLeft(progress) {
+  var seen = {};
+  progress.attempted.concat(progress.correctEver).forEach(function (id) { seen[id] = true; });
+  return BANK.filter(function (q) { return !seen[q.id]; }).length;
 }
 
 function examDateLine(progress, now) {
@@ -159,8 +189,10 @@ function homeReadiness(progress, now, cta) {
       " to get your predicted score and weakest objectives.</p>";
   }
   var date = examDateLine(progress, now);
+  var plan = studyPlan(daysUntil(progress.examDate, now), bankLeft(progress));
   html += '<p class="h-meta">' + (date ? date + " · " : "") +
-    '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change exam date" : "set exam date") + "</button></p>";
+    '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change exam date" : "set exam date") + "</button>" +
+    (plan ? '<br><span class="h-plan">' + esc(plan) + "</span>" : "") + "</p>";
   html += cta;
   html += "</div><div>" + sparkline(attempts);
   var last = null;
@@ -242,10 +274,10 @@ function heroCta(progress, saved, acc, now, firstVisit) {
 /* Colour is backed by words: each bar says weak, close or on track to
  * screen readers and on hover, and the By objective note explains it. */
 function meterStatus(pct) { return pct >= 72 ? "on track" : pct >= 50 ? "close" : "weak"; }
-function meter(pct) {
+function meter(pct, source) {
   if (pct === null) return '<div class="h-meter" role="img" aria-label="No answers yet"></div>';
   var c = pct >= 72 ? "var(--pass)" : pct >= 50 ? "var(--flag)" : "var(--fail)";
-  var label = pct + "% right, " + meterStatus(pct);
+  var label = pct + "% right" + (source ? " " + source : "") + ", " + meterStatus(pct);
   return '<div class="h-meter" role="img" aria-label="' + label + '" title="' + label + '"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
 }
 
@@ -263,37 +295,57 @@ function homeNextStep(acc) {
   return html + "</section>";
 }
 
+/* One bar per domain and objective. It shows exam accuracy when there is
+ * some, and practice accuracy otherwise, so practising alone still fills
+ * the bars; the line under each name gives both. */
+function scoreLine(ex, pr) {
+  var pc = function (r) { return Math.round((100 * r.correct) / r.total); };
+  var exPct = ex && ex.total ? pc(ex) : null;
+  var prPct = pr && pr.total ? pc(pr) : null;
+  var bits = [];
+  if (exPct !== null) bits.push("Exams " + exPct + "%");
+  if (prPct !== null) bits.push("Practice " + prPct + "%");
+  return {
+    pct: exPct !== null ? exPct : prPct,
+    source: exPct !== null ? "in exams" : prPct !== null ? "in practice" : "",
+    line: bits.length ? bits.join(" · ") : "No answers yet",
+  };
+}
+
 function homeObjectives(progress, acc) {
   var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted);
+  var prac = practiceAccuracy(BANK, progress.correctEver, progress.attempted);
   var seenAll = 0, rightAll = 0, totalAll = 0;
   for (var sd = 1; sd <= 5; sd++) {
     var row = mastery[sd] || { correct: 0, attempted: 0, total: 0 };
     seenAll += row.attempted; rightAll += row.correct; totalAll += row.total;
   }
   var pc = function (a, b) { return b ? Math.round((a / b) * 100) : 0; };
+  var sum = function (map, d) {
+    var r = { correct: 0, total: 0 };
+    SUBDOMAINS.forEach(function (sub) { if (sub.indexOf(d + ".") === 0 && map[sub]) { r.correct += map[sub].correct; r.total += map[sub].total; } });
+    return r;
+  };
   var html = '<section class="card h-col" id="h-objectives"><h2 class="h-h2">By objective</h2>' +
-    '<p class="h-sub">Bars show accuracy in your exams: green is on track (72%+, the pass level), amber is close (50–71%), red is weak. Open a domain for its task statements.</p>' +
+    '<p class="h-sub">Bars show your accuracy — from exams when you have taken some, otherwise from practice. Green is on track (72%+, the pass level), amber is close (50–71%), red is weak. Open a domain for its task statements.</p>' +
     '<p class="h-bank">Question bank: ' + seenAll + " of " + totalAll + " answered" +
     (seenAll ? " · " + pc(rightAll, seenAll) + "% right" : "") + "</p>";
   for (var d = 1; d <= 5; d++) {
-    var c = 0, t = 0;
-    SUBDOMAINS.forEach(function (sub) { if (sub.indexOf(d + ".") === 0 && acc[sub]) { c += acc[sub].correct; t += acc[sub].total; } });
-    var pct = t ? Math.round((100 * c) / t) : null;
+    var s = scoreLine(sum(acc, d), sum(prac, d));
     var m = mastery[d] || { attempted: 0, total: 0, correct: 0 };
     var open = expandedMastery === d;
     html += '<div class="h-dom"><button class="h-dom-head" data-action="toggle-mastery" data-domain="' + d + '" aria-expanded="' + open + '">' +
-      '<span class="domain-chip chip-d' + d + '">D' + d + "</span><span>" + esc(DOMAIN_NAMES[d]) + "</span>" +
-      meter(pct) + '<span class="h-pct">' + (pct === null ? "—" : pct + "%") + "</span>" + chev(open) + "</button>";
+      '<span class="domain-chip chip-d' + d + '">D' + d + "</span><span>" + esc(DOMAIN_NAMES[d]) +
+      '<small class="h-score-line">' + s.line + "</small></span>" +
+      meter(s.pct, s.source) + '<span class="h-pct">' + (s.pct === null ? "—" : s.pct + "%") + "</span>" + chev(open) + "</button>";
     if (open) {
       html += '<div class="h-objs"><button class="h-row" data-action="practice" data-domain="' + d + '"><span>Practice all of D' + d +
         '</span><span class="muted">' + m.total + " questions →</span></button>";
       SUBDOMAINS.forEach(function (sub) {
         if (sub.indexOf(d + ".") !== 0) return;
-        var a = acc[sub];
-        var p = a ? Math.round((100 * a.correct) / a.total) : null;
-        var code = sub.split(" ")[0];
-        html += '<div class="h-obj"><span>' + esc(sub) + "</span>" + meter(p) +
-          '<span class="h-pct">' + (p === null ? "—" : p + "%") + "</span>" +
+        var o = scoreLine(acc[sub], prac[sub]);
+        html += '<div class="h-obj"><span>' + esc(sub) + '<small class="h-score-line">' + o.line + "</small></span>" + meter(o.pct, o.source) +
+          '<span class="h-pct">' + (o.pct === null ? "—" : o.pct + "%") + "</span>" +
           '<span class="h-obj-act"><button class="btn small" data-action="drill-objective" data-sub="' + esc(sub) + '">Practise</button></span></div>';
       });
       html += "</div>";
