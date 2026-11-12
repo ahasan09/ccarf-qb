@@ -506,7 +506,7 @@ test("a practice run over an imported exam can be exited and resumed", () => {
   assert.ok(app.html().includes('data-action="select"'), "resumes into the questions");
 });
 
-test("the progress card separates coverage, accuracy and mastery", () => {
+test("the home bank line counts what was answered and how much was right", () => {
   const app = launch();
   app.click("practice", { domain: "1", sub: "1.1" });
   app.click("select", { opt: "0" }); // right
@@ -515,11 +515,9 @@ test("the progress card separates coverage, accuracy and mastery", () => {
   app.click("quit");
 
   const html = app.html();
-  assert.ok(html.includes("Coverage"), "coverage tile present");
-  assert.ok(html.includes("Accuracy"), "accuracy tile present");
-  assert.ok(html.includes("Mastery"), "mastery tile present");
-  assert.ok(html.includes("2 of 100 seen"), "two questions counted as seen");
-  assert.ok(html.includes("1 of 2 right"), "accuracy counts only what was attempted");
+  assert.ok(html.includes("2 of 100 answered"), "two questions counted as answered");
+  assert.ok(html.includes("50% right"), "accuracy counts only what was attempted");
+  assert.ok(!html.includes("Mastery") && !html.includes("Coverage"), "one plain line, no jargon");
 });
 
 test("a finished exam can be reviewed again from score history", () => {
@@ -680,11 +678,12 @@ test("bank questions are still shuffled", () => {
 });
 
 /* The stub bank tags every question, so build one with both kinds. */
-function launchMixed() {
+function launchMixed(storage) {
   return launch({
+    storage,
     bank: (() => {
       const qs = [];
-      // both pools need enough per domain to fill a 60-question draw
+      // d*-q1..20 are mapped to a subdomain; d*-q21..40 are not
       for (let d = 1; d <= 5; d++) {
         for (let i = 1; i <= 40; i++) {
           const q = {
@@ -700,47 +699,53 @@ function launchMixed() {
     })(),
   });
 }
+const isMapped = (id) => Number(id.split("-q")[1]) <= 20;
 
-test("the home screen offers both a mapped and a supplementary mock exam", () => {
+test("unmapped questions are not offered: no supplementary exam and no untagged rows", () => {
   const app = launchMixed();
+  app.click("toggle-mastery", { domain: "1" });
   const html = app.html();
-  assert.ok(html.includes('data-scope="mapped"'), "the main exam is mapped-only");
-  assert.ok(html.includes('data-scope="unmapped"'), "a supplementary exam is offered");
-  assert.ok(html.includes("Supplementary mock exam"));
-  assert.ok(html.includes("exam-guide mapped"), "the split is stated");
+  assert.ok(html.includes('data-action="start-exam"'), "the mock exam is still offered");
+  assert.ok(!html.includes('data-scope="unmapped"') && !html.includes("Supplementary"), "no supplementary exam");
+  assert.ok(!html.includes('data-sub="general"') && !html.includes("Untagged"), "no untagged practice");
+  assert.ok(html.includes("0 of 100 answered"), "bank counts mapped questions only");
 });
 
-test("the main mock exam never includes an unmapped question", () => {
+test("the mock exam draws only mapped questions", () => {
   const app = launchMixed();
-  app.click("start-exam", { scope: "mapped" });
+  app.click("start-exam");
   const ids = app.store().snapshot().session.questions.map((s) => s.id);
-  const bank = app.bank();
   assert.ok(ids.length > 0);
-  assert.ok(
-    ids.every((id) => bank.find((q) => q.id === id).subdomain),
-    "every drawn question is mapped to a subdomain"
-  );
+  assert.ok(ids.every(isMapped), "every drawn question is mapped to a subdomain");
 });
 
-test("the supplementary exam draws only unmapped questions", () => {
+test("domain practice leaves unmapped questions out", () => {
   const app = launchMixed();
-  app.click("start-exam", { scope: "unmapped" });
-  assert.ok(app.html().includes("Supplementary Mock Exam"), "titled distinctly");
-  const ids = app.store().snapshot().session.questions.map((s) => s.id);
-  const bank = app.bank();
-  assert.ok(
-    ids.every((id) => !bank.find((q) => q.id === id).subdomain),
-    "every drawn question is unmapped"
-  );
+  app.click("practice", { domain: "2" });
+  assert.ok(app.store().snapshot().session.questions.map((s) => s.id).every(isMapped), "domain practice");
 });
 
-test("a supplementary attempt is labelled in score history", () => {
+test("saved, missed and due lists skip unmapped questions kept from before", () => {
+  const entry = { due: 0, step: 1, updatedAt: 1 };
+  const due = { "d1-q30": entry, "d1-q2": entry };
+  const app = launchMixed({ "ccarf.progress": JSON.stringify({
+    history: [], attempted: ["d1-q1"], saved: ["d1-q25", "d1-q3"], weak: ["d1-q26", "d1-q27"], review: due,
+  }) });
+  const html = app.html();
+  assert.match(html, /☆ Saved questions<\/span><span class="muted">1</, "one saved question listed");
+  assert.ok(!html.includes('data-action="start-weak"'), "only unmapped missed questions: no drill");
+  assert.ok(html.includes("1 today"), "one question due, not two");
+  app.click("start-saved");
+  assert.deepEqual(app.store().snapshot().session.questions.map((s) => s.id), ["d1-q3"]);
+});
+
+test("search does not find unmapped questions", () => {
   const app = launchMixed();
-  app.click("start-exam", { scope: "unmapped" });
-  completeSession(app);
-  const attempt = app.store().snapshot().history[0];
-  assert.equal(attempt.examName, "Supplementary mock");
-  assert.equal(attempt.examId, null, "it is not an imported exam");
+  app.click("search");
+  app.type("search-q", "Question 1-3");
+  const html = app.html();
+  assert.ok(html.includes("Question 1-3?"), "mapped question found");
+  assert.ok(!/Question 1-3\d\?/.test(html), "unmapped 1-30..39 not found");
 });
 
 /* ------------------------------------------------------- scenario exams */
@@ -1278,6 +1283,15 @@ test("a fresh visitor gets the diagnostic and no readiness number", () => {
   assert.ok(html.includes('data-action="edit-exam-date"'));
 });
 
+test("a fresh visitor sees the same home sections as a returning one", () => {
+  const html = launch().html();
+  for (const id of ["h-objectives", "h-practice", "h-history"]) assert.ok(html.includes('id="' + id + '"'), id);
+  for (const a of ['data-action="toggle-mastery"', 'data-action="custom-builder"', 'data-action="search"',
+    'data-action="start-review"', 'data-action="start-saved"']) assert.ok(html.includes(a), a);
+  assert.ok(!html.includes("Next best step"), "no weak objectives without answers");
+  assert.equal(html.split('data-action="practice-scenario"').length - 1, SCENARIOS.length, "each scenario listed once");
+});
+
 test("after an exam the readiness panel shows a weighted predicted score and verdict", () => {
   const app = launch();
   seedHistory(app, [600, 700, 800]);
@@ -1337,7 +1351,7 @@ test("the returning home keeps every way in", () => {
   const app = launch();
   seedHistory(app, [700]);
   const html = app.html();
-  for (const a of ['data-action="start-scenario-exam"', 'data-scope="mapped"', 'data-scope="unmapped"',
+  for (const a of ['data-action="start-scenario-exam"', 'data-action="start-exam"',
     'data-action="custom-builder"', 'data-action="practice-scenario"', 'data-action="start-review"',
     'data-action="start-saved"', 'data-action="toggle-mastery"']) assert.ok(html.includes(a), a);
   assert.ok(html.includes("By objective") && html.includes("Score history") && html.includes("Account"));
@@ -1388,11 +1402,38 @@ test("someone who has only practised still gets the full home", () => {
   assert.ok(app.html().includes('data-action="custom-builder"'));
 });
 
-test("each objective also offers question-bank practice", () => {
+test("each objective has one Practise button, and its bank questions follow the scenario set", () => {
   const app = launch();
-  app.store().mutate({ key: null, apply: (s) => { s.saved = ["d1-q1"]; } });
-  app.click("toggle-mastery", { domain: "2" });
-  assert.ok(app.html().includes('data-action="practice" data-domain="2" data-sub="2.1"'));
+  app.click("toggle-mastery", { domain: "1" });
+  const html = app.html();
+  assert.ok(html.includes('data-action="drill-objective" data-sub="1.1 '), "one Practise button");
+  assert.ok(!html.includes(">Bank<") && !html.includes(">Drill<"), "no separate Drill and Bank buttons");
+  app.click("drill-objective", { sub: "1.1 Design and implement agentic loops for autonomous task execution" });
+  completeSession(app);
+  assert.ok(app.html().includes('data-action="practice" data-domain="1" data-sub="1.1"'), "more on this objective offered");
+  assert.ok(app.html().includes("More on 1.1 · 20 questions"));
+});
+
+test("the top card has one main action, picked by where the user is", () => {
+  const main = (html) => (html.match(/class="btn primary h-cta-main" data-action="([^"]+)"/) || [])[1];
+  const fresh = launch();
+  assert.equal(main(fresh.html()), "start-diagnostic", "a new visitor is pointed at the diagnostic");
+  assert.equal((fresh.html().match(/h-cta-main/g) || []).length, 1, "only one main button");
+
+  fresh.click("practice", { domain: "1" });
+  fresh.click("select", { opt: "0" });
+  fresh.click("quit");
+  assert.equal(main(fresh.html()), "resume", "an unfinished session comes first");
+  assert.ok(fresh.html().includes("Continue · 1/20") && fresh.html().includes("in progress"));
+  assert.ok(!fresh.html().includes("resume-card"), "no separate resume card");
+
+  const entry = { due: 0, step: 1, updatedAt: 1 };
+  const due = launch({ storage: { "ccarf.progress": JSON.stringify({ attempted: ["d1-q1"], review: { "d1-q2": entry } }) } });
+  assert.equal(main(due.html()), "start-review", "then questions due for review");
+  assert.ok(due.html().includes("Review 1 due question<"));
+
+  const plain = launch({ storage: { ...RETURNING } });
+  assert.equal(main(plain.html()), "start-scenario-exam", "otherwise the full exam");
 });
 
 test("account & sync is a dropdown on the header chip, not a section at the bottom", () => {

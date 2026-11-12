@@ -4,7 +4,12 @@
 
 "use strict";
 
-var BANK = window.QUESTION_BANK || [];
+/* The question files hold every question, but only the exam-guide-mapped
+ * ones (those with a subdomain) are used. The unmapped ones stay on disk and
+ * in byId, so old attempts and sessions that used them still open, but
+ * they never appear in practice, exams, search or the review lists. */
+var FULL_BANK = window.QUESTION_BANK || [];
+var BANK = filterByTagging(FULL_BANK, true);
 /* Imported exams are deliberately kept out of BANK: they never feed the
  * practice pools, custom quizzes, mastery or the weak-question drill.
  * Only the manifest loads with the page; each exam's questions are
@@ -32,16 +37,17 @@ function reportLink(q) {
     "Report a problem with this question ↗</a>" : "";
 }
 
-/* Mock exams draw from the exam-guide-mapped pool; the unmapped ones are
- * kept aside and only used by the supplementary exam. */
-var MAPPED = filterByTagging(BANK, true);
-var UNMAPPED = filterByTagging(BANK, false);
-
 var bankIds = {};
 BANK.forEach(function (q) { bankIds[q.id] = true; });
 
 var byId = {};
-BANK.forEach(function (q) { byId[q.id] = q; });
+FULL_BANK.forEach(function (q) { byId[q.id] = q; });
+
+/* A question the lists on the home screen may offer: anything known except
+ * an unmapped bank question. */
+var hiddenIds = {};
+FULL_BANK.forEach(function (q) { if (!bankIds[q.id]) hiddenIds[q.id] = true; });
+function isListed(id) { return !!byId[id] && !hiddenIds[id]; }
 
 /* The scenario bank is separate too: its questions are looked up by id
  * but never join BANK, so they don't touch mastery or the weak drill. */

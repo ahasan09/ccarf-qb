@@ -101,18 +101,17 @@ function okToReplaceSaved() {
     confirm("You have a session in progress. Starting a new one will discard it. Continue?");
 }
 
-function startExam(scope) {
+function startExam() {
   if (!okToReplaceSaved()) return;
-  var unmapped = scope === "unmapped";
   var questions;
   try {
-    questions = drawExam(unmapped ? UNMAPPED : MAPPED, EXAM_DRAW_COUNTS);
+    questions = drawExam(BANK, EXAM_DRAW_COUNTS);
   } catch (e) {
     alert("Question bank problem: " + e.message);
     return;
   }
   session = newSession("exam", questions, EXAM_DURATION_MS);
-  session.scope = unmapped ? "unmapped" : "mapped";
+  session.scope = "mapped";
   persistSession();
   renderQuestion();
   startTimer();
@@ -179,7 +178,7 @@ function scheduleReview(results) {
 /* Due questions: scenario ones first (two-panel with notes), then the
  * rest in ordinary practice. */
 function startReview() {
-  var due = dueReviewIds(Store.snapshot().review, Date.now()).filter(function (id) { return byId[id]; });
+  var due = dueReviewIds(Store.snapshot().review, Date.now()).filter(isListed);
   var scn = due.filter(function (id) { return byId[id].scenario; });
   if (scn.length) return startScenarioPractice(null, scn, "Due for review");
   var rest = due.map(function (id) { return byId[id]; });
@@ -197,7 +196,13 @@ function startReview() {
 function drillObjective(sub) {
   if (!sub) return;
   var ids = objectiveDrillIds(SCENARIO_BANK, sub, usedScenarioQuestionIds(Store.snapshot().history));
-  if (ids.length) return startScenarioPractice(null, ids, "Drill — " + sub);
+  /* Scenario questions with notes first; the results screen then offers
+   * the bank questions on the same objective. */
+  if (ids.length) {
+    startScenarioPractice(null, ids, "Practice — " + sub);
+    if (session) session.objective = sub;
+    return;
+  }
   var code = sub.split(" ")[0];
   return startPractice(Number(code.split(".")[0]), code);
 }
@@ -397,7 +402,7 @@ function startRetry(wrongIds) {
 }
 
 function startSaved() {
-  var saved = Store.snapshot().saved
+  var saved = Store.snapshot().saved.filter(isListed)
     .map(function (id) { return byId[id]; })
     .filter(Boolean);
   if (!saved.length || !okToReplaceSaved()) return;
@@ -410,7 +415,7 @@ function startSaved() {
 }
 
 function startWeak() {
-  var weak = Store.snapshot().weak.map(function (id) { return byId[id]; }).filter(Boolean);
+  var weak = Store.snapshot().weak.filter(isListed).map(function (id) { return byId[id]; });
   if (!weak.length || !okToReplaceSaved()) return;
   session = newSession("weak", shuffle(weak), false);
   persistSession();

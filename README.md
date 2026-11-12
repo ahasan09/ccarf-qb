@@ -18,17 +18,22 @@ browser's localStorage.
   in the real exam's layout) and an optional exam date.
 - **Your readiness** — a predicted score (the last five exams, newest weighted
   most: 5,4,3,2,1) with a verdict (**Likely pass** ≥ 760, **Borderline**
-  680–759, **Not yet** below), the countdown to your exam date, how many
-  questions are due for review, a trend chart of recent scores against the
-  720 line, and a link to review your last attempt. **Start scenario exam** is
-  the main action; the mock, supplementary and imported exams are under
-  **Other exams**.
+  680–759, **Not yet** below), the countdown to your exam date,
+  a trend chart of recent scores against the 720 line, and a link to review
+  your last attempt.
+- **One main action** — the top card has a single main button, chosen by
+  where you are: **Continue** an unfinished session, **Start diagnostic** on
+  a first visit, **Review N due questions**, **Practise your weakest
+  objective**, or otherwise **Start scenario exam**. The full exam, the mock
+  and imported exams stay one click away under it.
 - **Next best step** — your three weakest exam-guide objectives (at least
-  three answered), each with a **Drill**: up to 8 scenario questions on that
-  objective with a note on every option.
+  three answered), each with **Practise**: up to 8 scenario questions on that
+  objective with a note on every option, then the objective's bank questions
+  are offered from the results screen.
 - **By objective** — accuracy in your exams for each domain and each of the
-  30 task statements, with a Drill per objective and **Practice all** for the
-  question bank. Bank coverage, accuracy and mastery are shown above it.
+  30 task statements, one **Practise** button per objective and **Practice
+  all** per domain. Above it: how many bank questions you have answered and
+  the percent right.
 - **Practice** — **Due for review**, Saved questions, missed questions,
   Custom quiz, **Search questions**, and the six scenarios with your best
   score in each.
@@ -53,8 +58,9 @@ Modes:
   120 minutes, pass at 720. Details below.
 - **Practice by scenario** — untimed practice on one scenario, with a note
   for every option after each answer.
-- **Supplementary mock exam** — the same format drawn from the 300 questions
-  not mapped to a subdomain, so the main mock stays exam-guide aligned.
+- **Unmapped questions** — the 300 questions not mapped to an exam-guide
+  subdomain stay in `questions/` but are not used anywhere in the app
+  (practice, exams, search, review lists or coverage figures).
 - **Retry failed** — after any session, re-quiz only the questions you got
   wrong, repeatable until none remain.
 - **Drill weak questions** — every question you have ever missed collects
