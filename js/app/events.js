@@ -43,6 +43,14 @@ function toggleFlag() {
   renderQuestion();
 }
 
+/* Leaving a quiz keeps it: the session is saved and resumable. */
+function exitSession() {
+  clockOn(null);
+  persistSession();
+  stopTimer();
+  renderHome();
+}
+
 /* "/" opens search from anywhere but a running quiz, as on most sites. */
 function searchShortcut(ev) {
   if (ev.key !== "/" || ev.metaKey || ev.ctrlKey || ev.altKey || busyAction) return false;
@@ -57,6 +65,7 @@ function searchShortcut(ev) {
 }
 
 document.addEventListener("keydown", function (ev) {
+  if (dialogOpen()) return; // the dialog handles its own keys
   if (ev.key === "Escape") closeMenus(null);
   if (searchShortcut(ev)) return;
   if (busyAction || !inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
@@ -163,18 +172,20 @@ app.addEventListener("change", function (ev) {
   if (!input || input.id !== "import-file" || !input.files || !input.files[0]) return;
   var file = input.files[0];
   input.value = ""; // picking the same file again still fires
-  file.text().then(importProgressText, function () { alert("That file could not be read."); });
+  file.text().then(importProgressText, function () { notify("That file could not be read."); });
 });
 
 function importProgressText(text) {
   var got = parseProgressFile(text);
-  if (got.error) { alert(got.error); return; }
+  if (got.error) { notify(got.error, "Import failed"); return; }
   var p = got.progress;
-  if (!confirm("Add this backup to your progress? It has " + p.history.length + " exam attempt" +
-      (p.history.length === 1 ? "" : "s") + " and " + p.attempted.length + " questions tried. Nothing here is removed.")) return;
-  Store.mutate(Mutations.restore(p));
-  if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
-  if (view === "home") renderHome();
+  ask({ title: "Import progress?", ok: "Import",
+    text: "Add this backup to your progress? It has " + p.history.length + " exam attempt" +
+      (p.history.length === 1 ? "" : "s") + " and " + p.attempted.length + " questions tried. Nothing here is removed." }, function () {
+    Store.mutate(Mutations.restore(p));
+    if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
+    if (view === "home") renderHome();
+  });
 }
 
 /* Hands the browser a file to save. */
@@ -227,21 +238,23 @@ function handleAction(btn) {
     case "resume": return resumeSession();
     case "finish-saved": return finishSavedSession();
     case "discard":
-      if (!confirm("Discard this in-progress session? This cannot be undone.")) return;
-      Store.mutate(Mutations.clearSession());
-      return renderHome();
-    case "clear-saved":
-      if (!confirm("Remove every saved question?")) return;
-      Store.snapshot().saved.slice().forEach(function (id) {
-        Store.mutate(Mutations.toggleSaved(id));
+      return ask({ title: "Discard this session?", text: "Discard this in-progress session? This cannot be undone.",
+        ok: "Discard session", cancel: "Keep it", danger: true }, function () {
+        Store.mutate(Mutations.clearSession());
+        renderHome();
       });
-      return renderHome();
+    case "clear-saved":
+      return ask({ title: "Remove saved questions?", text: "Remove every saved question?", ok: "Remove all", danger: true }, function () {
+        Store.snapshot().saved.slice().forEach(function (id) {
+          Store.mutate(Mutations.toggleSaved(id));
+        });
+        renderHome();
+      });
     case "clear-history":
-      if (confirm("Delete all score history?")) {
+      return ask({ title: "Delete score history?", text: "Delete all score history?", ok: "Delete history", danger: true }, function () {
         Store.mutate(Mutations.clearHistory());
         renderHome();
-      }
-      return;
+      });
     case "custom-builder": return renderCustomBuilder();
     case "search": return renderSearch();
     case "practice-search": return startSearchPractice(btn.dataset.pool);
@@ -282,15 +295,16 @@ function handleAction(btn) {
     case "start-review": return startReview();
     case "start-diagnostic": return startScenarioExam(true);
     case "drill-objective": return drillObjective(btn.dataset.sub);
-    case "edit-exam-date": {
-      var cur = Store.snapshot().examDate || "";
-      var got = prompt("Exam date (YYYY-MM-DD). Leave empty to clear.", cur);
-      if (got === null) return;
-      got = String(got).trim();
-      if (got && !isValidDate(got)) { alert("Please enter a real date as YYYY-MM-DD, e.g. 2026-12-14."); return; }
-      Store.mutate(Mutations.setExamDate(got || null));
-      return renderHome();
-    }
+    case "edit-exam-date":
+      return askValue({ title: "Exam date", text: "Exam date (YYYY-MM-DD). Leave empty to clear.",
+        input: { type: "date", value: Store.snapshot().examDate || "", label: "Your exam date — clear it to remove the countdown" } },
+        function (got) {
+          if (got === null) return;
+          got = String(got).trim();
+          if (got && !isValidDate(got)) { notify("Please enter a real date as YYYY-MM-DD, e.g. 2026-12-14."); return; }
+          Store.mutate(Mutations.setExamDate(got || null));
+          renderHome();
+        });
     case "tab": closeMenus(null); return setTab(btn.dataset.tab);
     case "open-section": {
       closeMenus(null);
@@ -305,9 +319,9 @@ function handleAction(btn) {
     case "comment": {
       if (!session) return;
       var cur = session.comments[session.questions[session.current].id] || "";
-      var text = prompt("Comment on this question (leave empty to remove):", cur);
-      if (text === null) return;
-      return setComment(text);
+      return askValue({ title: "Comment on this question", text: "Comment on this question (leave empty to remove):",
+        input: { type: "textarea", value: cur, label: "Leave it empty to remove the comment." } },
+        function (text) { if (text !== null && session) setComment(text); });
     }
     case "submit": {
       if (session.mode === "exam" || session.mode === "scenario") {
@@ -315,16 +329,15 @@ function handleAction(btn) {
         var msg = unanswered
           ? "You have " + unanswered + " unanswered question" + (unanswered === 1 ? "" : "s") + ". Submit anyway?"
           : "Submit the exam?";
-        if (!confirm(msg)) return;
+        return ask({ title: "Submit the exam?", text: msg, ok: "Submit", cancel: "Keep working" }, function () {
+          if (session) submitSession();
+        });
       }
       return submitSession();
     }
     case "quit":
-      if (!confirm("Exit? Your progress is saved — resume from the home screen.")) return;
-      clockOn(null);
-      persistSession();
-      stopTimer();
-      return renderHome();
+      return ask({ title: "Exit?", text: "Exit? Your progress is saved — resume from the home screen.", ok: "Exit", cancel: "Keep going" },
+        exitSession);
     case "retry-failed": return startRetry(lastFinished.grade.wrongIds);
     case "show-review": reviewWrongOnly = false; reviewDomain = 0; return renderReview();
     case "review-attempt": {
@@ -334,7 +347,7 @@ function handleAction(btn) {
       if (entry && entry.examId && examById[entry.examId] && !examById[entry.examId].questions) {
         return loadExam(entry.examId).then(
           function () { reviewStoredAttempt(wanted); },
-          function () { alert("That exam could not be loaded."); }
+          function () { notify("That exam could not be loaded."); }
         );
       }
       return reviewStoredAttempt(wanted);
@@ -360,41 +373,41 @@ function handleAction(btn) {
     case "auth-send": {
       var emailEl = document.getElementById("auth-email");
       var email = emailEl && emailEl.value.trim();
-      if (!email || email.indexOf("@") === -1) { alert("Enter a valid e-mail address."); return; }
+      if (!email || email.indexOf("@") === -1) { notify("Enter a valid e-mail address."); return; }
       btn.disabled = true;
       window.CCARF_SYNC.sendCode(email).then(function () {
         pendingEmail = email;
         renderHome();
       }).catch(function (err) {
         btn.disabled = false;
-        alert(signInEmailError(err));
+        notify(signInEmailError(err), "Could not send the e-mail");
       });
       return;
     }
     case "auth-verify": {
       var codeEl = document.getElementById("auth-code");
       var code = codeEl && codeEl.value.trim();
-      if (!code) { alert("Enter the code from the e-mail."); return; }
+      if (!code) { notify("Enter the code from the e-mail."); return; }
       btn.disabled = true;
       window.CCARF_SYNC.verify(pendingEmail, code).then(function () {
         pendingEmail = null; // auth event re-renders home
       }).catch(function (err) {
         btn.disabled = false;
-        alert("Sign-in failed: " + (err && err.message ? err.message : err));
+        notify("Sign-in failed: " + (err && err.message ? err.message : err));
       });
       return;
     }
     case "auth-signout":
-      if (!confirm("Sign out? Progress stays on the server and this device's copy is cleared.")) return;
-      window.CCARF_SYNC.signOut();
-      return;
+      return ask({ title: "Sign out?", text: "Sign out? Progress stays on the server and this device's copy is cleared.", ok: "Sign out" },
+        function () { window.CCARF_SYNC.signOut(); });
     case "restore-backup": {
       var backup = LS.get(BACKUP_KEY, null);
       if (!progressSize(backup)) return;
-      if (!confirm("Merge this device's backup into your progress? Nothing is removed.")) return;
-      Store.mutate(Mutations.restore(backup));
-      if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
-      return renderHome();
+      return ask({ title: "Restore backup?", text: "Merge this device's backup into your progress? Nothing is removed.", ok: "Restore" }, function () {
+        Store.mutate(Mutations.restore(backup));
+        if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
+        renderHome();
+      });
     }
     case "export-progress":
       return downloadText("ccarf-progress-" + new Date().toISOString().slice(0, 10) + ".json",

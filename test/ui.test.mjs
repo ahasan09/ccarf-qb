@@ -109,6 +109,7 @@ function launch(opts = {}) {
     clearTimeout: () => {},
     document: {
       getElementById: (id) => (id === "app" ? appEl
+        : id === "app-dialog" && opts.dialog ? opts.dialog
         : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
@@ -2138,4 +2139,62 @@ test("the theme button names the current theme", () => {
   assert.match(app.html(), /<span class="h-theme-label">Auto<\/span>/);
   app.click("cycle-theme");
   assert.match(app.html(), /aria-label="Theme: Light \(click for Dark\)">[^<]*<span class="h-theme-label">Light/);
+});
+
+/* ---- in-app dialogs ------------------------------------------------------- */
+/* A stand-in for <dialog>: records what is shown and lets a test answer. */
+function fakeDialog() {
+  const d = {
+    open: false, innerHTML: "", returnValue: "", field: null,
+    showModal() { this.open = true; },
+    close(v) { this.open = false; if (v !== undefined) this.returnValue = v; if (this.onclose) this.onclose(); },
+    setAttribute() {}, removeAttribute() {},
+    querySelector(sel) { return sel === "#dlg-input" ? this.field : null; },
+    answer(ok, value) { if (this.field && value !== undefined) this.field.value = value; this.close(ok ? "ok" : ""); },
+  };
+  return d;
+}
+
+test("confirmations use the in-app dialog, not the browser's", () => {
+  const dialog = fakeDialog();
+  let native = 0;
+  const app = launch({ dialog, confirm: () => { native++; return true; }, storage: { ...RETURNING } });
+  app.click("practice", { domain: "1" });
+  app.click("quit");
+  assert.ok(dialog.open, "the dialog opens");
+  assert.ok(dialog.innerHTML.includes("Keep going") && dialog.innerHTML.includes(">Exit<"), "plain button labels");
+  dialog.answer(false);
+  assert.ok(app.html().includes('data-action="select"'), "cancel keeps the quiz on screen");
+  app.click("quit");
+  dialog.answer(true);
+  assert.ok(app.html().includes("h-tabs"), "yes goes home");
+  assert.equal(native, 0, "the browser's confirm() is never used");
+});
+
+test("starting something new over a saved session asks, then starts it on yes", () => {
+  const dialog = fakeDialog();
+  const app = launch({ dialog, storage: { ...RETURNING } });
+  app.click("practice", { domain: "1" });
+  app.click("select", { opt: "0" });
+  app.click("quit"); dialog.answer(true);
+  app.click("start-exam");
+  assert.ok(dialog.open && dialog.innerHTML.includes("Keep my session"));
+  dialog.answer(false);
+  assert.equal(app.store().snapshot().session.mode, "practice", "no keeps the old session");
+  app.click("start-exam");
+  dialog.answer(true);
+  assert.equal(app.store().snapshot().session.mode, "exam", "yes starts the exam");
+});
+
+test("the exam date is picked with a date field", () => {
+  const dialog = fakeDialog();
+  dialog.field = { value: "" };
+  const app = launch({ dialog, storage: { ...RETURNING } });
+  app.click("edit-exam-date");
+  assert.ok(dialog.innerHTML.includes('type="date"'), "a native date picker");
+  dialog.answer(true, "2030-01-15");
+  assert.equal(app.store().snapshot().examDate, "2030-01-15");
+  app.click("edit-exam-date");
+  dialog.answer(true, "");
+  assert.equal(app.store().snapshot().examDate, null, "an empty date clears it");
 });

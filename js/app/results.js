@@ -134,7 +134,7 @@ function reviewStoredAttempt(date) {
   Store.snapshot().history.forEach(function (h) { if (h.date === date) entry = h; });
   var restored = attemptToFinished(entry);
   if (!restored) {
-    alert("That attempt cannot be reviewed — its questions are no longer in the app.");
+    notify("That attempt cannot be reviewed — its questions are no longer in the app.");
     return;
   }
   lastFinished = restored;

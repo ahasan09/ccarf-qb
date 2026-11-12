@@ -13,6 +13,7 @@ export const LOGIC_SCRIPTS = ["js/logic.js", "js/store.js"];
 export const APP_SCRIPTS = [
   ...LOGIC_SCRIPTS,
   "js/app/state.js",
+  "js/app/dialog.js",
   "js/app/home.js",
   "js/app/sessions.js",
   "js/app/question.js",

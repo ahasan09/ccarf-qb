@@ -644,6 +644,20 @@
   .h-step { border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 12px 14px; font-size: .88rem; color: var(--graphite); }
   .h-step b { display: block; color: var(--ink); margin-bottom: 4px; }
   .h-date { text-align: center; padding: 26px 16px; line-height: 1.8; }
+  /* in-app dialogs (js/app/dialog.js) */
+  .app-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: 16px;
+    background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+  .app-dialog::backdrop { background: rgb(10 12 16 / .55); }
+  .dlg { padding: 22px 22px 18px; }
+  .dlg-title { font-family: var(--display); font-size: 1.15rem; margin: 0 0 8px; }
+  .dlg-text { margin: 0 0 4px; color: var(--graphite); line-height: 1.55; }
+  .dlg-label { display: block; font-size: .84rem; color: var(--graphite); margin: 12px 0 6px; }
+  .dlg-input { width: 100%; box-sizing: border-box; font: inherit; }
+  textarea.dlg-input { resize: vertical; min-height: 90px; }
+  .dlg-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .btn.danger { background: var(--fail); border-color: var(--fail); color: var(--card); }
+  .btn.danger:hover:not(:disabled) { filter: brightness(1.08); color: var(--card); }
+
   /* header search: a field-like button that opens the search screen */
   .h-top { gap: 12px; }
   .h-search { flex: 0 1 340px; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 8px 0 12px;
@@ -721,6 +735,7 @@
 </head>
 <body>
 <div id="app"></div>
+<dialog id="app-dialog" class="app-dialog"></dialog>
 <script src="questions/domain1.js"></script>
 <script src="questions/domain2.js"></script>
 <script src="questions/domain3.js"></script>
@@ -755,6 +770,7 @@
 <script src="js/logic.js"></script>
 <script src="js/store.js"></script>
 <script src="js/app/state.js"></script>
+<script src="js/app/dialog.js"></script>
 <script src="js/app/home.js"></script>
 <script src="js/app/sessions.js"></script>
 <script src="js/app/question.js"></script>

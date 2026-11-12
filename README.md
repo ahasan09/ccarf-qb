@@ -320,7 +320,7 @@ run, check-ins fail quietly and nobody sees the card.
   links in a known group render; keep tracking parameters out of URLs
 - `js/store.js` — the progress store and the cross-device sync engine (no DOM)
 - `js/app/` — the DOM app, in load order: `state.js` (banks, storage, shared
-  state, helpers), `home.js`, `sessions.js`, `question.js`, `results.js`,
+  state, helpers), `dialog.js` (in-app alert/confirm/prompt), `home.js`, `sessions.js`, `question.js`, `results.js`,
   `events.js` (input handling and boot; actions listed in `SLOW_ACTIONS`
   show a spinner on the clicked control and block other clicks and
   shortcuts until they finish). These are classic scripts sharing
