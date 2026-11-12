@@ -58,6 +58,7 @@ function renderScenarioQuestion() {
     html += '<div class="opt-wrap"><div class="opt-row"><button class="' + cls + '" role="radio" aria-checked="' + picked +
       '" data-action="select" data-opt="' + optIdx + '"' + (showFeedback ? " disabled" : "") + ">" +
       '<span class="opt-letter"></span>' + esc(q.options[optIdx]) +
+      (showFeedback ? optionTags(correct.indexOf(optIdx) !== -1, picked) : "") +
       (isStruck ? '<span class="sr-only"> (struck through)</span>' : "") + "</button>" +
       strikeButton(optIdx, sq.order.indexOf(optIdx), isStruck) + "</div>";
     if (showFeedback && q.optionNotes) {
@@ -69,7 +70,7 @@ function renderScenarioQuestion() {
   html += "</div>";
   if (showFeedback) {
     var right = sameChoice(session.answers[q.id], correct);
-    html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status"><strong>' +
+    html += '<div class="feedback ' + (right ? "ok" : "bad") + '"><strong>' +
       (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation) + "</div>" + reportLink(q);
   }
   if (comment) html += '<p class="scn-comment muted">💬 ' + esc(comment) + "</p>";
@@ -162,7 +163,25 @@ function renderScenarioReview() {
   window.scrollTo(0, 0);
 }
 
+/* Which question was last announced, so a redraw of the same one (a
+ * pick, a flag) stays quiet and only moving to another is read out. */
+var announcedQuestion = null;
+function announceQuestion() {
+  var key = session.startedAt + ":" + session.current;
+  if (key === announcedQuestion) return;
+  announcedQuestion = key;
+  announce("Question " + (session.current + 1) + " of " + session.questions.length);
+}
+
+/* "Correct answer" / "Your answer" written on the options once graded, as
+ * on the review screen, so the result does not rest on colour alone. */
+function optionTags(isCorrect, picked) {
+  return (isCorrect ? ' <span class="tag">correct answer</span>' : "") +
+    (picked && !isCorrect ? ' <span class="tag">your answer</span>' : "");
+}
+
 function renderQuestion() {
+  announceQuestion();
   if (isScenarioMode(session.mode)) return renderScenarioQuestion();
   view = "quiz";
   var sq = session.questions[session.current];
@@ -239,6 +258,7 @@ function renderQuestion() {
       '" aria-checked="' + picked +
       '" data-action="select" data-opt="' + optIdx + '"' + disabled + ">" +
       '<span class="opt-letter"></span>' + esc(q.options[optIdx]) +
+      (showFeedback ? optionTags(correct.indexOf(optIdx) !== -1, picked) : "") +
       (isStruck ? '<span class="sr-only"> (struck through)</span>' : "") + "</button>";
     html += strikeOn ? '<div class="opt-row">' + btn + strikeButton(optIdx, sq.order.indexOf(optIdx), isStruck) + "</div>" : btn;
   });
@@ -247,7 +267,7 @@ function renderQuestion() {
 
   if (showFeedback) {
     var right = sameChoice(answered, correct);
-    html += '<div class="feedback ' + (right ? "ok" : "bad") + '" role="status">' +
+    html += '<div class="feedback ' + (right ? "ok" : "bad") + '">' +
       "<strong>" + (right ? "Correct." : "Incorrect.") + "</strong> " + esc(q.explanation);
     /* Where the source explains each option, show the reasoning for the
      * ones actually picked wrongly. */
@@ -313,6 +333,9 @@ function selectOption(optIdx) {
     }
     session.feedback = sq.id;
     var right = sameChoice(session.answers[sq.id], wanted);
+    announce(right ? "Correct." : "Incorrect. The correct answer is " + wanted.map(function (i) {
+      return String.fromCharCode(65 + sq.order.indexOf(i)) + ": " + q.options[i];
+    }).join("; ") + ". The explanation follows the options.");
     if (right) session.tally.correct++;
     else session.tally.wrong++;
     if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right));
@@ -325,6 +348,13 @@ function selectOption(optIdx) {
   }
   persistSession();
   renderQuestion();
+  /* Once graded the options are disabled, so the clicked one cannot keep
+   * focus; move it to the way on, so keyboard users are not sent back to
+   * the top of the page. */
+  if (session && session.feedback === sq.id && app.querySelector) {
+    var on = app.querySelector('[data-action="next"]:not([disabled]), [data-action="submit"]:not([disabled])');
+    if (on && on.focus) on.focus({ preventScroll: true });
+  }
 }
 
 /* ----------------------------------------------------------- results */

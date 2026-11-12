@@ -500,12 +500,27 @@ function startTimer() {
       el.textContent = fmtTime(left);
       el.classList.toggle("urgent", left < 10 * 60 * 1000);
     }
+    timeWarning(left);
     var paceEl = document.getElementById("pace");
     if (paceEl) {
       var text = paceText();
       if (paceEl.textContent !== text) paceEl.textContent = text;
     }
   }, 1000);
+}
+
+/* The timer itself is silent to screen readers (it changes every second);
+ * these say when 10, 5 and 1 minutes are left, once each per session. */
+var TIME_WARNINGS = [10, 5, 1];
+function timeWarning(left) {
+  var mins = Math.ceil(left / 60000);
+  session.warned = session.warned || {};
+  TIME_WARNINGS.forEach(function (w) {
+    if (mins <= w && !session.warned[w] && left > (w - 1) * 60000) {
+      session.warned[w] = true;
+      announce(w + " minute" + (w === 1 ? "" : "s") + " left.");
+    }
+  });
 }
 
 /* "⏱ 4 behind pace" while the user is 3+ questions behind an even pace in
@@ -521,7 +536,7 @@ function timerHtml() {
   if (!session.deadline) return "";
   var budget = fmtTime((session.deadline - session.startedAt) / session.questions.length);
   return '<span id="timer" class="timer" role="timer">' + fmtTime(session.deadline - Date.now()) + "</span>" +
-    '<span id="pace" class="pace" role="status" title="Aim for about ' + budget + ' per question">' + paceText() + "</span>";
+    '<span id="pace" class="pace" title="Aim for about ' + budget + ' per question">' + paceText() + "</span>";
 }
 
 function fmtTime(ms) {

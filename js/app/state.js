@@ -253,6 +253,17 @@ function focusSelector(el) {
   return sel;
 }
 
+/* Tell screen-reader users about a change they cannot see happen: an
+ * answer graded, a new question, time running low. Live regions drawn
+ * along with their text are often not read, so this uses one fixed region
+ * outside #app. Repeating the same words adds a no-break space so the
+ * region still changes and is read again. */
+function announce(text) {
+  var el = document.getElementById("sr-live");
+  if (!el) return;
+  el.textContent = el.textContent === text ? text + "\u00a0" : text;
+}
+
 function esc(s) {
   return String(s)
     .replace(/&/g, "&amp;")

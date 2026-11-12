@@ -111,6 +111,7 @@ function launch(opts = {}) {
     document: {
       getElementById: (id) => (id === "app" ? appEl
         : id === "app-dialog" && opts.dialog ? opts.dialog
+        : id === "sr-live" && opts.live ? opts.live
         : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
@@ -2337,4 +2338,41 @@ test("score history also renders as cards for phones", () => {
   assert.ok(html.includes('class="table-scroll history-scroll"'), "the table for wide screens");
   assert.equal((html.match(/class="history-card"/g) || []).length, 2, "one card per attempt");
   assert.match(html, /class="hc-score"><strong>760<\/strong><span class="badge pass">PASS/);
+});
+
+/* ---- screen readers on the question screens ------------------------------ */
+test("screen readers hear the new question and the grade, and options say which was right", () => {
+  const live = { textContent: "" };
+  const app = launch({ live, storage: { ...RETURNING } });
+  app.click("practice", { domain: "1" });
+  assert.equal(live.textContent, "Question 1 of 20");
+  app.click("toggle-saved");
+  assert.equal(live.textContent, "Question 1 of 20", "a redraw of the same question stays quiet");
+  app.click("select", { opt: "1" }); // wrong; the bank's answer is option 0
+  assert.match(live.textContent, /^Incorrect\. The correct answer is [A-D]: A\. The explanation follows the options\.$/);
+  const html = app.html();
+  assert.match(html, /<span class="tag">correct answer<\/span>/);
+  assert.match(html, /<span class="tag">your answer<\/span>/);
+  assert.ok(!/class="feedback[^"]*" role="status"/.test(html), "no live region drawn along with its text");
+  app.click("next");
+  assert.equal(live.textContent, "Question 2 of 20");
+  app.click("select", { opt: "0" });
+  assert.equal(live.textContent, "Correct.");
+});
+
+test("the exam timer stays quiet but says when 10, 5 and 1 minutes are left", () => {
+  const live = { textContent: "" };
+  let now = Date.now();
+  const FakeDate = class extends Date { constructor(...a) { super(...(a.length ? a : [now])); } static now() { return now; } };
+  const app = launch({ live, Date: FakeDate, storage: { ...RETURNING } });
+  app.click("start-exam");
+  const html = app.html();
+  assert.ok(html.includes('role="timer"') && !/id="pace"[^>]*role="status"/.test(html), "pace is not a live region");
+  const deadline = app.store().snapshot().session.deadline;
+  const at = (msLeft) => { now = deadline - msLeft; app.tick(); };
+  at(11 * 60000); assert.equal(live.textContent, "Question 1 of 60");
+  at(9.5 * 60000); assert.equal(live.textContent, "10 minutes left.");
+  at(9 * 60000); assert.equal(live.textContent, "10 minutes left.", "said once");
+  at(4.5 * 60000); assert.equal(live.textContent, "5 minutes left.");
+  at(30000); assert.equal(live.textContent, "1 minute left.");
 });

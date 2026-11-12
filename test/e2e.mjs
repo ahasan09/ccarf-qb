@@ -161,6 +161,19 @@ for (const width of [390, 1280]) {
   await js("history.back(), true");
   await until(q(".h-tabs"), "home after Back from search");
 
+  step = "learn mode with a keyboard and screen reader";
+  await click('[data-tab="practice"]');
+  await click('[data-action="start-saved"]');
+  await until(q('[data-action="select"]'), "a saved question");
+  check("the new question is announced", (await js(`document.getElementById("sr-live").textContent`)).startsWith("Question 1 of"));
+  await click('[data-action="select"]');
+  check("the grade is announced", /^(Correct|Incorrect)\./.test(await js(`document.getElementById("sr-live").textContent`)));
+  check("focus moves to the way on", ["next", "submit"].includes(await js(`(document.activeElement && document.activeElement.dataset.action) || ""`)));
+  check("options say which was right", await js(`!!${q(".option .tag")}`));
+  await click('[data-action="quit"]');
+  await answerDialog(true);
+  await until(q(".h-tabs"), "home after Exit");
+
   step = "exam date dialog";
   await click('[data-tab="today"]');
   await click('[data-action="edit-exam-date"]');
@@ -171,6 +184,8 @@ for (const width of [390, 1280]) {
   step = "mock exam";
   await click('[data-tab="exams"]');
   await click('[data-action="start-exam"]');
+  await until(q("#app-dialog[open]") + " || " + q('[data-action="select"]'), "the replace dialog or a mock question");
+  if (await dialogOpen()) await answerDialog(true); // replaces the unfinished practice
   await until(q('[data-action="select"]'), "a mock question");
   check("a quiz has its own address", (await js("location.hash")) === "#/quiz");
   await noSidewaysScroll(`${where} mock question`);

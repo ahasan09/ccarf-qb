@@ -792,6 +792,9 @@
   </div>
 </div>
 <dialog id="app-dialog" class="app-dialog"></dialog>
+<!-- Screen-reader announcements (js/app/state.js announce()): it lives
+     outside #app, so redrawing the screen never resets it. -->
+<div id="sr-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 <script src="questions/domain1.js"></script>
 <script src="questions/domain2.js"></script>
 <script src="questions/domain3.js"></script>
