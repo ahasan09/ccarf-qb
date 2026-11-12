@@ -455,7 +455,7 @@ function homeHistory(history, best) {
   if (!history.length) {
     html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
   } else {
-    html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
+    html += '<div class="table-scroll history-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
       "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
     history.slice().reverse().forEach(function (h) {
       var cells = "";
@@ -472,10 +472,30 @@ function homeHistory(history, best) {
           ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
           : "") + "</td></tr>";
     });
-    html += "</tbody></table></div>" +
+    html += "</tbody></table></div>" + historyCards(history) +
       '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
   }
   return html + "</section>";
+}
+
+/* On phones the 10-column table becomes one card per attempt (CSS picks
+ * which of the two shows). */
+function historyCards(history) {
+  return '<ol class="history-cards">' + history.slice().reverse().map(function (h) {
+    var doms = [];
+    for (var d = 1; d <= 5; d++) {
+      var pd = h.perDomain && h.perDomain[d];
+      if (pd) doms.push("D" + d + " " + pd.correct + "/" + pd.total);
+    }
+    return '<li class="history-card"><div class="hc-top"><div><b>' + esc(h.examName || "Mock exam") + "</b>" +
+      '<small class="muted">' + esc(new Date(h.date).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) +
+      '</small></div><div class="hc-score"><strong>' + h.score + "</strong>" +
+      '<span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></div></div>" +
+      '<div class="hc-meta">' + h.correct + "/" + h.total + " correct" + (doms.length ? " · " + doms.join(" · ") : "") + "</div>" +
+      (Array.isArray(h.items)
+        ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>' : "") +
+      "</li>";
+  }).join("") + "</ol>";
 }
 
 function isAdminUser(S) {

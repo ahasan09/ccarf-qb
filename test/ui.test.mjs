@@ -2329,3 +2329,12 @@ test("answering questions builds Your week on Today", () => {
   assert.equal((html.match(/class="h-day /g) || []).length, 7, "seven days");
   assert.match(html, /class="h-day lvl4 today"/, "today is marked and filled");
 });
+
+test("score history also renders as cards for phones", () => {
+  const app = launch();
+  seedHistory(app, [650, 760]);
+  const html = tab(app, "exams");
+  assert.ok(html.includes('class="table-scroll history-scroll"'), "the table for wide screens");
+  assert.equal((html.match(/class="history-card"/g) || []).length, 2, "one card per attempt");
+  assert.match(html, /class="hc-score"><strong>760<\/strong><span class="badge pass">PASS/);
+});
