@@ -43,8 +43,22 @@ function toggleFlag() {
   renderQuestion();
 }
 
+/* "/" opens search from anywhere but a running quiz, as on most sites. */
+function searchShortcut(ev) {
+  if (ev.key !== "/" || ev.metaKey || ev.ctrlKey || ev.altKey || busyAction) return false;
+  if (view === "quiz" || view === "search" || session) return false;
+  var t = ev.target;
+  var tag = t && t.tagName;
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || (t && t.isContentEditable)) return false;
+  ev.preventDefault();
+  closeMenus(null);
+  renderSearch();
+  return true;
+}
+
 document.addEventListener("keydown", function (ev) {
   if (ev.key === "Escape") closeMenus(null);
+  if (searchShortcut(ev)) return;
   if (busyAction || !inQuestionScreen() || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   var tag = ev.target && ev.target.tagName;
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;

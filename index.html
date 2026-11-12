@@ -644,6 +644,30 @@
   .h-step { border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 12px 14px; font-size: .88rem; color: var(--graphite); }
   .h-step b { display: block; color: var(--ink); margin-bottom: 4px; }
   .h-date { text-align: center; padding: 26px 16px; line-height: 1.8; }
+  /* header search: a field-like button that opens the search screen */
+  .h-top { gap: 12px; }
+  .h-search { flex: 0 1 340px; min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 8px 0 12px;
+    border: 1.5px solid var(--line-strong); border-radius: 999px; background: var(--card); color: var(--graphite); font: inherit; font-size: .9rem; cursor: text; }
+  .h-search:hover { border-color: var(--pen); color: var(--ink); }
+  .h-search:focus-visible { outline: 2.5px solid var(--pen); outline-offset: 2px; }
+  .h-search-text { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .h-search kbd { font-family: var(--mono); font-size: .75rem; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--graphite); }
+  .h-theme { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border-radius: 999px; font-size: .86rem; }
+  .acct-menu > summary { white-space: nowrap; }
+  .ico { flex: none; vertical-align: -4px; margin-right: 8px; color: var(--graphite); }
+  .h-row:hover .ico { color: var(--pen); }
+  .h-empty { margin: 8px 0 0; padding: 10px 14px; border: 1.5px dashed var(--line-strong); border-radius: 11px; color: var(--graphite); font-size: .86rem; }
+  @media (max-width: 680px) {
+    .h-search { flex: none; width: 38px; height: 38px; padding: 0; justify-content: center; border-radius: 50%; }
+    .h-search-text, .h-search kbd, .h-theme-label { display: none; }
+    .h-search .ico { margin: 0; }
+    .h-theme { width: 38px; padding: 0; justify-content: center; }
+    .h-top { gap: 8px; }
+    .controls { gap: 6px; }
+  }
+  @media (max-width: 400px) { .h-brand { font-size: 1.1rem; gap: 8px; } }
+  @media (pointer: coarse) { .h-search kbd { display: none; } }
+
   /* home tabs: a row under the header; a bottom bar on phones */
   .h-tabs { display: flex; gap: 4px; margin: -4px 0 20px; border-bottom: 1px solid var(--line); }
   .h-tab { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 14px 11px; margin-bottom: -1px;

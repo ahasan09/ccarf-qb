@@ -16,8 +16,9 @@ browser's localStorage.
 
 The home page has four tabs: a row under the header on wide screens and a
 bar at the bottom on phones. The open tab is remembered in this browser, and
-the Practice tab shows how many questions are due. Account & sync is the
-chip in the header.
+the Practice tab shows how many questions are due. The header holds
+**Search questions** (press `/` from any screen except a running quiz),
+the Account & sync chip and the theme button, which names the current theme.
 
 **Today**
 
@@ -44,9 +45,9 @@ chip in the header.
   30 task statements, one **Practise** button per objective and **Practice
   all** per domain. Above it: how many bank questions you have answered and
   the percent right.
-- **Practice** — **Due for review**, Saved questions, missed questions,
-  Custom quiz, **Search questions**, and the six scenarios with your best
-  score in each.
+- **Practice** (learn mode) — **Due for review**, Saved questions and missed
+  questions, each shown once it has something in it, then Custom quiz,
+  **Search questions**, and the six scenarios with your best score in each.
 
 **Exams** — the scenario exam, the diagnostic and the mock exam, then
 imported practice tests, then score history.

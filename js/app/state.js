@@ -213,6 +213,7 @@ var customState = {
 var THEMES = ["auto", "light", "dark"];
 var THEME_ICONS = { auto: "◐", light: "☀", dark: "●" };
 var THEME_TITLES = { auto: "Theme: Auto (click for Light)", light: "Theme: Light (click for Dark)", dark: "Theme: Dark (click for Auto)" };
+var THEME_NAMES = { auto: "Auto", light: "Light", dark: "Dark" };
 
 function currentTheme() {
   var t = LS.get("ccarf.theme", "auto");
