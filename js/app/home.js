@@ -1,5 +1,6 @@
-/* DOM app — the home screen: readiness, next step, objectives, practice,
- * score history and the account card. */
+/* DOM app — the home screen, in four tabs: Today (readiness, the main
+ * action, next best step), Practice (objectives, lists, scenarios), Exams
+ * (every exam, imported tests, score history) and Resources. */
 
 "use strict";
 
@@ -37,17 +38,66 @@ function renderHome() {
     '<button class="btn icon" data-action="cycle-theme" title="' + THEME_TITLES[currentTheme()] + '" aria-label="Switch theme">' +
     THEME_ICONS[currentTheme()] + "</button></span></div>";
 
-  /* Everyone gets the same sections; only the top card differs, and parts
+  /* Everyone gets the same tabs; only the top card differs, and parts
    * that need data (Next best step) appear once there is some. */
-  var acc = objectiveAccuracy(progress.history, lookup);
-  var cta = heroCta(progress, saved, acc, now, firstVisit);
-  html += firstVisit ? homeFirstVisit(progress, cta) : homeReadiness(progress, now, cta);
-  html += homeNextStep(acc);
-  html += '<div class="h-cols">' + homeObjectives(progress, acc) + homePractice(progress, now, lookup) + "</div>";
-  html += homeCollapsed(progress);
+  var tab = currentTab();
+  var due = dueReviewIds(progress.review, now).filter(isListed).length;
+  html += tabBar(tab, due);
+  html += '<div class="h-page" id="h-page" data-tab="' + tab + '">';
+  if (tab === "practice") {
+    var accP = objectiveAccuracy(progress.history, lookup);
+    html += '<div class="h-cols">' + homeObjectives(progress, accP) + homePractice(progress, now, lookup) + "</div>";
+  } else if (tab === "exams") {
+    html += homeExams(progress, firstVisit);
+  } else if (tab === "resources") {
+    html += homeResources();
+  } else {
+    var acc = objectiveAccuracy(progress.history, lookup);
+    var cta = heroCta(progress, saved, acc, now, firstVisit);
+    html += firstVisit ? homeFirstVisit(progress, cta) : homeReadiness(progress, now, cta);
+    html += homeNextStep(acc);
+    var S = window.CCARF_SYNC;
+    if (isAdminUser(S)) html += visitorCard(S);
+  }
+  html += "</div>";
   html += '<footer class="site-footer">Practice material for personal study. ' +
     "Not affiliated with Anthropic or Pearson VUE.</footer>";
   paint(html);
+}
+
+/* ------------------------------------------------------------- tabs */
+var HOME_TABS = [
+  ["today", "Today", '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'],
+  ["practice", "Practice", '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>'],
+  ["exams", "Exams", '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>'],
+  ["resources", "Resources", '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/>'],
+];
+var TAB_KEY = "ccarf.tab";
+var homeTab = null;
+
+function currentTab() {
+  if (homeTab === null) homeTab = LS.get(TAB_KEY, "today");
+  var known = HOME_TABS.some(function (t) { return t[0] === homeTab; });
+  return known ? homeTab : "today";
+}
+
+function setTab(tab) {
+  homeTab = tab;
+  LS.set(TAB_KEY, tab);
+  renderHome();
+  if (window.scrollTo) window.scrollTo(0, 0);
+}
+
+/* A nav of four links rather than an ARIA tablist: each tab is its own
+ * page of the home screen, and aria-current marks the one shown. */
+function tabBar(tab, due) {
+  return '<nav class="h-tabs" aria-label="Sections">' + HOME_TABS.map(function (t) {
+    var on = t[0] === tab;
+    var badge = t[0] === "practice" && due ? '<span class="h-tab-badge" aria-label="' + due + ' due">' + due + "</span>" : "";
+    return '<button class="h-tab" data-action="tab" data-tab="' + t[0] + '"' + (on ? ' aria-current="page"' : "") + ">" +
+      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      t[2] + "</svg><span>" + t[1] + "</span>" + badge + "</button>";
+  }).join("") + "</nav>";
 }
 
 function examDateLine(progress, now) {
@@ -67,11 +117,8 @@ function scenarioExamNote() {
   return scenarioExamReady() ? "" : '<p class="muted">The scenario exam is available once every scenario has ' + SCENARIO_BLOCK + " questions.</p>";
 }
 
-function otherExamsMenu() {
-  return '<details class="h-menu"><summary class="btn">Other exams ' + chev(false, true) + '</summary><div class="h-menu-list">' +
-    '<button class="btn ghost" data-action="start-exam" data-scope="mapped">Mock exam<small>question bank, by domain weight</small></button>' +
-    (EXAMS.length ? '<button class="btn ghost" data-action="open-section" data-id="h-imported">Imported practice tests ↓</button>' : "") +
-    "</div></details>";
+function allExamsLink() {
+  return '<button class="btn ghost" data-action="tab" data-tab="exams">All exams →</button>';
 }
 
 function sparkline(attempts) {
@@ -103,6 +150,10 @@ function homeReadiness(progress, now, cta) {
     html += '<div class="h-big">' + pred.score + '<small> / 1000 predicted</small></div>' +
       '<span class="h-verdict ' + v[1] + '" title="Based on your last ' + pred.count + " exam" + (pred.count === 1 ? "" : "s") +
       ', newest weighted most">' + v[0] + " · " + PASS_SCORE + " needed</span>";
+  } else {
+    html += '<p class="h-meta h-no-score">No predicted score yet. ' +
+      '<button class="h-link" data-action="start-diagnostic">Start with the 20-question diagnostic</button>' +
+      " to get your predicted score and weakest objectives.</p>";
   }
   var date = examDateLine(progress, now);
   html += '<p class="h-meta">' + (date ? date + " · " : "") +
@@ -166,7 +217,7 @@ function heroCta(progress, saved, acc, now, firstVisit) {
   } else if (firstVisit) {
     main = mainBtn("start-diagnostic", "Start diagnostic",
       eligibleScenarios(SCENARIOS, SCENARIO_BANK, 10).length >= 2 ? "" : " disabled");
-    rest = examBtn(" ghost", "or take the full scenario exam") + otherExamsMenu();
+    rest = examBtn(" ghost", "or take the full scenario exam") + allExamsLink();
   } else {
     var due = dueReviewIds(progress.review, now).filter(isListed).length;
     var weak = weakestObjectives(acc, 1)[0];
@@ -177,8 +228,8 @@ function heroCta(progress, saved, acc, now, firstVisit) {
       main = mainBtn("drill-objective", "Practise your weakest objective", ' data-sub="' + esc(weak.key) + '"');
       note = "<b>" + esc(weak.key) + "</b> · " + weak.correct + " of " + weak.total + " right in your exams";
     }
-    rest = main ? examBtn("", "Scenario exam") + otherExamsMenu()
-      : otherExamsMenu() + '<span class="muted">4 scenarios × 15 · 120 min</span>';
+    rest = main ? examBtn("", "Scenario exam") + allExamsLink()
+      : allExamsLink() + '<span class="muted">4 scenarios × 15 · 120 min</span>';
     if (!main) main = examBtn(" primary h-cta-main", "Start scenario exam");
   }
   return (note ? '<p class="h-meta h-cta-note">' + note + "</p>" : "") +
@@ -213,7 +264,7 @@ function homeObjectives(progress, acc) {
     seenAll += row.attempted; rightAll += row.correct; totalAll += row.total;
   }
   var pc = function (a, b) { return b ? Math.round((a / b) * 100) : 0; };
-  var html = '<details class="card h-col"' + foldAttrs("h-objectives", true) + '>' + colHead("By objective") +
+  var html = '<section class="card h-col" id="h-objectives"><h2 class="h-h2">By objective</h2>' +
     '<p class="h-sub">Bar = accuracy in your exams. Open a domain for its task statements.</p>' +
     '<p class="h-bank">Question bank: ' + seenAll + " of " + totalAll + " answered" +
     (seenAll ? " · " + pc(rightAll, seenAll) + "% right" : "") + "</p>";
@@ -242,13 +293,7 @@ function homeObjectives(progress, acc) {
     }
     html += "</div>";
   }
-  return html + "</details>";
-}
-
-/* By objective and Practice fold like the sections below them; open by
- * default, and foldAttrs keeps a closed one closed across redraws. */
-function colHead(title) {
-  return '<summary class="h-col-head"><h2 class="h-h2">' + title + "</h2>" + chev() + "</summary>";
+  return html + "</section>";
 }
 
 function scenarioRows(best) {
@@ -263,7 +308,7 @@ function scenarioRows(best) {
 function homePractice(progress, now, lookup) {
   var due = dueReviewIds(progress.review, now).filter(isListed).length;
   var savedIds = progress.saved.filter(isListed);
-  var html = '<details class="card h-col"' + foldAttrs("h-practice", true) + '>' + colHead("Practice") + '<p class="h-sub">Untimed, with feedback after each answer.</p>' +
+  var html = '<section class="card h-col" id="h-practice"><h2 class="h-h2">Practice</h2><p class="h-sub">Untimed, with feedback after each answer.</p>' +
     '<button class="h-row' + (due ? " h-due" : "") + '" data-action="start-review"' + (due ? "" : " disabled") + ">" +
     '<span>⟳ Due for review</span><span class="muted">' + (due ? due + " today" : "none due") + "</span></button>" +
     '<button class="h-row" data-action="start-saved"' + (savedIds.length ? "" : " disabled") + ">" +
@@ -276,20 +321,32 @@ function homePractice(progress, now, lookup) {
   html += '<button class="h-row" data-action="custom-builder"><span>Custom quiz</span><span class="muted">build →</span></button>' +
     '<button class="h-row" data-action="search"><span>🔍 Search questions</span><span class="muted">by keyword →</span></button>' +
     '<h2 class="h-h2 h-gap">By scenario</h2>' + scenarioRows(bestScenarioScores(progress.history, lookup));
-  return html + "</details>";
+  return html + "</section>";
 }
 
-function homeCollapsed(progress) {
+/* Every exam in one place, then imported tests and score history. */
+function homeExams(progress, firstVisit) {
   var history = progress.history;
   var best = 0;
   history.forEach(function (h) { if (h.score > best) best = h.score; });
-  var html = homeResources();
+  var diagReady = eligibleScenarios(SCENARIOS, SCENARIO_BANK, 10).length >= 2;
+  var row = function (action, title, detail, gate, primary) {
+    return '<button class="h-row h-exam' + (primary ? " h-exam-main" : "") + '" data-action="' + action + '"' + (gate || "") + ">" +
+      "<span><b>" + title + "</b><small>" + detail + "</small></span>" +
+      '<span class="muted">Start →</span></button>';
+  };
+  var html = '<section class="card h-col" id="h-exams"><h2 class="h-h2">Exams</h2>' +
+    '<p class="h-sub">Timed and scored out of 1000, pass at ' + PASS_SCORE + ". Leave at any time and resume from Today.</p>" +
+    row("start-scenario-exam", "Scenario exam", "The real exam's format · 4 scenarios × 15 · 120 min", scenarioExamGate(), !firstVisit) +
+    row("start-diagnostic", "Diagnostic", "A short start · 2 scenarios × 10 · 40 min", diagReady ? "" : " disabled", firstVisit) +
+    row("start-exam", "Mock exam", "60 question-bank questions by domain weight · 120 min") +
+    scenarioExamNote() + "</section>";
 
   if (EXAMS.length) {
     var taken = EXAMS.filter(function (e) { return bestAttemptFor(e.id, history); }).length;
-    html += '<details class="card h-fold"' + foldAttrs("h-imported") + '><summary><b>Imported mock exams</b><span class="muted">' +
-      EXAMS.length + " tests · " + taken + " taken</span>" + chev() + "</summary>" +
-      '<p class="muted">Full exams from your own files, scored separately. They do not feed the question bank, mastery or the weak drill.</p>' +
+    html += '<section class="card h-col" id="h-imported"><h2 class="h-h2">Imported practice tests</h2>' +
+      '<p class="h-sub">' + EXAMS.length + " tests · " + taken + " taken. Full exams from your own files, scored separately; " +
+      "they do not feed the question bank or the missed questions.</p>" +
       '<div class="domain-list">';
     EXAMS.forEach(function (e) {
       var attempt = bestAttemptFor(e.id, history);
@@ -302,19 +359,16 @@ function homeCollapsed(progress) {
         '<button class="btn small primary" data-action="start-imported" data-exam="' + esc(e.id) + '">' +
         (attempt ? "Retake mock" : "Take mock") + "</button></div>";
     });
-    html += "</div></details>";
+    html += "</div></section>";
   }
-
-  var S = window.CCARF_SYNC;
-  if (isAdminUser(S)) html += visitorCard(S);
   return html + homeHistory(history, best);
 }
 
-/* Score history comes last on the home screen. */
+/* Score history comes last on the Exams tab. */
 function homeHistory(history, best) {
   var html = "";
-  html += '<details class="card h-fold"' + foldAttrs("h-history") + '><summary><b>Score history</b><span class="muted">' +
-    (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "no exams yet") + "</span>" + chev() + "</summary>";
+  html += '<section class="card h-col" id="h-history"><h2 class="h-h2">Score history</h2><p class="h-sub">' +
+    (history.length ? history.length + " attempt" + (history.length === 1 ? "" : "s") + " · best " + best : "No exams yet.") + "</p>";
   if (!history.length) {
     html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
   } else {
@@ -338,7 +392,7 @@ function homeHistory(history, best) {
     html += "</tbody></table></div>" +
       '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
   }
-  return html + "</details>";
+  return html + "</section>";
 }
 
 function isAdminUser(S) {
@@ -357,7 +411,7 @@ function accountMenu(S) {
   return '<details class="h-menu acct-menu"' + foldAttrs("h-acct") + ">" +
     '<summary class="' + (user ? "signed-chip" : "btn ghost small") + '" title="Account &amp; sync">' + label + "</summary>" +
     '<div class="acct-pop">' + accountCard() +
-    (isAdminUser(S) ? '<button class="btn ghost small acct-admin" data-action="open-section" data-id="h-visitors">Visitor stats ↓</button>' : "") +
+    (isAdminUser(S) ? '<button class="btn ghost small acct-admin" data-action="open-section" data-tab="today" data-id="h-visitors">Visitor stats ↓</button>' : "") +
     "</div></details>";
 }
 
@@ -455,10 +509,10 @@ function resourceLink(r, cls, text) {
 }
 
 function homeResources() {
-  if (!RESOURCES.length) return "";
-  var html = '<details class="card h-fold"' + foldAttrs("h-resources") + '><summary><b>Study resources</b><span class="muted">' +
-    RESOURCES.length + " link" + (RESOURCES.length === 1 ? "" : "s") + " · exam guide, courses, practice</span>" + chev() + "</summary>" +
-    '<p class="muted">Material outside this app — links open in a new tab and need an internet connection.</p>';
+  if (!RESOURCES.length) return '<section class="card h-col" id="h-resources"><h2 class="h-h2">Study resources</h2>' +
+    '<p class="h-sub">No study links are configured.</p></section>';
+  var html = '<section class="card h-col" id="h-resources"><h2 class="h-h2">Study resources</h2>' +
+    '<p class="h-sub">The exam guide, courses and practice outside this app. Links open in a new tab and need an internet connection.</p>';
   RESOURCE_GROUPS.forEach(function (g) {
     var items = RESOURCES.filter(function (r) { return r.group === g; });
     if (!items.length) return;
@@ -471,7 +525,7 @@ function homeResources() {
     });
     html += "</div>";
   });
-  return html + "</details>";
+  return html + "</section>";
 }
 
 function startHereLine() {

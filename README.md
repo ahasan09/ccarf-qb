@@ -14,22 +14,32 @@ browser's localStorage.
 
 ### Home page
 
+The home page has four tabs: a row under the header on wide screens and a
+bar at the bottom on phones. The open tab is remembered in this browser, and
+the Practice tab shows how many questions are due. Account & sync is the
+chip in the header.
+
+**Today**
+
 - **First visit** — a 20-question **diagnostic** (2 scenarios × 10, 40 min,
-  in the real exam's layout) and an optional exam date.
+  in the real exam's layout), an optional exam date, and the two starting
+  resources.
 - **Your readiness** — a predicted score (the last five exams, newest weighted
   most: 5,4,3,2,1) with a verdict (**Likely pass** ≥ 760, **Borderline**
-  680–759, **Not yet** below), the countdown to your exam date,
-  a trend chart of recent scores against the 720 line, and a link to review
-  your last attempt.
-- **One main action** — the top card has a single main button, chosen by
-  where you are: **Continue** an unfinished session, **Start diagnostic** on
-  a first visit, **Review N due questions**, **Practise your weakest
-  objective**, or otherwise **Start scenario exam**. The full exam, the mock
-  and imported exams stay one click away under it.
+  680–759, **Not yet** below), the countdown to your exam date, a trend chart
+  of recent scores against the 720 line, and a link to review your last
+  attempt.
+- **One main action** — a single main button, chosen by where you are:
+  **Continue** an unfinished session, **Start diagnostic** on a first visit,
+  **Review N due questions**, **Practise your weakest objective**, or
+  otherwise **Start scenario exam**. **All exams →** opens the Exams tab.
 - **Next best step** — your three weakest exam-guide objectives (at least
   three answered), each with **Practise**: up to 8 scenario questions on that
   objective with a note on every option, then the objective's bank questions
   are offered from the results screen.
+
+**Practice**
+
 - **By objective** — accuracy in your exams for each domain and each of the
   30 task statements, one **Practise** button per objective and **Practice
   all** per domain. Above it: how many bank questions you have answered and
@@ -37,10 +47,12 @@ browser's localStorage.
 - **Practice** — **Due for review**, Saved questions, missed questions,
   Custom quiz, **Search questions**, and the six scenarios with your best
   score in each.
-- **Study resources**, score history, imported mock exams and account/sync are
-  folded away below. Study resources links to the exam guide, courses, study
-  guides and practice material outside the app (opens in a new tab, needs a
-  connection); the first visit also points at the two starting resources.
+
+**Exams** — the scenario exam, the diagnostic and the mock exam, then
+imported practice tests, then score history.
+
+**Resources** — links to the exam guide, courses, study guides and practice
+material outside the app (open in a new tab, need a connection).
 
 **Spaced review:** every question you miss (in practice, or unanswered or
 wrong in an exam) comes back after 1 day; each time you get it right when due
@@ -111,7 +123,7 @@ practice has no flag); the list comes from `kbdHint()` in
 `js/app/events.js`. After each click, keyboard focus stays on
 the control you used.
 
-Theme: use the toggle on the home screen (Auto / Light / Dark).
+Theme: use the toggle in the header (Auto / Light / Dark).
 
 ## Scenario exam
 
@@ -224,7 +236,7 @@ clears it, and progress cached for one account is never folded into another.
 With sync set up, the app can show you, and only you, how many people use it:
 active now, and unique visitors over the last 24 hours, 7 days, 30 days and
 all time, each split into anonymous and signed in, plus the number of
-registered accounts. It appears as a **Visitors** card on the home screen
+registered accounts. It appears as a **Visitors** card on the Today tab
 when you sign in with an admin e-mail.
 
 Each browser keeps a random ID (`ccarf.visitor` in localStorage) and, while

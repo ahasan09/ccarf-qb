@@ -175,6 +175,15 @@ function launch(opts = {}) {
 }
 
 /* Answer every question of the current session, finishing it. */
+/* The home screen draws one tab at a time; these open a tab, or gather the
+ * markup of all four for checks that don't care which tab holds what. */
+function tab(app, name) { app.click("tab", { tab: name }); return app.html(); }
+function allTabs(app) {
+  const html = ["today", "practice", "exams", "resources"].map((t) => tab(app, t)).join("\n");
+  tab(app, "today");
+  return html;
+}
+
 function completeSession(app, { correct = true } = {}) {
   for (let i = 0; i < 500; i++) {
     if (!app.html().includes('data-action="select"')) break;
@@ -405,11 +414,12 @@ function launchWithExams() {
 
 test("imported exams are listed separately and never enter the question bank", () => {
   const app = launchWithExams();
-  assert.ok(app.html().includes("Imported mock exams"));
-  assert.ok(app.html().includes("Practice Test 1"));
-  assert.ok(app.html().includes('data-action="start-imported"'));
   // bank totals must be untouched by the imported questions
   assert.ok(app.html().includes("100 domain questions"), "the bank count excludes imported questions");
+  const html = tab(app, "exams");
+  assert.ok(html.includes("Imported practice tests"));
+  assert.ok(html.includes("Practice Test 1"));
+  assert.ok(html.includes('data-action="start-imported"'));
 });
 
 test("a multi-answer question lets you pick several options and says how many", () => {
@@ -468,6 +478,7 @@ test("a partly answered multi-answer question counts as wrong", () => {
 
 test("an imported exam can be practised with instant feedback before taking it", () => {
   const app = launchWithExams();
+  tab(app, "exams");
   assert.ok(app.html().includes('data-action="practice-imported"'), "a practice button is offered");
   assert.ok(app.html().includes("Take mock"), "and a separate timed option");
 
@@ -514,7 +525,7 @@ test("the home bank line counts what was answered and how much was right", () =>
   app.click("select", { opt: "1" }); // wrong
   app.click("quit");
 
-  const html = app.html();
+  const html = tab(app, "practice");
   assert.ok(html.includes("2 of 100 answered"), "two questions counted as answered");
   assert.ok(html.includes("50% right"), "accuracy counts only what was attempted");
   assert.ok(!html.includes("Mastery") && !html.includes("Coverage"), "one plain line, no jargon");
@@ -557,6 +568,7 @@ test("a question can be saved and later studied from the home screen", () => {
   assert.equal(app.store().snapshot().saved.length, 1);
 
   app.click("quit");
+  tab(app, "practice");
   assert.match(app.html(), /data-action="start-saved"(?![^>]*disabled)/);
   app.click("start-saved");
   assert.ok(app.html().includes("Saved questions"), "the drill opens");
@@ -703,8 +715,9 @@ const isMapped = (id) => Number(id.split("-q")[1]) <= 20;
 
 test("unmapped questions are not offered: no supplementary exam and no untagged rows", () => {
   const app = launchMixed();
+  tab(app, "practice");
   app.click("toggle-mastery", { domain: "1" });
-  const html = app.html();
+  const html = app.html() + tab(app, "exams");
   assert.ok(html.includes('data-action="start-exam"'), "the mock exam is still offered");
   assert.ok(!html.includes('data-scope="unmapped"') && !html.includes("Supplementary"), "no supplementary exam");
   assert.ok(!html.includes('data-sub="general"') && !html.includes("Untagged"), "no untagged practice");
@@ -731,7 +744,7 @@ test("saved, missed and due lists skip unmapped questions kept from before", () 
   const app = launchMixed({ "ccarf.progress": JSON.stringify({
     history: [], attempted: ["d1-q1"], saved: ["d1-q25", "d1-q3"], weak: ["d1-q26", "d1-q27"], review: due,
   }) });
-  const html = app.html();
+  const html = tab(app, "practice");
   assert.match(html, /☆ Saved questions<\/span><span class="muted">1</, "one saved question listed");
   assert.ok(!html.includes('data-action="start-weak"'), "only unmapped missed questions: no drill");
   assert.ok(html.includes("1 today"), "one question due, not two");
@@ -1019,19 +1032,19 @@ test("the home screen offers the scenario exam and practice by scenario", () => 
   const html = app.html();
   assert.ok(html.includes("scenario exam"));
   assert.match(html, /data-action="start-scenario-exam"(?![^>]*disabled)/);
-  assert.equal((html.match(/data-action="practice-scenario"/g) || []).length, 6);
+  assert.equal((tab(app, "practice").match(/data-action="practice-scenario"/g) || []).length, 6);
 });
 
 test("the scenario exam button waits until every scenario has 15 questions", () => {
   const app = launch({ scenarioBank: scenarioBank({ support: 16, ci: 16, research: 16, devprod: 16, codegen: 16, extraction: 10 }) });
   assert.match(app.html(), /data-action="start-scenario-exam"[^>]*disabled/);
   assert.ok(app.html().includes("available once every scenario has 15 questions"));
-  assert.match(app.html(), /data-action="practice-scenario" data-scenario="extraction"(?![^>]*disabled)/);
+  assert.match(tab(app, "practice"), /data-action="practice-scenario" data-scenario="extraction"(?![^>]*disabled)/);
 });
 
 test("an empty scenario cannot be practised", () => {
   const app = launch({ scenarioBank: scenarioBank({ support: 3 }) });
-  assert.match(app.html(), /data-action="practice-scenario" data-scenario="ci"[^>]*disabled/);
+  assert.match(tab(app, "practice"), /data-action="practice-scenario" data-scenario="ci"[^>]*disabled/);
 });
 
 test("scenario practice shows every option's note after answering", () => {
@@ -1284,11 +1297,12 @@ test("a fresh visitor gets the diagnostic and no readiness number", () => {
 });
 
 test("a fresh visitor sees the same home sections as a returning one", () => {
-  const html = launch().html();
+  const app = launch();
+  assert.ok(!app.html().includes("Next best step"), "no weak objectives without answers");
+  const html = allTabs(app);
   for (const id of ["h-objectives", "h-practice", "h-history"]) assert.ok(html.includes('id="' + id + '"'), id);
   for (const a of ['data-action="toggle-mastery"', 'data-action="custom-builder"', 'data-action="search"',
     'data-action="start-review"', 'data-action="start-saved"']) assert.ok(html.includes(a), a);
-  assert.ok(!html.includes("Next best step"), "no weak objectives without answers");
   assert.equal(html.split('data-action="practice-scenario"').length - 1, SCENARIOS.length, "each scenario listed once");
 });
 
@@ -1350,11 +1364,12 @@ test("the exam date can be set from the home page", () => {
 test("the returning home keeps every way in", () => {
   const app = launch();
   seedHistory(app, [700]);
-  const html = app.html();
+  const html = allTabs(app);
   for (const a of ['data-action="start-scenario-exam"', 'data-action="start-exam"',
     'data-action="custom-builder"', 'data-action="practice-scenario"', 'data-action="start-review"',
     'data-action="start-saved"', 'data-action="toggle-mastery"']) assert.ok(html.includes(a), a);
   assert.ok(html.includes("By objective") && html.includes("Score history") && html.includes("Account"));
+  tab(app, "practice");
   app.click("toggle-mastery", { domain: "2" });
   assert.ok(app.html().includes('data-action="practice" data-domain="2"'), "practice all is reachable");
   assert.ok(app.html().includes('data-action="drill-objective" data-sub="2.'), "objectives listed");
@@ -1363,10 +1378,10 @@ test("the returning home keeps every way in", () => {
 test("missed questions to drill appear only when there are some", () => {
   const app = launch();
   seedHistory(app, [700]);
-  assert.ok(!app.html().includes('data-action="start-weak"'));
+  assert.ok(!tab(app, "practice").includes('data-action="start-weak"'));
   app.store().mutate({ key: null, apply: (s) => { s.weak = ["d1-q1"]; } });
   app.click("home");
-  assert.ok(app.html().includes('data-action="start-weak"'));
+  assert.ok(app.html().includes('data-action="start-weak"'), "the Practice tab stays open");
 });
 
 test("the due count reflects questions due for review", () => {
@@ -1398,12 +1413,14 @@ test("someone who has only practised still gets the full home", () => {
   const app = launch();
   app.store().mutate({ key: null, apply: (s) => { s.saved = ["d1-q1"]; } });
   app.click("home");
-  assert.ok(app.html().includes('data-action="start-saved"'));
-  assert.ok(app.html().includes('data-action="custom-builder"'));
+  const html = tab(app, "practice");
+  assert.ok(html.includes('data-action="start-saved"'));
+  assert.ok(html.includes('data-action="custom-builder"'));
 });
 
 test("each objective has one Practise button, and its bank questions follow the scenario set", () => {
   const app = launch();
+  tab(app, "practice");
   app.click("toggle-mastery", { domain: "1" });
   const html = app.html();
   assert.ok(html.includes('data-action="drill-objective" data-sub="1.1 '), "one Practise button");
@@ -1468,7 +1485,7 @@ test("the account dropdown stays open across a background sync redraw", () => {
 test("an admin's account dropdown links to the visitor stats", () => {
   const { sync } = adminSync({ stats: STATS });
   const html = launch({ sync }).html();
-  assert.ok(html.includes('data-action="open-section" data-id="h-visitors">Visitor stats ↓'));
+  assert.ok(html.includes('data-action="open-section" data-tab="today" data-id="h-visitors">Visitor stats ↓'));
 });
 
 const RESOURCES = [
@@ -1479,12 +1496,11 @@ const RESOURCES = [
   { id: "bad", group: "Official", title: "Bad", url: "javascript:alert(1)" },
 ];
 
-test("the home page lists study resources in a folded section, grouped, opening in a new tab", () => {
+test("the Resources tab lists study resources, grouped, opening in a new tab", () => {
   const app = launch({ resources: RESOURCES, storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) } });
-  const html = app.html();
+  const html = tab(app, "resources");
   assert.ok(html.includes('id="h-resources"'), "a study resources section");
-  assert.ok(html.indexOf('id="h-resources"') < html.indexOf("Score history"), "it sits above score history");
-  assert.ok(html.includes("4 links"), "invalid entries are dropped from the count");
+  assert.equal((html.match(/class="h-row h-res"/g) || []).length, 4, "invalid entries are dropped");
   assert.ok(html.includes("Study guides") && html.includes("Practice &amp; reviews"));
   assert.ok(html.includes('href="https://example.com/kit" target="_blank" rel="noopener noreferrer"'));
   assert.ok(html.includes("Intro &lt;course&gt;"), "titles are escaped");
@@ -1511,7 +1527,7 @@ test("an imported exam links to its source resource", () => {
     exams: [{ id: "imp", name: "Imported", questions }],
     storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) },
   });
-  const html = app.html();
+  const html = tab(app, "exams");
   const row = html.slice(html.indexOf('id="h-imported"'));
   assert.ok(row.includes('href="https://example.com/src"'), "source link on the imported exam row");
 });
@@ -1537,7 +1553,7 @@ test("a slow action marks its button busy, shows it, then runs once", () => {
 });
 
 test("a quick action runs straight away without the busy mark", () => {
-  const app = launch({ frames: true, storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) } });
+  const app = launch({ frames: true, storage: { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }), "ccarf.tab": JSON.stringify("practice") } });
   const btn = app.click("toggle-mastery", { domain: "2" });
   assert.ok(!btn.classList.contains("is-busy"));
   assert.ok(app.html().includes('aria-expanded="true"'), "the toggle happened immediately");
@@ -1603,62 +1619,73 @@ test("both question layouts render inside a full-height screen with the action b
 
 /* ---- sections stay as the user left them ---------------------------------- */
 const RETURNING = { "ccarf.progress": JSON.stringify({ history: [], attempted: ["d1-q1"] }) };
-const isOpen = (html, id) => new RegExp('<details class="card h-fold" id="' + id + '" open>').test(html);
 
-test("an opened home section stays open when the page redraws", () => {
-  const app = launch({ storage: { ...RETURNING }, resources: RESOURCES });
-  assert.ok(!isOpen(app.html(), "h-resources"), "closed by default");
-  app.toggle("h-resources", true);
-  app.click("toggle-mastery", { domain: "2" });      // any redraw
-  assert.ok(isOpen(app.html(), "h-resources"), "still open after a redraw");
-  app.fireSyncEvent();                               // background sync redraw
-  assert.ok(isOpen(app.html(), "h-resources"), "still open after a sync");
-  assert.ok(!isOpen(app.html(), "h-history"), "other sections untouched");
-});
-
-test("closing a section is remembered too, and it survives a trip into a quiz", () => {
+test("home sections are tabs: Today first, one shown at a time", () => {
   const app = launch({ storage: { ...RETURNING } });
-  app.toggle("h-history", true);
-  app.toggle("h-history", false);
-  app.click("practice", { domain: "3", sub: "3.1" });
-  app.click("quit");
-  assert.ok(!isOpen(app.html(), "h-history"));
-});
-
-test("By objective and Practice fold: open by default, and a closed one stays closed", () => {
-  const app = launch({ storage: { ...RETURNING } });
-  const colOpen = (html, id) => new RegExp('<details class="card h-col" id="' + id + '" open>').test(html);
   let html = app.html();
-  for (const id of ["h-objectives", "h-practice"]) {
-    assert.ok(colOpen(html, id), id + " open by default");
-    assert.match(html, new RegExp('id="' + id + '" open><summary class="h-col-head"><h2 class="h-h2">'), id + " has a clickable heading");
-  }
-  app.toggle("h-practice", false);
-  app.click("toggle-mastery", { domain: "2" });      // any redraw
-  html = app.html();
-  assert.ok(!colOpen(html, "h-practice"), "Practice stays closed");
-  assert.ok(colOpen(html, "h-objectives"), "By objective untouched");
+  assert.match(html, /<nav class="h-tabs" aria-label="Sections">/);
+  for (const t of ["today", "practice", "exams", "resources"]) assert.ok(html.includes('data-tab="' + t + '"'), t);
+  assert.match(html, /data-tab="today" aria-current="page"/, "Today is shown first");
+  assert.ok(html.includes("h-ready") && !html.includes('id="h-objectives"'), "only Today's content");
+
+  html = tab(app, "practice");
+  assert.match(html, /data-tab="practice" aria-current="page"/);
+  assert.ok(html.includes('id="h-objectives"') && !html.includes("h-ready"), "only Practice's content");
+  assert.equal((html.match(/aria-current="page"/g) || []).length, 1, "one tab marked current");
 });
 
-test("folded home sections are remembered after a reload; the account menu is not", () => {
-  const first = launch({ storage: { ...RETURNING } });
-  first.toggle("h-practice", false);
-  first.toggle("h-resources", true);
-  first.toggle("h-acct", true);
-  first.toggle("scn-brief", false);
-  const saved = JSON.parse(first.storage["ccarf.folds"]);
-  assert.deepEqual(saved, { "h-practice": false, "h-resources": true }, "only home sections are saved");
+test("the open tab survives a quiz, a sync redraw and a reload; a bad one falls back to Today", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  tab(app, "exams");
+  app.click("start-exam");
+  app.click("quit");
+  assert.match(app.html(), /data-tab="exams" aria-current="page"/, "back on Exams after a quiz");
+  app.fireSyncEvent();
+  assert.match(app.html(), /data-tab="exams" aria-current="page"/, "and after a sync");
+  assert.match(launch({ storage: { ...app.storage } }).html(), /data-tab="exams" aria-current="page"/, "and after a reload");
+  assert.match(launch({ storage: { ...RETURNING, "ccarf.tab": JSON.stringify("nope") } }).html(), /data-tab="today" aria-current="page"/);
+});
 
-  const html = launch({ storage: { ...first.storage }, resources: RESOURCES }).html();  // a reload
-  assert.ok(!/id="h-practice" open/.test(html), "Practice still closed");
-  assert.ok(/id="h-objectives" open/.test(html), "By objective keeps its default");
-  assert.ok(isOpen(html, "h-resources"), "an opened section stays open too");
-  assert.ok(!/id="h-acct" open/.test(html), "the account menu starts closed");
+test("the Practice tab shows how many questions are due", () => {
+  const entry = { due: 0, step: 1, updatedAt: 1 };
+  const html = launch({ storage: { "ccarf.progress": JSON.stringify({ attempted: ["d1-q1"], review: { "d1-q2": entry, "d1-q3": entry } }) } }).html();
+  assert.match(html, /data-tab="practice">[\s\S]*?<span class="h-tab-badge" aria-label="2 due">2<\/span>/);
+});
+
+test("a returning user without exams is pointed at the diagnostic for a score", () => {
+  const html = launch({ storage: { ...RETURNING } }).html();
+  assert.ok(html.includes("No predicted score yet"));
+  assert.match(html, /h-no-score">[^]*data-action="start-diagnostic"/);
+  const app = launch();
+  seedHistory(app, [700]);
+  assert.ok(!app.html().includes("No predicted score yet"), "gone once there is a score");
+});
+
+test("the Today card links to every exam on the Exams tab", () => {
+  const app = launch({ storage: { ...RETURNING } });
+  assert.ok(app.html().includes('data-action="tab" data-tab="exams">All exams →'));
+  assert.ok(!app.html().includes("Other exams"), "no dropdown any more");
+  const html = tab(app, "exams");
+  for (const a of ["start-scenario-exam", "start-diagnostic", "start-exam"]) assert.ok(html.includes('data-action="' + a + '"'), a);
+});
+
+test("the admin Visitors section folds, and stays as left across redraws and reloads", () => {
+  const { sync } = adminSync({ stats: STATS });
+  const app = launch({ sync, storage: { ...RETURNING } });
+  const visOpen = (html) => /id="h-visitors" open/.test(html);
+  assert.ok(visOpen(app.html()), "open by default");
+  app.toggle("h-visitors", false);
+  app.toggle("h-acct", true);
+  app.fireSyncEvent();
+  assert.ok(!visOpen(app.html()), "stays closed after a redraw");
+  assert.deepEqual(JSON.parse(app.storage["ccarf.folds"]), { "h-visitors": false }, "the account menu is not saved");
+  assert.ok(!visOpen(launch({ sync, storage: { ...app.storage } }).html()), "and after a reload");
 });
 
 test("a broken saved fold state is ignored", () => {
-  const html = launch({ storage: { ...RETURNING, "ccarf.folds": "not json" } }).html();
-  assert.ok(/id="h-practice" open/.test(html));
+  const { sync } = adminSync({ stats: STATS });
+  const html = launch({ sync, storage: { ...RETURNING, "ccarf.folds": "not json" } }).html();
+  assert.ok(/id="h-visitors" open/.test(html));
 });
 
 test("a collapsed scenario panel stays collapsed on the next question", () => {
@@ -2013,16 +2040,12 @@ test("the account card says how visits are counted, unless counting is off", () 
   assert.ok(!launch().html().includes("Visits are counted with a random ID"));
 });
 
-test("score history is the last section on the home screen", () => {
-  const { sync } = adminSync({ stats: STATS });
-  const html = launch({ sync, resources: RESOURCES, storage: { ...RETURNING } }).html();
+test("score history is the last section on the Exams tab", () => {
+  const html = tab(launchWithExams(), "exams");
   const at = (id) => html.indexOf('id="' + id + '"');
-  assert.ok(at("h-history") > 0);
-  for (const id of ["h-resources", "h-visitors"]) {
-    assert.ok(at(id) > 0, id + " should render");
-    assert.ok(at(id) < at("h-history"), id + " comes before score history");
-  }
-  assert.ok(html.indexOf("<details", at("h-history") + 1) === -1, "no section after score history");
+  assert.ok(at("h-exams") > 0 && at("h-imported") > at("h-exams"), "exams, then imported tests");
+  assert.ok(at("h-history") > at("h-imported"), "score history last");
+  assert.ok(html.indexOf("<section", at("h-history") + 1) === -1, "no section after score history");
 });
 
 test("the account menu closes on sign-out and on sign-in", () => {
