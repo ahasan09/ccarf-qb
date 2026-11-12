@@ -4,6 +4,8 @@ import app from "./engine.mjs";
 
 const {
   signInEmailError,
+  isAuthHash,
+  authLinkError,
   EXAM_DRAW_COUNTS,
   PASS_SCORE,
   shuffle,
@@ -491,4 +493,22 @@ test("sign-in e-mail errors are explained in plain words", () => {
     "Too many sign-in attempts. Please wait a few minutes and try again.");
   assert.equal(signInEmailError(new Error("Failed to fetch")), "Could not send the sign-in e-mail: Failed to fetch");
   assert.equal(signInEmailError(null), "Could not send the sign-in e-mail.");
+});
+
+test("sign-in link addresses are recognised, screen addresses are not", () => {
+  assert.ok(isAuthHash("#access_token=abc&expires_in=3600&refresh_token=def&type=magiclink"));
+  assert.ok(isAuthHash("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid"));
+  assert.ok(!isAuthHash("#/practice"));
+  assert.ok(!isAuthHash(""));
+  assert.ok(!isAuthHash(undefined));
+});
+
+test("a refused sign-in link is explained", () => {
+  assert.match(authLinkError("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired"),
+    /expired or was already used/);
+  assert.equal(authLinkError("#error=server_error&error_description=Something+broke"),
+    "Sign-in didn't complete: Something broke. Ask for a new link below.");
+  assert.equal(authLinkError("#access_token=abc&refresh_token=def"), null);
+  assert.equal(authLinkError("#/practice"), null);
+  assert.equal(authLinkError(""), null);
 });

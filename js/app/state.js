@@ -245,6 +245,16 @@ function foldAttrs(id, openByDefault) {
   var open = Object.prototype.hasOwnProperty.call(foldState, id) ? foldState[id] : !!openByDefault;
   return ' id="' + id + '"' + (open ? " open" : "");
 }
+
+/* Arriving from a sign-in link Supabase refused: open the account menu with
+ * the reason, and take the error out of the address so a reload or a
+ * bookmark doesn't show it again. A successful link (#access_token=...) is
+ * left for the Supabase client to read. */
+var authNotice = authLinkError(typeof location !== "undefined" ? location.hash : "");
+if (authNotice) {
+  foldState["h-acct"] = true;
+  try { window.history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+}
 var customState = {
   domains: { 1: true, 2: true, 3: true, 4: true, 5: true },
   subs: {},        // "<domain>|<subKey>" -> true

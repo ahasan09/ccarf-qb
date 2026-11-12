@@ -840,3 +840,31 @@ function signInEmailError(err) {
   }
   return "Could not send the sign-in e-mail" + (msg ? ": " + msg : ".");
 }
+
+/* True for the address a Supabase sign-in link returns to:
+ * #access_token=…&refresh_token=… on success, #error=…&error_code=… when
+ * refused. The screen router must leave these alone — the Supabase client
+ * (a module, so it runs after the app scripts) still has to read them. */
+function isAuthHash(hash) {
+  return /^#?(.*&)?(access_token|refresh_token|error|error_code|error_description)=/.test(String(hash || ""));
+}
+
+/* A sign-in link that Supabase refused comes back to the app as
+ * #error=...&error_code=...&error_description=... in the address. Returns
+ * what to tell the person, or null when the address holds no such error. */
+function authLinkError(hash) {
+  var h = String(hash || "").replace(/^#/, "");
+  if (!/(^|&)error(_code)?=/.test(h)) return null;
+  var params = {};
+  h.split("&").forEach(function (pair) {
+    var i = pair.indexOf("=");
+    if (i < 0) return;
+    try { params[pair.slice(0, i)] = decodeURIComponent(pair.slice(i + 1).replace(/\+/g, " ")); } catch (e) {}
+  });
+  if (params.error_code === "otp_expired") {
+    return "That sign-in link has expired or was already used. Each link works once, and only the newest " +
+      "e-mail's link works — older ones in the same e-mail thread stop working. Ask for a new link below.";
+  }
+  return "Sign-in didn't complete" + (params.error_description ? ": " + params.error_description : "") +
+    ". Ask for a new link below.";
+}
