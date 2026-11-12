@@ -372,6 +372,13 @@ run, check-ins fail quietly and nobody sees the card.
   breaks a test shows a red ✖ and the live site stays on the last good
   version until a fix passes. To re-publish by hand: Actions → Test and
   deploy → Run workflow.
+- **`npm run e2e`** — the main flows in headless Chrome at phone and desktop
+  width: tabs, Back/Forward, search, the dialogs, a mock exam, a scenario
+  exam through results and review, score history and the custom quiz. It
+  fails on a page error, a broken step or a screen that scrolls sideways on
+  a phone. No dependencies: Node serves the app and drives Chrome over the
+  DevTools protocol (set `CHROME_PATH` if Chrome is not found). CI runs it
+  after `npm test`, before deploying.
 - **`npm run coverage`** — questions per exam-guide objective in the bank and
   the scenario bank, marking any under 10 (`--min N` to change). Run it
   before writing new questions to see where they are needed.

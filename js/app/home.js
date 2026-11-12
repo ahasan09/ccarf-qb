@@ -205,21 +205,20 @@ function homeReadiness(progress, now, cta) {
   return html + "</div></section>";
 }
 
+/* A first visit needs one thing: the diagnostic. Everything else is a
+ * single line, and the tabs hold the rest. */
 function homeFirstVisit(progress, cta) {
-  var html = '<section class="card h-ready h-first"><div>' +
-    '<h1 class="h-eyebrow">Welcome — find your starting point</h1>' +
-    '<div class="h-big h-big-sm">20-question diagnostic</div>' +
-    '<p class="h-meta">A short scenario exam (2 scenarios × 10, 40 min) in the real exam\'s layout gives you a predicted score and your weakest objectives straight away.<br>' +
-    SCENARIO_BANK.length + " scenario questions across the six official scenarios · " + BANK.length +
-    " domain questions" + (EXAMS.length ? " · " + EXAMS.length + " practice tests" : "") + ".</p>" +
+  var date = progress.examDate
+    ? "Exam date <b>" + esc(progress.examDate) + "</b> · "
+    : "Optional: set your exam date for a countdown and a daily target · ";
+  return '<section class="card h-ready h-first"><div>' +
+    '<h1 class="h-eyebrow">Welcome</h1>' +
+    '<div class="h-big h-big-sm">Find your starting point</div>' +
+    '<p class="h-meta">A 20-question diagnostic in the real exam\'s layout (40 min) gives you a predicted score and your weakest objectives.</p>' +
     cta +
-    '<div class="h-steps"><div class="h-step"><b>1 · Diagnose</b>20 questions in the real exam\'s layout.</div>' +
-    '<div class="h-step"><b>2 · Set your date</b>Get a countdown and a review queue.</div>' +
-    '<div class="h-step"><b>3 · Practise</b>Short practice on your weakest objectives.</div></div>' + startHereLine() + "</div>" +
-    '<div><div class="h-step h-date"><b>Exam date</b>' +
-    (progress.examDate ? esc(progress.examDate) + "<br>" : "Optional — sets your countdown<br>") +
-    '<button class="btn small" data-action="edit-exam-date">' + (progress.examDate ? "Change" : "Set date") + "</button></div></div></section>";
-  return html;
+    '<p class="h-meta h-first-date">' + date +
+    '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change" : "set date") + "</button></p>" +
+    startHereLine() + "</div></section>";
 }
 
 function savedName(saved) {
@@ -252,7 +251,7 @@ function heroCta(progress, saved, acc, now, firstVisit) {
   } else if (firstVisit) {
     main = mainBtn("start-diagnostic", "Start diagnostic",
       eligibleScenarios(SCENARIOS, SCENARIO_BANK, 10).length >= 2 ? "" : " disabled");
-    rest = examBtn(" ghost", "or take the full scenario exam") + allExamsLink();
+    rest = examBtn(" ghost", "or take the full scenario exam");
   } else {
     var due = dueReviewIds(progress.review, now).filter(isListed).length;
     var weak = weakestObjectives(acc, 1)[0];
@@ -455,7 +454,7 @@ function homeHistory(history, best) {
   if (!history.length) {
     html += '<p class="muted">No exams taken yet. Your attempts will appear here.</p>';
   } else {
-    html += '<div class="table-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
+    html += '<div class="table-scroll history-scroll"><table class="history"><thead><tr><th>Date</th><th>Score</th><th>Result</th><th>Correct</th>' +
       "<th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th></th></tr></thead><tbody>";
     history.slice().reverse().forEach(function (h) {
       var cells = "";
@@ -472,10 +471,30 @@ function homeHistory(history, best) {
           ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>'
           : "") + "</td></tr>";
     });
-    html += "</tbody></table></div>" +
+    html += "</tbody></table></div>" + historyCards(history) +
       '<button class="btn ghost small" data-action="clear-history">Clear history</button>';
   }
   return html + "</section>";
+}
+
+/* On phones the 10-column table becomes one card per attempt (CSS picks
+ * which of the two shows). */
+function historyCards(history) {
+  return '<ol class="history-cards">' + history.slice().reverse().map(function (h) {
+    var doms = [];
+    for (var d = 1; d <= 5; d++) {
+      var pd = h.perDomain && h.perDomain[d];
+      if (pd) doms.push("D" + d + " " + pd.correct + "/" + pd.total);
+    }
+    return '<li class="history-card"><div class="hc-top"><div><b>' + esc(h.examName || "Mock exam") + "</b>" +
+      '<small class="muted">' + esc(new Date(h.date).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) +
+      '</small></div><div class="hc-score"><strong>' + h.score + "</strong>" +
+      '<span class="badge ' + (h.pass ? "pass" : "fail") + '">' + (h.pass ? "PASS" : "FAIL") + "</span></div></div>" +
+      '<div class="hc-meta">' + h.correct + "/" + h.total + " correct" + (doms.length ? " · " + doms.join(" · ") : "") + "</div>" +
+      (Array.isArray(h.items)
+        ? '<button class="btn ghost small" data-action="review-attempt" data-date="' + esc(h.date) + '">Review</button>' : "") +
+      "</li>";
+  }).join("") + "</ol>";
 }
 
 function isAdminUser(S) {

@@ -111,6 +111,7 @@ function launch(opts = {}) {
     document: {
       getElementById: (id) => (id === "app" ? appEl
         : id === "app-dialog" && opts.dialog ? opts.dialog
+        : id === "sr-live" && opts.live ? opts.live
         : opts.inputs && id in opts.inputs ? { value: opts.inputs[id] } : null),
       addEventListener: (type, fn) => { (docListeners[type] = docListeners[type] || []).push(fn); },
       documentElement: { removeAttribute() {}, setAttribute() {} },
@@ -418,7 +419,7 @@ function launchWithExams() {
 test("imported exams are listed separately and never enter the question bank", () => {
   const app = launchWithExams();
   // bank totals must be untouched by the imported questions
-  assert.ok(app.html().includes("100 domain questions"), "the bank count excludes imported questions");
+  assert.ok(tab(app, "practice").includes("0 of 100 answered"), "the bank count excludes imported questions");
   const html = tab(app, "exams");
   assert.ok(html.includes("Imported practice tests"));
   assert.ok(html.includes("Practice Test 1"));
@@ -2328,4 +2329,60 @@ test("answering questions builds Your week on Today", () => {
   assert.ok(html.includes("<b>1-day streak</b> · 2 today · 2 this week"));
   assert.equal((html.match(/class="h-day /g) || []).length, 7, "seven days");
   assert.match(html, /class="h-day lvl4 today"/, "today is marked and filled");
+});
+
+test("score history also renders as cards for phones", () => {
+  const app = launch();
+  seedHistory(app, [650, 760]);
+  const html = tab(app, "exams");
+  assert.ok(html.includes('class="table-scroll history-scroll"'), "the table for wide screens");
+  assert.equal((html.match(/class="history-card"/g) || []).length, 2, "one card per attempt");
+  assert.match(html, /class="hc-score"><strong>760<\/strong><span class="badge pass">PASS/);
+});
+
+/* ---- screen readers on the question screens ------------------------------ */
+test("screen readers hear the new question and the grade, and options say which was right", () => {
+  const live = { textContent: "" };
+  const app = launch({ live, storage: { ...RETURNING } });
+  app.click("practice", { domain: "1" });
+  assert.equal(live.textContent, "Question 1 of 20");
+  app.click("toggle-saved");
+  assert.equal(live.textContent, "Question 1 of 20", "a redraw of the same question stays quiet");
+  app.click("select", { opt: "1" }); // wrong; the bank's answer is option 0
+  assert.match(live.textContent, /^Incorrect\. The correct answer is [A-D]: A\. The explanation follows the options\.$/);
+  const html = app.html();
+  assert.match(html, /<span class="tag">correct answer<\/span>/);
+  assert.match(html, /<span class="tag">your answer<\/span>/);
+  assert.ok(!/class="feedback[^"]*" role="status"/.test(html), "no live region drawn along with its text");
+  app.click("next");
+  assert.equal(live.textContent, "Question 2 of 20");
+  app.click("select", { opt: "0" });
+  assert.equal(live.textContent, "Correct.");
+});
+
+test("the exam timer stays quiet but says when 10, 5 and 1 minutes are left", () => {
+  const live = { textContent: "" };
+  let now = Date.now();
+  const FakeDate = class extends Date { constructor(...a) { super(...(a.length ? a : [now])); } static now() { return now; } };
+  const app = launch({ live, Date: FakeDate, storage: { ...RETURNING } });
+  app.click("start-exam");
+  const html = app.html();
+  assert.ok(html.includes('role="timer"') && !/id="pace"[^>]*role="status"/.test(html), "pace is not a live region");
+  const deadline = app.store().snapshot().session.deadline;
+  const at = (msLeft) => { now = deadline - msLeft; app.tick(); };
+  at(11 * 60000); assert.equal(live.textContent, "Question 1 of 60");
+  at(9.5 * 60000); assert.equal(live.textContent, "10 minutes left.");
+  at(9 * 60000); assert.equal(live.textContent, "10 minutes left.", "said once");
+  at(4.5 * 60000); assert.equal(live.textContent, "5 minutes left.");
+  at(30000); assert.equal(live.textContent, "1 minute left.");
+});
+
+test("the welcome card is short: one action, one sentence, an optional date", () => {
+  const html = launch({ resources: RESOURCES }).html();
+  const card = html.slice(html.indexOf('class="card h-ready h-first"'), html.indexOf("</section>", html.indexOf("h-first")));
+  assert.equal((card.match(/h-cta-main/g) || []).length, 1, "one main button");
+  assert.ok(card.includes('data-action="start-diagnostic"') && card.includes("or take the full scenario exam"));
+  assert.ok(!card.includes("h-steps") && !card.includes("All exams"), "no step boxes, no extra links");
+  assert.ok(card.includes("Optional: set your exam date") && card.includes('data-action="edit-exam-date"'));
+  assert.ok(card.includes("h-start"), "the starting resources stay");
 });

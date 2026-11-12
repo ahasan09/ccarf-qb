@@ -461,9 +461,20 @@ function isReviewEntry(e) {
     typeof e.step === "number" && typeof e.updatedAt === "number";
 }
 
+/* Fields a later version of the app added: kept as they are, so a device
+ * still running an older version never erases them when it saves. */
+function carryUnknownFields(target, raw) {
+  var known = emptyProgress();
+  Object.keys(raw || {}).forEach(function (k) {
+    if (!Object.prototype.hasOwnProperty.call(known, k) && k.indexOf("ccarf.") !== 0 && raw[k] !== undefined) target[k] = raw[k];
+  });
+  return target;
+}
+
 function normalizeProgress(raw) {
   var s = emptyProgress();
   if (!raw || typeof raw !== "object") return s;
+  carryUnknownFields(s, raw);
   if (Array.isArray(raw.history)) {
     s.history = raw.history.filter(function (h) { return h && h.date; });
   }
@@ -525,7 +536,8 @@ function mergeProgress(a, b) {
   b = normalizeProgress(b);
   var byDate = {};
   a.history.concat(b.history).forEach(function (h) { byDate[h.date] = h; });
-  return {
+  var extra = carryUnknownFields(carryUnknownFields({}, a), b);
+  return carryUnknownFields({
     history: Object.keys(byDate).sort().map(function (d) { return byDate[d]; }),
     weak: unionIds(a.weak, b.weak),
     correctEver: unionIds(a.correctEver, b.correctEver),
@@ -537,7 +549,7 @@ function mergeProgress(a, b) {
     review: mergeReview(a.review, b.review),
     examDate: b.examDate || a.examDate,
     activity: mergeActivity(a.activity, b.activity),
-  };
+  }, extra);
 }
 
 /* The newer write wins per question, so a reset or a finish is never undone
