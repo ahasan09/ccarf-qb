@@ -32,6 +32,8 @@ function renderResults(finished) {
       '<p class="muted">' + sessionResultLabel(finished.mode) + "</p></div>";
   }
 
+  if (isExam) html += weakSpotsCard(finished);
+
   if (isScenario) {
     var finishedQs = finished.questions.map(function (s) { return byId[s.id]; }).filter(Boolean);
     var bar = function (row, label, cls) {
@@ -88,6 +90,29 @@ function renderResults(finished) {
 
   paint(html);
   lastFinished = finished;
+}
+
+/* Right after an exam's score: its weakest objectives (below the 72% pass
+ * level, up to three), each with a Practise button, so the next step is
+ * one click away. Exams without objective tags (imported tests) skip it. */
+var WEAK_SPOTS = 3;
+function weakSpotsCard(finished) {
+  var qs = finished.questions.map(function (s) { return byId[s.id]; })
+    .filter(function (q) { return q && SUBDOMAINS.indexOf(q.subdomain) >= 0; });
+  if (!qs.length) return "";
+  var weak = breakdownBy(qs, finished.answers, function (q) { return q.subdomain; })
+    .filter(function (r) { return r.pct < 72; }).slice(0, WEAK_SPOTS);
+  var html = '<div class="card weak-spots"><h2>Practise your weak spots</h2>';
+  if (!weak.length) {
+    return html + '<p class="muted">Every objective in this exam was at 72% or above. Keep it up with a full scenario exam.</p></div>';
+  }
+  html += '<p class="muted">The objectives you scored lowest on in this exam. Each practice set is up to 8 questions with a note on every option.</p>';
+  weak.forEach(function (r) {
+    html += '<div class="weak-spot"><div><span>' + esc(r.key) + '</span><small class="muted">' + r.correct + " of " + r.total +
+      " right · " + r.pct + "%</small></div>" +
+      '<button class="btn small primary" data-action="drill-objective" data-sub="' + esc(r.key) + '">Practise →</button></div>';
+  });
+  return html + "</div>";
 }
 
 /* After practising an objective's scenario questions, offer its bank

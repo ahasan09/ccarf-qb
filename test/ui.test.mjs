@@ -2287,3 +2287,21 @@ test("practice alone fills the objective bars, and the line under each name give
   html = app.html();
   assert.match(html, /1\.1 Design and implement agentic loops for autonomous task execution<small class="h-score-line">Practice 50%/, "objective line too");
 });
+
+test("after an exam, the weakest objectives can be practised straight from the results", () => {
+  const app = launch();
+  app.click("start-scenario-exam");
+  completeSession(app, { correct: false });
+  app.click("submit"); // from the scenario review screen
+  let html = app.html();
+  assert.ok(html.includes("Practise your weak spots"));
+  assert.match(html, /class="weak-spot">[^]*?data-action="drill-objective" data-sub="1\.1 Design and implement agentic loops/);
+  assert.ok(html.indexOf("Practise your weak spots") < html.indexOf("By objective"), "it comes right after the score");
+
+  const good = launch();
+  good.click("start-scenario-exam");
+  completeSession(good, { correct: true });
+  good.click("submit");
+  html = good.html();
+  assert.ok(html.includes("at 72% or above") && !html.includes('class="weak-spot"'), "nothing weak: says so");
+});
