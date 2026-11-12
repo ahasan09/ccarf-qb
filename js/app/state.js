@@ -51,6 +51,14 @@ var hiddenIds = {};
 FULL_BANK.forEach(function (q) { if (!bankIds[q.id]) hiddenIds[q.id] = true; });
 function isListed(id) { return !!byId[id] && !hiddenIds[id]; }
 
+/* What counts as study for the activity strip and streak: the practice
+ * bank and the scenario bank. Imported tests are excluded, as they are
+ * from mastery and the weak drill. */
+function countsAsStudy(id) {
+  var q = byId[id];
+  return !!q && (!!bankIds[id] || !!q.scenario);
+}
+
 /* The scenario bank is separate too: its questions are looked up by id
  * but never join BANK, so they don't touch mastery or the weak drill. */
 var SCENARIOS = window.SCENARIOS || [];

@@ -408,10 +408,16 @@ function mergeActivity(a, b) {
 /* Today, the last 7 days (oldest first, for a strip) and the streak: days
  * in a row with an answer, ending today — or yesterday, so a streak is
  * not shown as broken before today's study. */
-function activitySummary(activity, now) {
+function activitySummary(activity, now, includeId) {
   activity = activity || {};
   var today = localDay(now);
-  var count = function (day) { return (activity[day] || []).length; };
+  /* Only questions that count as study are tallied: the caller passes the
+   * rule, so imported tests stay out of the streak the same way they stay
+   * out of mastery. Without a rule, everything counts. */
+  var keep = typeof includeId === "function" ? includeId : function () { return true; };
+  var count = function (day) {
+    return (activity[day] || []).filter(keep).length;
+  };
   var week = [];
   for (var i = 6; i >= 0; i--) { var day = dayShift(today, -i); week.push({ day: day, count: count(day) }); }
   var streak = 0;

@@ -385,7 +385,7 @@ function selectOption(optIdx) {
     if (right) session.tally.correct++;
     else session.tally.wrong++;
     if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right));
-    Store.mutate(Mutations.recordActivity(localDay(Date.now()), [q.id]));
+    if (countsAsStudy(q.id)) Store.mutate(Mutations.recordActivity(localDay(Date.now()), [q.id]));
     scheduleReview([{ id: q.id, correct: right }]);
   } else if (isMultiAnswer(byId[sq.id])) {
     session.answers[sq.id] = toggleChoice(session.answers[sq.id], optIdx);
@@ -469,7 +469,8 @@ function submitSession() {
    * answers were already counted as they were given. */
   Store.mutate(Mutations.recordActivity(localDay(Date.now()), session.questions
     .filter(function (s) { var a = session.answers[s.id]; return a !== null && a !== undefined && !(Array.isArray(a) && !a.length); })
-    .map(function (s) { return s.id; })));
+    .map(function (s) { return s.id; })
+    .filter(countsAsStudy)));
   /* Practice modes scheduled each answer as it was given; everything
    * else is graded here, and an unanswered question counts as wrong. */
   if (session.mode !== "practice" && session.mode !== "scenario-practice") {

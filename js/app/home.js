@@ -71,7 +71,7 @@ function renderHome() {
 
 /* The last 7 days at a glance: a strip of days, the streak, and counts. */
 function homeWeek(progress, now) {
-  var a = activitySummary(progress.activity, now);
+  var a = activitySummary(progress.activity, now, countsAsStudy);
   if (!a.any) return "";
   var top = Math.max.apply(null, a.week.map(function (w) { return w.count; }).concat([1]));
   var cells = a.week.map(function (w, i) {

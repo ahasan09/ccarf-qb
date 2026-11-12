@@ -2497,3 +2497,31 @@ test("a refused sign-in link opens the account menu with the reason and cleans t
     assert.ok(!app.html().includes("auth-notice"), "asking for a new link clears the notice");
   });
 });
+
+test("taking an imported exam does not add to the week or the streak", () => {
+  const app = launchWithExams();
+  app.click("start-imported", { exam: "pt1" });
+  app.click("select", { opt: "1" });
+  app.click("next");
+  app.click("select", { opt: "0" });
+  app.click("select", { opt: "3" });
+  app.click("submit");
+  app.click("home");
+
+  const activity = app.store().snapshot().activity || {};
+  const logged = Object.keys(activity).reduce((n, d) => n + activity[d].length, 0);
+  assert.equal(logged, 0, "imported answers are not filed as study activity");
+  assert.ok(!tab(app, "today").includes("Your week"), "so the week card stays hidden");
+});
+
+test("answering a bank question still counts toward the week", () => {
+  const app = launchWithExams();
+  app.click("practice", { domain: "1", sub: "1.1" });
+  app.click("select", { opt: "0" });
+  app.click("quit");
+
+  const activity = app.store().snapshot().activity || {};
+  const logged = Object.keys(activity).reduce((n, d) => n + activity[d].length, 0);
+  assert.equal(logged, 1, "a bank answer is filed");
+  assert.ok(tab(app, "today").includes("Your week"), "and the card appears");
+});

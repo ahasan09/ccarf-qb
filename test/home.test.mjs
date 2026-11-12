@@ -299,3 +299,33 @@ test("fields from a newer app version survive normalising, mutations and merges"
   assert.equal(merged.a, 1);
   assert.ok(!("ccarf.history" in normalizeProgress({ "ccarf.history": [] })), "legacy keys are not carried");
 });
+
+test("activitySummary can be told which questions count as study", () => {
+  const { activitySummary } = app;
+  const now = new Date("2026-11-12T10:00:00").getTime();
+  const act = {
+    "2026-11-12": ["d1-q01", "pt1-q001", "pt1-q002"],
+    "2026-11-11": ["pt3-q010"],
+    "2026-11-10": ["d2-q05"],
+  };
+  const bankOnly = (id) => !/^(pt|mock1|purcell)/.test(id);
+
+  const all = activitySummary(act, now);
+  assert.equal(all.today, 3, "without a rule everything counts");
+  assert.equal(all.streak, 3);
+
+  const study = activitySummary(act, now, bankOnly);
+  assert.equal(study.today, 1, "only the bank question counts today");
+  assert.equal(study.weekTotal, 2, "the imported answers are left out");
+  assert.equal(study.streak, 1, "a day of imported-only answers breaks the streak");
+  assert.equal(study.any, true);
+});
+
+test("a day of imported answers alone reads as no activity", () => {
+  const { activitySummary } = app;
+  const now = new Date("2026-11-12T10:00:00").getTime();
+  const onlyImported = activitySummary({ "2026-11-12": ["pt1-q001"] }, now, (id) => !id.startsWith("pt"));
+  assert.equal(onlyImported.today, 0);
+  assert.equal(onlyImported.streak, 0);
+  assert.equal(onlyImported.any, false, "the card stays hidden rather than showing an empty week");
+});
