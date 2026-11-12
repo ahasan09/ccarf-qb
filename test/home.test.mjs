@@ -248,3 +248,13 @@ test("practiceAccuracy counts answered bank questions per objective, right if ev
   assert.deepEqual(practiceAccuracy(bank, ["a"], ["a", "b", "d", "e"]), { [sub]: { correct: 1, total: 2 } });
   assert.deepEqual(practiceAccuracy(bank, [], []), {});
 });
+
+test("studyPlan spreads the unanswered bank over the days left", () => {
+  const { studyPlan } = app;
+  assert.equal(studyPlan(null, 100), null);
+  assert.equal(studyPlan(-2, 100), null, "a past date gives nothing");
+  assert.match(studyPlan(0, 100), /^Exam day/);
+  assert.equal(studyPlan(18, 430), "About 24 new questions a day covers the rest of the bank (430 left).");
+  assert.equal(studyPlan(10, 3), "About 1 new question a day covers the rest of the bank (3 left).");
+  assert.match(studyPlan(5, 0), /answered every bank question/);
+});

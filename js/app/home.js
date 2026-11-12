@@ -103,6 +103,13 @@ function tabBar(tab, due) {
   }).join("") + "</nav>";
 }
 
+/* Bank questions not yet answered (ever right counts as answered). */
+function bankLeft(progress) {
+  var seen = {};
+  progress.attempted.concat(progress.correctEver).forEach(function (id) { seen[id] = true; });
+  return BANK.filter(function (q) { return !seen[q.id]; }).length;
+}
+
 function examDateLine(progress, now) {
   var days = daysUntil(progress.examDate, now);
   if (days === null || days < 0) return "";
@@ -159,8 +166,10 @@ function homeReadiness(progress, now, cta) {
       " to get your predicted score and weakest objectives.</p>";
   }
   var date = examDateLine(progress, now);
+  var plan = studyPlan(daysUntil(progress.examDate, now), bankLeft(progress));
   html += '<p class="h-meta">' + (date ? date + " · " : "") +
-    '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change exam date" : "set exam date") + "</button></p>";
+    '<button class="h-link" data-action="edit-exam-date">' + (progress.examDate ? "change exam date" : "set exam date") + "</button>" +
+    (plan ? '<br><span class="h-plan">' + esc(plan) + "</span>" : "") + "</p>";
   html += cta;
   html += "</div><div>" + sparkline(attempts);
   var last = null;

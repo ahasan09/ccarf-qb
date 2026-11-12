@@ -390,6 +390,18 @@ function daysUntil(str, now) {
   return Math.round((Date.UTC(+p[0], +p[1] - 1, +p[2]) - from) / 86400000);
 }
 
+/* One line turning the exam countdown into a daily target: the bank
+ * questions not yet answered, spread over the days left (exam day
+ * excluded). null when there is no upcoming date. */
+function studyPlan(days, remaining) {
+  if (days === null || days === undefined || days < 0) return null;
+  if (days === 0) return "Exam day — skim your saved questions, then rest. Good luck!";
+  if (remaining <= 0) return "You have answered every bank question. Keep up with due reviews and take full scenario exams.";
+  var perDay = Math.ceil(remaining / days);
+  return "About " + perDay + " new question" + (perDay === 1 ? "" : "s") + " a day covers the rest of the bank (" +
+    remaining + " left).";
+}
+
 function isReviewEntry(e) {
   return !!e && typeof e === "object" && typeof e.due === "number" &&
     typeof e.step === "number" && typeof e.updatedAt === "number";

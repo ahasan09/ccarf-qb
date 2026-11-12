@@ -2305,3 +2305,11 @@ test("after an exam, the weakest objectives can be practised straight from the r
   html = good.html();
   assert.ok(html.includes("at 72% or above") && !html.includes('class="weak-spot"'), "nothing weak: says so");
 });
+
+test("with an exam date set, Today gives a daily target", () => {
+  const inTen = new Date(Date.now() + 10 * 86400000);
+  const date = inTen.getFullYear() + "-" + String(inTen.getMonth() + 1).padStart(2, "0") + "-" + String(inTen.getDate()).padStart(2, "0");
+  const html = launch({ storage: { "ccarf.progress": JSON.stringify({ attempted: ["d1-q1", "d1-q2"], examDate: date }) } }).html();
+  assert.match(html, /<span class="h-plan">About 10 new questions a day covers the rest of the bank \(98 left\)\.<\/span>/);
+  assert.ok(!launch({ storage: { ...RETURNING } }).html().includes("h-plan"), "no date, no plan");
+});
