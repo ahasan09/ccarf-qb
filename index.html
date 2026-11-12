@@ -505,6 +505,12 @@
   .scn-top { position: sticky; top: 0; z-index: 10; }
   .scn-bottom { position: sticky; bottom: 0; z-index: 10; }
   .btn.flag-on { color: var(--flag); border-color: var(--flag); background: var(--flag-soft); }
+  /* question top bar: words on wide screens, a counter and icons on phones */
+  .qbtn { display: inline-flex; align-items: center; gap: 6px; }
+  .qbtn .ico { margin: 0; color: currentColor; }
+  .qbtn.saved-on .ico { fill: currentColor; color: var(--flag); }
+  .lbl-short { display: none; }
+  .q-where { min-width: 0; }
   .scn-screen, .scn-body, .scn-question { min-width: 0; }
   .scn-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: stretch; }
   /* The panel fills the column's full height; the scenario text inside it
@@ -770,7 +776,12 @@
     .builder-domain .domain-row .btn { margin-left: auto; }
     .question-card { padding: 18px; }
     .score-card { gap: 18px; padding: 20px; }
-    .quiz-header { margin: 0 -12px 12px; padding: 10px 12px; }
+    .quiz-header { margin: 0 -12px 12px; padding: 8px 12px; }
+    .lbl-long { display: none; }
+    .lbl-short { display: inline; font-family: var(--mono); font-size: .9rem; white-space: nowrap; }
+    .quiz-header .row, .scn-top .row { gap: 4px; flex-wrap: nowrap; }
+    .qbtn { width: 38px; height: 38px; padding: 0; justify-content: center; }
+    .timer { padding: 4px 8px; font-size: .9rem; }
     .quiz-footer { margin: auto -12px 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
     .history { font-size: 0.82rem; }
   }
