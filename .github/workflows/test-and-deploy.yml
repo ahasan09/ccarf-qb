@@ -23,6 +23,8 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      # The same flows in a real browser (the runner image ships Chrome).
+      - run: npm run e2e
 
   deploy:
     needs: test # skipped unless every test passed

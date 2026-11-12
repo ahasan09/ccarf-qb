@@ -4,6 +4,7 @@
   "description": "CCAR-F exam prep. No build and no dependencies: open index.html. These scripts only run the checks.",
   "scripts": {
     "test": "node --test test/*.test.mjs && node test/validate-bank.mjs && node test/validate-scenarios.mjs",
-    "coverage": "node scripts/coverage.mjs"
+    "coverage": "node scripts/coverage.mjs",
+    "e2e": "node test/e2e.mjs"
   }
 }
