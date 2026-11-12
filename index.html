@@ -661,10 +661,9 @@
   .h-star { color: var(--flag); }
   .h-start { margin-top: 14px; }
   .h-src { font-size: .8rem; margin-left: 6px; }
-  .h-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
-  .h-step { border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 12px 14px; font-size: .88rem; color: var(--graphite); }
-  .h-step b { display: block; color: var(--ink); margin-bottom: 4px; }
-  .h-date { text-align: center; padding: 26px 16px; line-height: 1.8; }
+  .h-first { grid-template-columns: minmax(0, 1fr); }
+  .h-first > div { max-width: 64ch; }
+  .h-first-date { margin-top: 18px; font-size: .9rem; }
   /* loading screen in index.html, until the app draws */
   .boot-card { padding: 24px; }
   .boot-title { font-weight: 700; margin: 0 0 14px; }
@@ -734,7 +733,7 @@
     .h-tab-badge { position: absolute; top: 2px; left: calc(50% + 6px); font-size: .66rem; min-width: 18px; padding: 0 5px; }
   }
   @media (max-width: 760px) {
-    .h-ready, .h-cols, .h-steps { grid-template-columns: 1fr; }
+    .h-ready, .h-cols { grid-template-columns: 1fr; }
     .h-weak { grid-template-columns: 1fr 48px auto; }
     .h-weak .h-meter, .h-dom-head .h-meter { display: none; }
     .h-dom-head { grid-template-columns: auto 1fr 44px auto; }

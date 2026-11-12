@@ -419,7 +419,7 @@ function launchWithExams() {
 test("imported exams are listed separately and never enter the question bank", () => {
   const app = launchWithExams();
   // bank totals must be untouched by the imported questions
-  assert.ok(app.html().includes("100 domain questions"), "the bank count excludes imported questions");
+  assert.ok(tab(app, "practice").includes("0 of 100 answered"), "the bank count excludes imported questions");
   const html = tab(app, "exams");
   assert.ok(html.includes("Imported practice tests"));
   assert.ok(html.includes("Practice Test 1"));
@@ -2375,4 +2375,14 @@ test("the exam timer stays quiet but says when 10, 5 and 1 minutes are left", ()
   at(9 * 60000); assert.equal(live.textContent, "10 minutes left.", "said once");
   at(4.5 * 60000); assert.equal(live.textContent, "5 minutes left.");
   at(30000); assert.equal(live.textContent, "1 minute left.");
+});
+
+test("the welcome card is short: one action, one sentence, an optional date", () => {
+  const html = launch({ resources: RESOURCES }).html();
+  const card = html.slice(html.indexOf('class="card h-ready h-first"'), html.indexOf("</section>", html.indexOf("h-first")));
+  assert.equal((card.match(/h-cta-main/g) || []).length, 1, "one main button");
+  assert.ok(card.includes('data-action="start-diagnostic"') && card.includes("or take the full scenario exam"));
+  assert.ok(!card.includes("h-steps") && !card.includes("All exams"), "no step boxes, no extra links");
+  assert.ok(card.includes("Optional: set your exam date") && card.includes('data-action="edit-exam-date"'));
+  assert.ok(card.includes("h-start"), "the starting resources stay");
 });
