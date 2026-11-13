@@ -2128,7 +2128,9 @@ test("a rate-limited sign-in e-mail gets a plain explanation", () => {
 test("search sits in the header on every tab", () => {
   const app = launch({ storage: { ...RETURNING } });
   for (const t of ["today", "practice", "exams", "resources"]) {
-    assert.match(tab(app, t), /<button class="h-search" data-action="search" aria-label="Search questions" aria-keyshortcuts="\/">/, t);
+    const html = tab(app, t);
+    assert.match(html, /<button class="h-search" data-action="search" aria-label="Search questions" aria-keyshortcuts="\/">/, t);
+    assert.equal(html.split('data-action="search"').length - 1, 1, t + ": one way in, not a second one in the tab");
   }
   app.click("search");
   assert.ok(app.html().includes('id="search-q"'), "it opens the search screen");
