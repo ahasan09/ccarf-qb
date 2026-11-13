@@ -34,6 +34,10 @@ const server = http.createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const BASE = `http://127.0.0.1:${server.address().port}/`;
 
+/* Declared before Chrome starts: finish() reads it, and an early exit
+ * (Chrome not reachable) calls finish() before the checks run. */
+let failures = 0;
+
 /* ------------------------------------------------------------ chrome */
 const chromePath = [
   process.env.CHROME_PATH,
@@ -51,14 +55,19 @@ const chrome = spawn(chromePath, [
 ], { stdio: "ignore" });
 
 let ws;
-for (let i = 0; i < 100 && !ws; i++) {
+// Up to 30 s: a cold CI runner can take well over 15 s to start Chrome.
+for (let i = 0; i < 200 && !ws; i++) {
   try {
     const page = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === "page");
     if (page) ws = new WebSocket(page.webSocketDebuggerUrl);
   } catch {}
   if (!ws) await sleep(150);
 }
-if (!ws) { console.error("Could not connect to Chrome."); finish(1); }
+if (!ws) {
+  console.error("Could not connect to Chrome.");
+  finish(1);
+  await new Promise(() => {}); // finish() exits shortly; go no further
+}
 await new Promise((r) => ws.addEventListener("open", r));
 
 let msgId = 0;
@@ -80,7 +89,6 @@ async function js(expr) {
 }
 
 /* ------------------------------------------------------------ helpers */
-let failures = 0;
 let step = "";
 function check(label, ok, detail) {
   console.log((ok ? "  ✔ " : "  ✖ ") + label + (ok || !detail ? "" : " — " + detail));
@@ -233,7 +241,8 @@ check("no page errors", pageErrors.length === 0, pageErrors.join("\n"));
 finish(failures ? 1 : 0);
 
 function finish(code) {
-  console.log(code ? `\n${failures} check(s) failed.` : "\nAll end-to-end checks passed.");
+  console.log(!code ? "\nAll end-to-end checks passed."
+    : failures ? `\n${failures} check(s) failed.` : "\nEnd-to-end run stopped before any checks.");
   try { ws && ws.close(); } catch {}
   chrome.kill();
   server.close();
