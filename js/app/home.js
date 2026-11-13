@@ -126,10 +126,10 @@ function tabBar(tab, due) {
   }).join("") + "</nav>";
 }
 
-/* Bank questions not yet answered (ever right counts as answered). */
+/* Bank questions not yet answered (ever right, or in weak, counts as answered). */
 function bankLeft(progress) {
   var seen = {};
-  progress.attempted.concat(progress.correctEver).forEach(function (id) { seen[id] = true; });
+  progress.attempted.concat(progress.correctEver, progress.weak || []).forEach(function (id) { seen[id] = true; });
   return BANK.filter(function (q) { return !seen[q.id]; }).length;
 }
 
@@ -312,8 +312,8 @@ function scoreLine(ex, pr) {
 }
 
 function homeObjectives(progress, acc) {
-  var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted);
-  var prac = practiceAccuracy(BANK, progress.correctEver, progress.attempted);
+  var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted, progress.weak);
+  var prac = practiceAccuracy(BANK, progress.correctEver, progress.attempted, progress.weak);
   var seenAll = 0, rightAll = 0, totalAll = 0;
   for (var sd = 1; sd <= 5; sd++) {
     var row = mastery[sd] || { correct: 0, attempted: 0, total: 0 };
@@ -326,9 +326,9 @@ function homeObjectives(progress, acc) {
     return r;
   };
   var html = '<section class="card h-col" id="h-objectives"><h2 class="h-h2">By objective</h2>' +
-    '<p class="h-sub">Bars show your accuracy — from exams when you have taken some, otherwise from practice. Green is on track (72%+, the pass level), amber is close (50–71%), red is weak. Open a domain for its task statements.</p>' +
+    '<p class="h-sub">Bars show your accuracy — from exams when you have taken some, otherwise from practice, where a question counts as right if your last answer to it was. Green is on track (72%+, the pass level), amber is close (50–71%), red is weak. Open a domain for its task statements.</p>' +
     '<p class="h-bank">Question bank: ' + seenAll + " of " + totalAll + " answered" +
-    (seenAll ? " · " + pc(rightAll, seenAll) + "% right" : "") + "</p>";
+    (seenAll ? " · " + pc(rightAll, seenAll) + "% right on your last try" : "") + "</p>";
   for (var d = 1; d <= 5; d++) {
     var s = scoreLine(sum(acc, d), sum(prac, d));
     var m = mastery[d] || { attempted: 0, total: 0, correct: 0 };
