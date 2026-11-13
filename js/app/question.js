@@ -384,7 +384,7 @@ function selectOption(optIdx) {
     }).join("; ") + ". The explanation follows the options.");
     if (right) session.tally.correct++;
     else session.tally.wrong++;
-    if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right));
+    if (!session.separate && bankIds[q.id]) Store.mutate(Mutations.recordAnswer(q.id, right, Date.now()));
     if (countsAsStudy(q.id)) Store.mutate(Mutations.recordActivity(localDay(Date.now()), [q.id]));
     scheduleReview([{ id: q.id, correct: right }]);
   } else if (isMultiAnswer(byId[sq.id])) {
@@ -464,7 +464,11 @@ function submitSession() {
   /* One mutation clears the session, redeems the weak questions answered
    * correctly, and records the attempt — so a later sync cannot bring
    * any of it back. */
-  Store.mutate(Mutations.finishSession(grade, entry, { separate: separate }));
+  var answered = Object.keys(session.answers || {}).filter(function (k) {
+    var a = session.answers[k];
+    return a !== null && a !== undefined && !(Array.isArray(a) && !a.length);
+  });
+  Store.mutate(Mutations.finishSession(grade, entry, { separate: separate, at: Date.now(), answered: answered }));
   /* Every answered question counts toward today's activity; practice
    * answers were already counted as they were given. */
   Store.mutate(Mutations.recordActivity(localDay(Date.now()), session.questions

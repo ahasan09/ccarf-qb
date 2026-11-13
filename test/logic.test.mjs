@@ -29,6 +29,8 @@ const {
   toggleChoice,
   selectCustomQuestions,
   filterByTagging,
+  noteResult,
+  mergeResults,
 } = app;
 
 function makeBank(countsPerDomain) {
@@ -521,4 +523,45 @@ test("a refused sign-in link is explained", () => {
   assert.equal(authLinkError("#access_token=abc&refresh_token=def"), null);
   assert.equal(authLinkError("#/practice"), null);
   assert.equal(authLinkError(""), null);
+});
+
+test("noteResult keeps the first and the latest answer, and a replay changes nothing", () => {
+  let r = noteResult({}, "q", false, 100);
+  assert.deepEqual(r.q, { first: false, firstAt: 100, last: false, lastAt: 100 });
+  r = noteResult(r, "q", true, 200);
+  assert.deepEqual(r.q, { first: false, firstAt: 100, last: true, lastAt: 200 });
+  assert.deepEqual(noteResult(r, "q", true, 200), r, "same answer replayed");
+  assert.deepEqual(noteResult(r, "q", false, 150).q, r.q, "an older answer arriving late is neither first nor last");
+  assert.deepEqual(noteResult(r, "q", true, 50).q, { first: true, firstAt: 50, last: true, lastAt: 200 }, "an earlier one becomes first");
+});
+
+test("mergeResults keeps the earliest first answer and the latest last one", () => {
+  const a = { q: { first: true, firstAt: 10, last: true, lastAt: 10 }, x: { first: false, firstAt: 5, last: false, lastAt: 5 } };
+  const b = { q: { first: false, firstAt: 20, last: false, lastAt: 30 } };
+  assert.deepEqual(mergeResults(a, b), {
+    q: { first: true, firstAt: 10, last: false, lastAt: 30 },
+    x: { first: false, firstAt: 5, last: false, lastAt: 5 },
+  });
+});
+
+test("recordAnswer and finishSession note each result with its time", () => {
+  let s = applyMutations(emptyProgress(), [Mutations.recordAnswer("q1", false, 100), Mutations.recordAnswer("q1", true, 200)]);
+  assert.deepEqual(s.results.q1, { first: false, firstAt: 100, last: true, lastAt: 200 });
+  s = applyMutations(s, [Mutations.finishSession({ correctIds: ["q2"], wrongIds: ["q3"] }, null, { at: 300 })]);
+  assert.equal(s.results.q2.first, true);
+  assert.equal(s.results.q3.first, false);
+  assert.equal(s.results.q3.firstAt, 300);
+  s = applyMutations(s, [Mutations.finishSession({ correctIds: ["q4"], wrongIds: [] }, null, { at: 400, separate: true })]);
+  assert.ok(!s.results.q4, "imported tests stay out of the bank record");
+  s = applyMutations(s, [Mutations.finishSession({ correctIds: [], wrongIds: ["q5", "q6"] }, null, { at: 500, answered: ["q5"] })]);
+  assert.equal(s.results.q5.first, false);
+  assert.ok(!s.results.q6, "a skipped question is not a first try");
+});
+
+test("results survive normalize and merge, and junk entries are dropped", () => {
+  const good = { first: true, firstAt: 1, last: true, lastAt: 1 };
+  const n = normalizeProgress({ results: { q: good, bad: { first: "yes" } } });
+  assert.deepEqual(n.results, { q: good });
+  assert.deepEqual(normalizeProgress({}).results, {});
+  assert.deepEqual(mergeProgress({ results: { q: good } }, {}).results, { q: good });
 });

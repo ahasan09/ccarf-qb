@@ -2286,18 +2286,32 @@ test("practice alone fills the objective bars, and the line under each name give
     { subdomain: q.domain === 1 ? "1.1 Design and implement agentic loops for autonomous task execution" : q.subdomain }));
   const app = launch({ bank: guideBank });
   app.click("practice", { domain: "1", sub: "1.1" });
-  app.click("select", { opt: "0" }); // right
-  app.click("next");
-  app.click("select", { opt: "1" }); // wrong
+  for (let i = 0; i < 6; i++) {
+    app.click("select", { opt: i < 3 ? "0" : "1" }); // three right, three wrong
+    app.click("next");
+  }
   app.click("quit");
   let html = tab(app, "practice");
-  assert.match(html, /D1<\/span> <span>[^<]* <small class="h-score-line">Practice 50%<\/small>/, "domain line names its source");
+  assert.match(html, /D1<\/span> <span>[^<]* <small class="h-score-line">Practice 50% of 6 · first try 50%<\/small>/, "domain line names its source and size");
   assert.match(html, /aria-label="50% right in practice, close"/, "the bar is filled from practice");
   assert.match(html, /D2<\/span> <span>[^<]* <small class="h-score-line">No answers yet/);
 
   app.click("toggle-mastery", { domain: "1" });
   html = app.html();
-  assert.match(html, /1\.1 Design and implement agentic loops for autonomous task execution <small class="h-score-line">Practice 50%/, "objective line too");
+  assert.match(html, /1\.1 Design and implement agentic loops for autonomous task execution <small class="h-score-line">Practice 50% of 6/, "objective line too");
+});
+
+test("a bar with fewer than 5 answers is grey and says too few to tell", () => {
+  const guideBank = bank().map((q) => Object.assign({}, q,
+    { subdomain: q.domain === 1 ? "1.1 Design and implement agentic loops for autonomous task execution" : q.subdomain }));
+  const app = launch({ bank: guideBank });
+  app.click("practice", { domain: "1", sub: "1.1" });
+  app.click("select", { opt: "0" }); // right
+  app.click("quit");
+  const html = tab(app, "practice");
+  assert.match(html, /<small class="h-score-line">Practice 100% of 1 · too few to tell<\/small>/);
+  assert.match(html, /aria-label="Too few answers to tell"/, "no green 100% bar from one answer");
+  assert.ok(!/D1<\/span>.*?<span class="h-pct">100%/.test(html), "no big 100% either");
 });
 
 test("after an exam, the weakest objectives can be practised straight from the results", () => {

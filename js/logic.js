@@ -162,7 +162,7 @@ function masteryByDomain(bank, correctEverIds, attemptedIds, weakIds) {
   var st = answerState(correctEverIds, attemptedIds, weakIds);
   var result = {};
   bank.forEach(function (q) {
-    var d = result[q.domain] || (result[q.domain] = { correct: 0, attempted: 0, total: 1 - 1 });
+    var d = result[q.domain] || (result[q.domain] = { correct: 0, attempted: 0, total: 0 });
     d.total++;
     if (st.right[q.id]) d.correct++;
     if (st.seen[q.id]) d.attempted++;
@@ -380,7 +380,40 @@ function breakdownBy(questions, answers, keyFn) {
  * of a merge guessing what was deleted. */
 
 function emptyProgress() {
-  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null, review: {}, examDate: null, activity: {} };
+  return { history: [], weak: [], correctEver: [], attempted: [], saved: [], session: null, review: {}, examDate: null, activity: {}, results: {} };
+}
+
+/* Per-question record of the first and the latest answer, each with the
+ * time it was given (from 14 Nov 2026; older answers have none). Keyed by
+ * time rather than counted, so replaying a queued answer or merging two
+ * devices' copies cannot change it twice. */
+function isResultEntry(e) {
+  return !!e && typeof e === "object" && typeof e.first === "boolean" && typeof e.last === "boolean" &&
+    typeof e.firstAt === "number" && typeof e.lastAt === "number";
+}
+
+function noteResult(results, id, right, at) {
+  var out = Object.assign({}, results || {});
+  var cur = out[id];
+  if (!cur) {
+    out[id] = { first: right, firstAt: at, last: right, lastAt: at };
+    return out;
+  }
+  var next = Object.assign({}, cur);
+  if (at < cur.firstAt) { next.first = right; next.firstAt = at; }
+  if (at > cur.lastAt) { next.last = right; next.lastAt = at; }
+  out[id] = next;
+  return out;
+}
+
+function mergeResults(a, b) {
+  var out = Object.assign({}, a || {});
+  Object.keys(b || {}).forEach(function (id) {
+    var e = b[id];
+    if (!out[id]) { out[id] = e; return; }
+    out[id] = noteResult(noteResult(out, id, e.first, e.firstAt), id, e.last, e.lastAt)[id];
+  });
+  return out;
 }
 
 /* ------------------------------------------------------------ activity */
@@ -514,6 +547,11 @@ function normalizeProgress(raw) {
     });
   }
   if (isValidDate(raw.examDate)) s.examDate = raw.examDate;
+  if (raw.results && typeof raw.results === "object") {
+    Object.keys(raw.results).forEach(function (id) {
+      if (isResultEntry(raw.results[id])) s.results[id] = raw.results[id];
+    });
+  }
   if (raw.activity && typeof raw.activity === "object") {
     Object.keys(raw.activity).forEach(function (day) {
       var ids = raw.activity[day];
@@ -566,6 +604,7 @@ function mergeProgress(a, b) {
     review: mergeReview(a.review, b.review),
     examDate: b.examDate || a.examDate,
     activity: mergeActivity(a.activity, b.activity),
+    results: mergeResults(a.results, b.results),
   }, extra);
 }
 
@@ -628,6 +667,40 @@ function practiceAccuracy(bank, correctEverIds, attemptedIds, weakIds) {
     if (st.right[q.id]) row.correct++;
   });
   return acc;
+}
+
+/* First-try accuracy per objective, from questions whose first answer was
+ * recorded. Same shape as practiceAccuracy. */
+function firstTryAccuracy(bank, results) {
+  var acc = {};
+  if (!results) return acc;
+  (bank || []).forEach(function (q) {
+    var e = results[q.id];
+    if (!e || SUBDOMAINS.indexOf(q.subdomain) < 0) return;
+    var row = acc[q.subdomain] || (acc[q.subdomain] = { correct: 0, total: 0 });
+    row.total++;
+    if (e.first) row.correct++;
+  });
+  return acc;
+}
+
+/* Below this many answers a percentage says more about luck than skill. */
+var MIN_ANSWERS = 5;
+
+/* One score for an objective or domain from its exam and practice counts.
+ * Exams win once there are enough of them; before that the two are pooled,
+ * so a couple of exam answers cannot hide a lot of practice. `few` marks a
+ * score from too few answers to read anything into. */
+function objectiveScore(ex, pr) {
+  var et = ex && ex.total || 0, pt = pr && pr.total || 0;
+  var correct, total, source;
+  if (et >= MIN_ANSWERS) { correct = ex.correct; total = et; source = "in exams"; }
+  else {
+    correct = (et ? ex.correct : 0) + (pt ? pr.correct : 0); total = et + pt;
+    source = et && pt ? "in exams and practice" : et ? "in exams" : pt ? "in practice" : "";
+  }
+  if (!total) return { pct: null, source: "", answers: 0, few: false };
+  return { pct: Math.round((100 * correct) / total), source: source, answers: total, few: total < MIN_ANSWERS };
 }
 
 function weakestObjectives(acc, limit, minAnswered) {
