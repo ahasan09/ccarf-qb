@@ -273,8 +273,9 @@ function heroCta(progress, saved, acc, now, firstVisit) {
 /* Colour is backed by words: each bar says weak, close or on track to
  * screen readers and on hover, and the By objective note explains it. */
 function meterStatus(pct) { return pct >= 72 ? "on track" : pct >= 50 ? "close" : "weak"; }
-function meter(pct, source) {
+function meter(pct, source, few) {
   if (pct === null) return '<div class="h-meter" role="img" aria-label="No answers yet"></div>';
+  if (few) return '<div class="h-meter" role="img" aria-label="Too few answers to tell" title="Too few answers to tell"><i style="width:' + pct + '%;background:var(--line-strong)"></i></div>';
   var c = pct >= 72 ? "var(--pass)" : pct >= 50 ? "var(--flag)" : "var(--fail)";
   var label = pct + "% right" + (source ? " " + source : "") + ", " + meterStatus(pct);
   return '<div class="h-meter" role="img" aria-label="' + label + '" title="' + label + '"><i style="width:' + pct + "%;background:" + c + '"></i></div>';
@@ -294,26 +295,34 @@ function homeNextStep(acc) {
   return html + "</section>";
 }
 
-/* One bar per domain and objective. It shows exam accuracy when there is
- * some, and practice accuracy otherwise, so practising alone still fills
- * the bars; the line under each name gives both. */
-function scoreLine(ex, pr) {
+/* One bar per domain and objective, scored by objectiveScore: exams once
+ * there are enough exam answers, exams and practice pooled before that.
+ * The line under each name gives each source with its size, and first-try
+ * accuracy once enough first answers are on record. */
+function scoreLine(ex, pr, first) {
   var pc = function (r) { return Math.round((100 * r.correct) / r.total); };
-  var exPct = ex && ex.total ? pc(ex) : null;
-  var prPct = pr && pr.total ? pc(pr) : null;
+  var score = objectiveScore(ex, pr);
   var bits = [];
-  if (exPct !== null) bits.push("Exams " + exPct + "%");
-  if (prPct !== null) bits.push("Practice " + prPct + "%");
+  if (ex && ex.total) bits.push("Exams " + pc(ex) + "% of " + ex.total);
+  if (pr && pr.total) bits.push("Practice " + pc(pr) + "% of " + pr.total);
+  if (first && first.total >= MIN_ANSWERS) bits.push("first try " + pc(first) + "%");
+  if (score.few) bits.push("too few to tell");
   return {
-    pct: exPct !== null ? exPct : prPct,
-    source: exPct !== null ? "in exams" : prPct !== null ? "in practice" : "",
+    pct: score.pct,
+    few: score.few,
+    source: score.source,
     line: bits.length ? bits.join(" · ") : "No answers yet",
   };
+}
+
+function pctCell(s) {
+  return '<span class="h-pct">' + (s.pct === null || s.few ? "—" : s.pct + "%") + "</span>";
 }
 
 function homeObjectives(progress, acc) {
   var mastery = masteryByDomain(BANK, progress.correctEver, progress.attempted, progress.weak);
   var prac = practiceAccuracy(BANK, progress.correctEver, progress.attempted, progress.weak);
+  var first = firstTryAccuracy(BANK, progress.results);
   var seenAll = 0, rightAll = 0, totalAll = 0;
   for (var sd = 1; sd <= 5; sd++) {
     var row = mastery[sd] || { correct: 0, attempted: 0, total: 0 };
@@ -326,25 +335,25 @@ function homeObjectives(progress, acc) {
     return r;
   };
   var html = '<section class="card h-col" id="h-objectives"><h2 class="h-h2">By objective</h2>' +
-    '<p class="h-sub">Bars show your accuracy — from exams when you have taken some, otherwise from practice, where a question counts as right if your last answer to it was. Green is on track (72%+, the pass level), amber is close (50–71%), red is weak. Open a domain for its task statements.</p>' +
+    '<p class="h-sub">Accuracy from exams once you have ' + MIN_ANSWERS + ' exam answers, from practice until then. Green is on track (72%+, the pass level), amber is close, red is weak, grey is too few answers to tell.</p>' +
     '<p class="h-bank">Question bank: ' + seenAll + " of " + totalAll + " answered" +
     (seenAll ? " · " + pc(rightAll, seenAll) + "% right on your last try" : "") + "</p>";
   for (var d = 1; d <= 5; d++) {
-    var s = scoreLine(sum(acc, d), sum(prac, d));
+    var s = scoreLine(sum(acc, d), sum(prac, d), sum(first, d));
     var m = mastery[d] || { attempted: 0, total: 0, correct: 0 };
     var open = expandedMastery === d;
     html += '<div class="h-dom"><button class="h-dom-head" data-action="toggle-mastery" data-domain="' + d + '" aria-expanded="' + open + '">' +
       '<span class="domain-chip chip-d' + d + '">D' + d + "</span><span>" + esc(DOMAIN_NAMES[d]) +
       '<small class="h-score-line">' + s.line + "</small></span>" +
-      meter(s.pct, s.source) + '<span class="h-pct">' + (s.pct === null ? "—" : s.pct + "%") + "</span>" + chev(open) + "</button>";
+      meter(s.pct, s.source, s.few) + pctCell(s) + chev(open) + "</button>";
     if (open) {
       html += '<div class="h-objs"><button class="h-row" data-action="practice" data-domain="' + d + '"><span>Practice all of D' + d +
         '</span><span class="muted">' + m.total + " questions →</span></button>";
       SUBDOMAINS.forEach(function (sub) {
         if (sub.indexOf(d + ".") !== 0) return;
-        var o = scoreLine(acc[sub], prac[sub]);
-        html += '<div class="h-obj"><span>' + esc(sub) + '<small class="h-score-line">' + o.line + "</small></span>" + meter(o.pct, o.source) +
-          '<span class="h-pct">' + (o.pct === null ? "—" : o.pct + "%") + "</span>" +
+        var o = scoreLine(acc[sub], prac[sub], first[sub]);
+        html += '<div class="h-obj"><span>' + esc(sub) + '<small class="h-score-line">' + o.line + "</small></span>" + meter(o.pct, o.source, o.few) +
+          pctCell(o) +
           '<span class="h-obj-act"><button class="btn small" data-action="drill-objective" data-sub="' + esc(sub) + '">Practise</button></span></div>';
       });
       html += "</div>";

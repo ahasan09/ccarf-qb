@@ -90,7 +90,7 @@ test("review and exam-date mutations apply", () => {
 });
 
 /* ------------------------------------------------------------ Task 2 */
-const { examAttempts, predictedScore, objectiveAccuracy, practiceAccuracy, weakestObjectives, objectiveDrillIds, bestScenarioScores } = app;
+const { examAttempts, predictedScore, objectiveAccuracy, practiceAccuracy, firstTryAccuracy, objectiveScore, MIN_ANSWERS, weakestObjectives, objectiveDrillIds, bestScenarioScores } = app;
 
 const hist = (scores) => scores.map((score, i) => ({ date: `2026-10-0${i + 1}T00:00:00Z`, score, items: [] }));
 
@@ -336,4 +336,25 @@ test("a day of imported answers alone reads as no activity", () => {
   assert.equal(onlyImported.today, 0);
   assert.equal(onlyImported.streak, 0);
   assert.equal(onlyImported.any, false, "the card stays hidden rather than showing an empty week");
+});
+
+test("firstTryAccuracy counts first answers per objective, only for questions with a record", () => {
+  const sub = SUBDOMAINS[0];
+  const bank = [{ id: "a", subdomain: sub }, { id: "b", subdomain: sub }, { id: "c", subdomain: sub }, { id: "d" }];
+  const results = {
+    a: { first: true, firstAt: 1, last: true, lastAt: 1 },
+    b: { first: false, firstAt: 1, last: true, lastAt: 2 },
+    d: { first: true, firstAt: 1, last: true, lastAt: 1 },
+  };
+  assert.deepEqual(firstTryAccuracy(bank, results), { [sub]: { correct: 1, total: 2 } });
+  assert.deepEqual(firstTryAccuracy(bank, undefined), {});
+});
+
+test("objectiveScore uses exams once there are enough, pools before that, and flags small samples", () => {
+  assert.equal(MIN_ANSWERS, 5);
+  assert.deepEqual(objectiveScore({ correct: 4, total: 5 }, { correct: 0, total: 40 }), { pct: 80, source: "in exams", answers: 5, few: false });
+  assert.deepEqual(objectiveScore({ correct: 0, total: 2 }, { correct: 30, total: 40 }),
+    { pct: 71, source: "in exams and practice", answers: 42, few: false }, "2 exam answers do not hide 40 practice ones");
+  assert.deepEqual(objectiveScore(null, { correct: 3, total: 4 }), { pct: 75, source: "in practice", answers: 4, few: true });
+  assert.deepEqual(objectiveScore(undefined, undefined), { pct: null, source: "", answers: 0, few: false });
 });

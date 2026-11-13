@@ -25,6 +25,16 @@ var Mutations = {
           s.weak = updateWeakSet(s.weak, grade).sort();
           s.correctEver = unionIds(s.correctEver, grade.correctIds);
           s.attempted = unionIds(s.attempted, (grade.correctIds || []).concat(grade.wrongIds || []));
+          /* Only questions actually answered: a skipped one is graded
+           * wrong, but it was not a first try. */
+          if (opts && typeof opts.at === "number") {
+            var given = opts.answered ? indexIds(opts.answered) : null;
+            var note = function (right) {
+              return function (id) { if (!given || given[id]) s.results = noteResult(s.results, id, right, opts.at); };
+            };
+            (grade.correctIds || []).forEach(note(true));
+            (grade.wrongIds || []).forEach(note(false));
+          }
         }
         if (entry && !s.history.some(function (h) { return h.date === entry.date; })) {
           s.history = s.history.concat([entry]).sort(function (a, b) {
@@ -93,6 +103,7 @@ var Mutations = {
         s.saved = merged.saved;
         s.review = mergeReview(s.review, backup && backup.review);
         s.activity = mergeActivity(s.activity, backup && backup.activity);
+        s.results = merged.results;
         if (!s.examDate && merged.examDate) s.examDate = merged.examDate;
         if (!s.session && merged.session) s.session = merged.session;
       },
@@ -100,11 +111,12 @@ var Mutations = {
   },
   /* Credit a single answer as soon as it is graded, so leaving a long
    * practice run part-way still keeps what was earned. */
-  recordAnswer: function (questionId, wasCorrect) {
+  recordAnswer: function (questionId, wasCorrect, at) {
     return {
       key: null,
       apply: function (s) {
         s.attempted = unionIds(s.attempted, [questionId]);
+        if (typeof at === "number") s.results = noteResult(s.results, questionId, wasCorrect, at);
         if (wasCorrect) {
           s.correctEver = unionIds(s.correctEver, [questionId]);
           s.weak = s.weak.filter(function (id) { return id !== questionId; });
