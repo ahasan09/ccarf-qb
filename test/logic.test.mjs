@@ -565,3 +565,17 @@ test("results survive normalize and merge, and junk entries are dropped", () => 
   assert.deepEqual(normalizeProgress({}).results, {});
   assert.deepEqual(mergeProgress({ results: { q: good } }, {}).results, { q: good });
 });
+
+test("resetProgress empties every field, including ones a later version added", () => {
+  const full = {
+    history: [{ date: "2026-11-01T00:00:00Z", score: 700 }], weak: ["q1"], correctEver: ["q2"], attempted: ["q1", "q2"],
+    saved: ["q3"], session: { mode: "practice", questions: [{ id: "q1" }] }, examDate: "2026-12-01",
+    review: { q1: { due: 1, step: 0, updatedAt: 1 } }, activity: { "2026-11-01": ["q1"] },
+    results: { q1: { first: false, firstAt: 1, last: false, lastAt: 1 } }, futureField: { x: 1 },
+  };
+  const once = applyMutations(full, [Mutations.resetProgress()]);
+  assert.deepEqual(once, emptyProgress());
+  assert.deepEqual(applyMutations(once, [Mutations.resetProgress()]), emptyProgress(), "a replay is harmless");
+  const after = applyMutations(full, [Mutations.resetProgress(), Mutations.recordAnswer("q9", true, 5)]);
+  assert.deepEqual(after.attempted, ["q9"], "answers after the reset still count");
+});

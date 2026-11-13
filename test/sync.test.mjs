@@ -282,3 +282,20 @@ test("a real change still writes the cache", async () => {
   await engine.sync();
   assert.ok(saves > before, "a genuine change is persisted");
 });
+
+test("a reset empties the server copy, and another device picks the reset up", async () => {
+  const server = makeServer();
+  server.seed({ history: [{ date: "d1", score: 700 }], weak: ["q1"], correctEver: ["q2"], attempted: ["q1", "q2"] });
+  const pc = makeDevice(server, server.row.data);
+  const phone = makeDevice(server, server.row.data);
+  await pc.sync(); await phone.sync();
+
+  pc.store.mutate(Mutations.resetProgress());
+  await pc.sync();
+  assert.deepEqual(server.row.data.history, []);
+  assert.deepEqual(server.row.data.attempted, []);
+
+  await phone.sync();
+  assert.deepEqual(phone.store.snapshot().correctEver, [], "the other device does not push the old progress back");
+  assert.deepEqual(server.row.data.correctEver, []);
+});

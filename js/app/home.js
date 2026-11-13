@@ -723,6 +723,8 @@ function accountCard() {
       " more item" + (extra === 1 ? "" : "s") + " than your current progress.</p>" +
       '<div class="row"><button class="btn" data-action="restore-backup">Restore backup</button></div>';
   }
+  html += '<h3 class="h-h3">Start over</h3><p class="muted auth-note">Delete all your progress, on every device you are signed in on.</p>' +
+    '<div class="row"><button class="btn danger small" data-action="reset-progress">Reset all progress</button></div>';
 
   return html + "</div>";
 }

@@ -250,6 +250,15 @@ function handleAction(btn) {
         });
         renderHome();
       });
+    case "reset-progress":
+      return ask({ title: "Reset all progress?", ok: "Reset everything", danger: true,
+        text: "This deletes all your progress on every device you are signed in on: exam history, practice answers, " +
+          "review schedule, saved questions and activity. It cannot be undone. Use Download progress first if you might want it back." }, function () {
+        Store.mutate(Mutations.resetProgress());
+        LS.remove(BACKUP_KEY);
+        if (window.CCARF_SYNC && window.CCARF_SYNC.syncNow) window.CCARF_SYNC.syncNow();
+        renderHome();
+      });
     case "clear-history":
       return ask({ title: "Delete score history?", text: "Delete all score history?", ok: "Delete history", danger: true }, function () {
         Store.mutate(Mutations.clearHistory());

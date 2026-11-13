@@ -44,6 +44,18 @@ var Mutations = {
       },
     };
   },
+  /* Start over: every field emptied, including ones a later version of
+   * the app added. Synced like any other change, so the server copy and
+   * other devices empty too rather than pushing the old progress back. */
+  resetProgress: function () {
+    return {
+      key: null,
+      apply: function (s) {
+        Object.keys(s).forEach(function (k) { delete s[k]; });
+        Object.assign(s, emptyProgress());
+      },
+    };
+  },
   clearHistory: function () {
     return { key: "clearHistory", apply: function (s) { s.history = []; } };
   },

@@ -1894,6 +1894,23 @@ test("importing a backup file adds its progress after confirming", async () => {
   assert.equal(input.value, "", "cleared so the same file can be picked again");
 });
 
+test("reset all progress asks first, then empties progress and this device's backup copy", () => {
+  const dialog = fakeDialog();
+  const progress = { history: [], attempted: ["d1-q1"], correctEver: ["d1-q1"], saved: ["d1-q2"] };
+  const app = launch({ dialog, storage: { "ccarf.progress": JSON.stringify(progress), "ccarf.backup": JSON.stringify(progress) } });
+  assert.ok(app.html().includes('data-action="reset-progress"'), "the button is in the backup section");
+  app.click("reset-progress");
+  assert.ok(dialog.open && dialog.innerHTML.includes("Download progress"), "the warning points to a backup first");
+  dialog.answer(false);
+  assert.deepEqual(app.store().snapshot().attempted, ["d1-q1"], "cancel keeps everything");
+  app.click("reset-progress");
+  dialog.answer(true);
+  const s = app.store().snapshot();
+  assert.equal(JSON.stringify([s.attempted, s.correctEver, s.saved, s.history]), "[[],[],[],[]]");
+  assert.ok(!("ccarf.backup" in app.storage), "the device backup is removed too");
+  assert.ok(!app.html().includes('data-action="restore-backup"'), "no restore offer brings it back");
+});
+
 test("a file that is not a backup is refused and changes nothing", async () => {
   let said = "";
   const app = launch();
