@@ -533,8 +533,17 @@ test("the home bank line counts what was answered and how much was right", () =>
 
   const html = tab(app, "practice");
   assert.ok(html.includes("2 of 100 answered"), "two questions counted as answered");
-  assert.ok(html.includes("50% right"), "accuracy counts only what was attempted");
+  assert.ok(html.includes("50% right on your last try"), "accuracy counts only what was attempted");
   assert.ok(!html.includes("Mastery") && !html.includes("Coverage"), "one plain line, no jargon");
+});
+
+test("old wrong answers count on the bank line, and right means right on the last try", () => {
+  // Progress from before attempted was tracked: wrong answers live only in weak.
+  const progress = { history: [], correctEver: ["d1-q1", "d1-q2"], weak: ["d1-q2", "d1-q3"], attempted: [] };
+  const app = launch({ storage: { "ccarf.progress": JSON.stringify(progress) } });
+  const html = tab(app, "practice");
+  assert.ok(html.includes("3 of 100 answered"), "the wrong-only question is counted");
+  assert.ok(html.includes("33% right on your last try"), "a question wrong since is not right");
 });
 
 test("a finished exam can be reviewed again from score history", () => {

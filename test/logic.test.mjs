@@ -389,6 +389,16 @@ test("masteryByDomain reports coverage and correctness separately", () => {
   assert.deepEqual(m[2], { correct: 0, attempted: 0, total: 1 });
 });
 
+test("masteryByDomain counts weak questions as answered and not right", () => {
+  const bank = [
+    { id: "a", domain: 1 }, { id: "b", domain: 1 },
+    { id: "c", domain: 1 }, { id: "d", domain: 1 },
+  ];
+  // b was right once and wrong since; c was only ever wrong, before attempted existed.
+  const m = masteryByDomain(bank, ["a", "b"], ["a", "b"], ["b", "c"]);
+  assert.deepEqual(m[1], { correct: 1, attempted: 3, total: 4 });
+});
+
 test("mergeProgress unions the attempted set too", () => {
   const m = mergeProgress({ attempted: ["q1"] }, { attempted: ["q2", "q1"] });
   assert.deepEqual(m.attempted, ["q1", "q2"]);

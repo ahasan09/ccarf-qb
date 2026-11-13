@@ -249,6 +249,14 @@ test("practiceAccuracy counts answered bank questions per objective, right if ev
   assert.deepEqual(practiceAccuracy(bank, [], []), {});
 });
 
+test("practiceAccuracy counts a question right only if the last answer was right", () => {
+  const sub = SUBDOMAINS[0];
+  const bank = ["a", "b", "c", "d"].map((id) => ({ id, subdomain: sub }));
+  // a: right. b: right once, wrong since (in weak). c: wrong before attempted
+  // was tracked, so only in weak. d: never answered.
+  assert.deepEqual(practiceAccuracy(bank, ["a", "b"], ["a", "b"], ["b", "c"]), { [sub]: { correct: 1, total: 3 } });
+});
+
 test("studyPlan spreads the unanswered bank over the days left", () => {
   const { studyPlan } = app;
   assert.equal(studyPlan(null, 100), null);

@@ -145,15 +145,27 @@ function indexIds(ids) {
   return set;
 }
 
-function masteryByDomain(bank, correctEverIds, attemptedIds) {
-  var correct = indexIds(correctEverIds);
-  var seen = indexIds(attemptedIds);
+/* Which bank questions count as answered, and which as right. Answered is
+ * anything ever attempted, ever right, or in the weak set: before 31 Oct
+ * wrong answers were saved only in weak. Right means the latest answer was
+ * right, so a question answered right once and wrong since (back in weak)
+ * does not count. */
+function answerState(correctEverIds, attemptedIds, weakIds) {
+  var weak = indexIds(weakIds);
+  var seen = indexIds((attemptedIds || []).concat(correctEverIds || [], weakIds || []));
+  var right = {};
+  (correctEverIds || []).forEach(function (id) { if (!weak[id]) right[id] = true; });
+  return { seen: seen, right: right };
+}
+
+function masteryByDomain(bank, correctEverIds, attemptedIds, weakIds) {
+  var st = answerState(correctEverIds, attemptedIds, weakIds);
   var result = {};
   bank.forEach(function (q) {
     var d = result[q.domain] || (result[q.domain] = { correct: 0, attempted: 0, total: 1 - 1 });
     d.total++;
-    if (correct[q.id]) d.correct++;
-    if (seen[q.id] || correct[q.id]) d.attempted++;
+    if (st.right[q.id]) d.correct++;
+    if (st.seen[q.id]) d.attempted++;
   });
   return result;
 }
@@ -171,9 +183,8 @@ function filterBySubKey(bank, domain, subKey) {
   });
 }
 
-function masteryBySubdomain(bank, correctEverIds, domain, attemptedIds) {
-  var correct = indexIds(correctEverIds);
-  var seen = indexIds(attemptedIds);
+function masteryBySubdomain(bank, correctEverIds, domain, attemptedIds, weakIds) {
+  var st = answerState(correctEverIds, attemptedIds, weakIds);
   var rows = {};
   bank.forEach(function (q) {
     if (q.domain !== domain) return;
@@ -181,8 +192,8 @@ function masteryBySubdomain(bank, correctEverIds, domain, attemptedIds) {
     var key = sk.key, title = sk.title;
     var row = rows[key] || (rows[key] = { key: key, title: title, correct: 0, attempted: 0, total: 0 });
     row.total++;
-    if (correct[q.id]) row.correct++;
-    if (seen[q.id] || correct[q.id]) row.attempted++;
+    if (st.right[q.id]) row.correct++;
+    if (st.seen[q.id]) row.attempted++;
   });
   return Object.keys(rows)
     .sort(function (a, b) {
@@ -604,18 +615,17 @@ function objectiveAccuracy(history, lookup) {
   return acc;
 }
 
-/* Practice accuracy per objective: of the bank questions answered outside
- * exams, how many were got right at least once. Same shape as
+/* Practice accuracy per objective: of the bank questions answered, how
+ * many were right on the last try (see answerState). Same shape as
  * objectiveAccuracy, so the two can be shown side by side. */
-function practiceAccuracy(bank, correctEverIds, attemptedIds) {
-  var correct = indexIds(correctEverIds);
-  var seen = indexIds(attemptedIds);
+function practiceAccuracy(bank, correctEverIds, attemptedIds, weakIds) {
+  var st = answerState(correctEverIds, attemptedIds, weakIds);
   var acc = {};
   (bank || []).forEach(function (q) {
-    if (SUBDOMAINS.indexOf(q.subdomain) < 0 || !(seen[q.id] || correct[q.id])) return;
+    if (SUBDOMAINS.indexOf(q.subdomain) < 0 || !st.seen[q.id]) return;
     var row = acc[q.subdomain] || (acc[q.subdomain] = { correct: 0, total: 0 });
     row.total++;
-    if (correct[q.id]) row.correct++;
+    if (st.right[q.id]) row.correct++;
   });
   return acc;
 }
