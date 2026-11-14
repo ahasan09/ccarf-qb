@@ -9,9 +9,19 @@ real exam's format (see [Scenario exam](#scenario-exam)).
 
 ## Use
 
-Open `index.html` in any browser. No server, build step, or dependencies.
+The app is a React app built with [Vite](https://vite.dev) and styled with
+the [Mantine](https://mantine.dev) component library. Needs Node 20+.
+
+```sh
+npm install
+npm run dev      # local server with live reload
+npm run build    # production build in dist/ (what GitHub Pages serves)
+npm run preview  # serve the dist/ build locally
+```
+
 Progress, score history, and your weak-question set are stored in the
-browser's localStorage.
+browser's localStorage (same keys as before the React version, so existing
+progress carries over).
 
 ### Home page
 
@@ -141,10 +151,10 @@ Modes:
 Keyboard shortcuts during a session: `1`–`5` (or `A`–`E`) answer, `←`/`→`
 navigate, `F` flag, `Enter` next. The bottom bar of every question screen
 lists the ones that work there (practice runs only go forward, and plain
-practice has no flag); the list comes from `kbdHint()` in
-`js/app/question.js` — keep it in step with the keydown handler in
-`js/app/events.js`. After each click, keyboard focus stays on
-the control you used.
+practice has no flag); the list comes from `KbdHint` in
+`src/components/common.jsx` — keep it in step with `onKeyDown` in
+`src/core/controller.js`. Once a practice answer is graded, keyboard focus
+moves to Next.
 
 Theme: use the toggle in the header (Auto / Light / Dark).
 
@@ -341,13 +351,30 @@ run, check-ins fail quietly and nobody sees the card.
   `title`, `url`, optional `note`, `star`, `start`, `exam`). Only `https`
   links in a known group render; keep tracking parameters out of URLs
 - `js/store.js` — the progress store and the cross-device sync engine (no DOM)
-- `js/app/` — the DOM app, in load order: `state.js` (banks, storage, shared
-  state, helpers), `dialog.js` (in-app alert/confirm/prompt), `home.js`, `sessions.js`, `question.js`, `results.js`,
-  `events.js` (input handling and boot; actions listed in `SLOW_ACTIONS`
-  show a spinner on the clicked control and block other clicks and
-  shortcuts until they finish). These are classic scripts sharing
-  globals, not ES modules, so `index.html` still opens from `file://`; keep
-  the order in `index.html`, `sw.js` and `test/engine.mjs` in step.
+- `src/` — the React app (Vite + Mantine):
+  - `core/env.js` — the loaded banks and their indexes, lazy loading of
+    imported exams and the unmapped archive, localStorage and the progress
+    `Store`
+  - `core/controller.js` — the state machine with no rendering in it: which
+    screen is shown, the running session, and every action (starting,
+    answering, timing, grading, routing, keyboard). Components read its `S`
+    and call its actions; each change calls `emit()` to redraw. Dialogs go
+    through its `ui` object. Slow actions run through `runSlow()`, which
+    shows a spinner on the clicked button and blocks other clicks and
+    shortcuts until they finish
+  - `screens/` — one component per screen (`Home` with its four tabs in
+    `screens/home/`, `QuestionScreen`, `ScenarioQuestion`, `ScenarioReview`,
+    `Results`, `Review`, `Search`, `CustomBuilder`)
+  - `components/` — shared pieces: buttons, meters, the timer, quiz bars and
+    options, the account menu and `DialogHost` (in-app dialogs)
+  - `theme.js` — the Mantine theme (colours, fonts) and the light/dark
+    setting, still stored under `ccarf.theme`
+  - `app.css` — the few styles Mantine has no component for (answer options,
+    navigator, tiles, the week strip, the phone tab bar)
+- The question files, `scenarios/`, `exams/`, `config.js`, `resources.js`,
+  `js/logic.js`, `js/store.js` and `sync.js` stay plain classic scripts loaded
+  by `index.html` before the app; `vite.config.js` copies them into `dist/`
+  as they are. `public/` holds the icon, manifest and service worker.
 - `questions/unmapped/domain1.js` … `domain5.js` and `domain1-set2.js` …
   `domain5-set2.js` — the original and expansion sets (300 questions), none
   mapped to an exam-guide objective; not loaded with the page.
@@ -375,28 +402,31 @@ run, check-ins fail quietly and nobody sees the card.
   imported-exam questions that belong to a scenario, as raw material for new
   scenario questions
 - **`npm test`** — runs everything: all `test/*.test.mjs` (engine, sync,
-  screens, scenarios, home, pace, search, backup, report link) and both
-  validators below. Nothing to install; needs Node 20+. GitHub runs the same
+  scenarios, home, pace, search, backup, report link), both validators
+  below, and the screen tests in `src/test/` (Vitest + Testing Library in
+  jsdom, driving the real controller and components). Run `npm install`
+  first; needs Node 20+. GitHub runs the same
   on every push and pull request (`.github/workflows/test-and-deploy.yml`),
   and **publishes the site only when they pass**: a push to `main` that
   breaks a test shows a red ✖ and the live site stays on the last good
   version until a fix passes. To re-publish by hand: Actions → Test and
   deploy → Run workflow.
-- **`npm run e2e`** — the main flows in headless Chrome at phone and desktop
-  width: tabs, Back/Forward, search, the dialogs, a mock exam, a scenario
-  exam through results and review, score history and the custom quiz. It
-  fails on a page error, a broken step or a screen that scrolls sideways on
-  a phone. No dependencies: Node serves the app and drives Chrome over the
-  DevTools protocol (set `CHROME_PATH` if Chrome is not found). CI runs it
-  after `npm test`, before deploying.
+- **`npm run e2e`** — builds, then runs the main flows in headless Chrome at
+  phone and desktop width: tabs, Back/Forward, search, the dialogs, a mock
+  exam, a scenario exam through results and review, score history and the
+  custom quiz. It fails on a page error, a broken step or a screen that
+  scrolls sideways on a phone. Node serves `dist/` and drives Chrome over
+  the DevTools protocol (set `CHROME_PATH` if Chrome is not found). CI runs
+  it after `npm test`, before deploying.
 - **`npm run coverage`** — questions per exam-guide objective in the bank and
   the scenario bank, marking any under 10 (`--min N` to change). Run it
   before writing new questions to see where they are needed.
-- Where things live, for common changes: a new screen action → a `case` in
-  `handleAction` (`js/app/events.js`); pure rules (grading, pace, search,
-  backup file) → `js/logic.js` with a test in `test/`; the "Report a
-  problem" target → `REPORT_ISSUE_URL` in `js/app/state.js`. Screens draw
-  through `paint(html)`, which keeps keyboard focus.
+- Where things live, for common changes: a new action → a function in
+  `src/core/controller.js`, called from a component; pure rules (grading,
+  pace, search, backup file) → `js/logic.js` with a test in `test/`; the
+  "Report a problem" target → `REPORT_ISSUE_URL` in `src/core/env.js`.
+  Buttons carry `data-action` names, which the screen and browser tests use
+  to find them.
 - `node test/validate-bank.mjs` — structural validation of the question bank
 - `node test/validate-scenarios.mjs` — validation of the scenario bank. It
   rejects a question that repeats the scenario intro, is under 40 words, has
@@ -404,7 +434,7 @@ run, check-ins fail quietly and nobody sees the card.
   subdomain, or whose notes/explanation refer to options by letter ("option
   B", "(C)"); it also fails if the correct option is the longest in more than
   40% of questions. Add any new `scenarios/*.js` file to `index.html` and to
-  `CORE` in `sw.js` (and bump `VERSION`).
+  `CORE` in `public/sw.js` (and bump `VERSION`).
 
 Design spec: `docs/superpowers/specs/2026-10-23-ccarf-question-bank-design.md`
 (scenario exam: `docs/superpowers/specs/2026-11-02-scenario-exam-design.md`;

@@ -1,7 +1,7 @@
 # Every push and pull request runs all tests and both question-bank
-# validators. Only a push to main whose tests pass is published to GitHub
-# Pages, so a broken commit never goes live; the site keeps the last good
-# version until a fix passes. No install step: there are no dependencies.
+# validators. Only a push to main whose tests pass is built and published to
+# GitHub Pages, so a broken commit never goes live; the site keeps the last
+# good version until a fix passes.
 name: Test and deploy
 
 on:
@@ -22,6 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - run: npm test
       # The same flows in a real browser (the runner image ships Chrome).
       - run: npm run e2e
@@ -39,9 +41,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
       - id: deployment
         uses: actions/deploy-pages@v4
