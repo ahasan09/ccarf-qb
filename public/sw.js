@@ -3,7 +3,7 @@
  * so it is not listed here: the network-first handler below caches it the
  * first time the page loads it, which is enough to work offline after one
  * visit. */
-const VERSION = "v35";
+const VERSION = "v36";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
@@ -14,6 +14,9 @@ const CORE = [
   "resources.js",
   "sync.js",
   "icon.svg",
+  "favicon.ico",
+  "apple-touch-icon.png",
+  "icon-192.png",
   "manifest.webmanifest",
   "questions/extra-set.js",
   "questions/domain1-gap.js",

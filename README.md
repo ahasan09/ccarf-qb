@@ -374,7 +374,11 @@ run, check-ins fail quietly and nobody sees the card.
 - The question files, `scenarios/`, `exams/`, `config.js`, `resources.js`,
   `js/logic.js`, `js/store.js` and `sync.js` stay plain classic scripts loaded
   by `index.html` before the app; `vite.config.js` copies them into `dist/`
-  as they are. `public/` holds the icon, manifest and service worker.
+  as they are. `public/` holds the manifest, the service worker and the icons:
+  `icon.svg` (the source), `favicon.ico` (16/32/48), `apple-touch-icon.png`
+  (180, no transparency), `icon-192.png`, `icon-512.png` and
+  `icon-maskable-512.png` (full-bleed for Android's mask). Redraw the PNGs
+  from `icon.svg` if it changes.
 - `questions/unmapped/domain1.js` … `domain5.js` and `domain1-set2.js` …
   `domain5-set2.js` — the original and expansion sets (300 questions), none
   mapped to an exam-guide objective; not loaded with the page.
