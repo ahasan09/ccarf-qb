@@ -221,9 +221,14 @@ for (const width of [390, 1280]) {
   if (await dialogOpen()) await answerDialog(true); // replaces the unfinished practice
   await until(q('[data-action="select"]'), "a mock question");
   check("a quiz has its own address", (await js("location.hash")) === "#/quiz");
+  /* Touch styles follow what the browser says about its pointer, not the
+   * width: headless Chrome on a CI runner has no mouse and reports
+   * hover: none even at desktop width. */
   const strikeW = await js(`${q(".strike-btn")}.getBoundingClientRect().width`);
-  check(width < 700 ? "phone: the strike button takes no room (press and hold instead)" : "desktop: each option has a strike button",
-    width < 700 ? strikeW <= 1 : strikeW > 20, `strike button is ${strikeW}px wide`);
+  const touchy = await js(`matchMedia("(hover: none), (pointer: coarse)").matches`);
+  check(touchy ? `${where}: the strike button takes no room on a touch screen` : `${where}: each option has a strike button`,
+    touchy ? strikeW <= 1 : strikeW > 20, `strike button is ${strikeW}px wide`);
+  if (width < 700) check("phone: touch styles apply", touchy);
   await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true })), true`);
   check("? lists the keyboard shortcuts", await until(`document.body.textContent.includes("Pick an answer")`, "the shortcut list on ?", 3000));
   /* A real key press lands on the focused element (inside the dialog), never on document itself. */
