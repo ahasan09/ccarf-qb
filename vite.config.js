@@ -27,7 +27,20 @@ export default defineConfig({
       },
     },
   ],
-  build: { chunkSizeWarningLimit: 900 },
+  build: {
+    rollupOptions: {
+      output: {
+        /* Libraries (React, Mantine, icons) in one file of their own: it
+         * changes only when a dependency is upgraded, so after a normal
+         * deploy browsers re-download just the app's own code. One file,
+         * not several: separate library chunks end up importing each other
+         * and break at load ("reading 'useLayoutEffect' of undefined"). */
+        manualChunks(id) {
+          return id.includes("node_modules") ? "lib" : undefined;
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.{js,jsx}"],

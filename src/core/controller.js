@@ -39,6 +39,7 @@ export const S = {
   acctOpen: false,
   busy: null, // the slow action under way, if any
   briefOpen: true, // scenario text panel, folded on phones after a scenario's first question
+  shortcutsOpen: false, // the keyboard shortcut list (press ?)
 };
 if (S.authNotice) {
   /* Arriving from a refused sign-in link: open the account menu with the
@@ -796,6 +797,7 @@ export function setTab(tab) {
 }
 export function toggleMastery(d) { S.expandedMastery = S.expandedMastery === d ? 0 : d; emit(); }
 export function setAcctOpen(open) { S.acctOpen = open; emit(); }
+export function setShortcutsOpen(open) { S.shortcutsOpen = open; if (open) S.acctOpen = false; emit(); }
 
 export async function editExamDate() {
   const got = await ui.askValue({ title: "Exam date", ok: "Save",
@@ -982,6 +984,7 @@ function withRouting(fn) {
 async function followRoute() {
   ui.closeDialogs();
   S.acctOpen = false;
+  S.shortcutsOpen = false;
   const r = parseRoute(location.hash);
   const inQuiz = (S.view === "quiz" || S.view === "scenario-review") && S.session;
   if (inQuiz && r.screen !== "quiz") {
@@ -1006,7 +1009,12 @@ function isTyping(t) {
 }
 
 export function onKeyDown(ev) {
-  if (ui.dialogOpen()) return;
+  if (ui.dialogOpen() || S.shortcutsOpen) return;
+  /* ? lists every shortcut, from any screen. */
+  if (ev.key === "?" && !ev.metaKey && !ev.ctrlKey && !ev.altKey && !isTyping(ev.target)) {
+    ev.preventDefault();
+    return setShortcutsOpen(true);
+  }
   if (ev.key === "Escape" && S.acctOpen) setAcctOpen(false);
   /* "/" opens search from anywhere but a running quiz. */
   if (ev.key === "/" && !ev.metaKey && !ev.ctrlKey && !ev.altKey && !S.busy &&

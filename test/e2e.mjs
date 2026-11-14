@@ -129,6 +129,7 @@ async function noSidewaysScroll(where) {
 }
 async function open(width, progress) {
   await send("Emulation.setDeviceMetricsOverride", { width, height: 860, deviceScaleFactor: 1, mobile: width < 700 });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: width < 700, maxTouchPoints: width < 700 ? 5 : 1 });
   await send("Page.navigate", { url: BASE + "icon.svg" }); // same origin, to seed storage
   await until("document.readyState === 'complete'", "seed page");
   await js(`localStorage.clear(); ${progress ? `localStorage.setItem("ccarf.progress", ${JSON.stringify(JSON.stringify(progress))});` : ""} true`);
@@ -149,7 +150,7 @@ for (const width of [390, 1280]) {
 
   step = "first visit";
   await open(width, null);
-  check("first visit: the app renders", await js(`document.getElementById("root").childElementCount > 0`));
+  check("first visit: the loading screen is replaced", !(await js(`!!${q(".boot")}`)));
   check("first visit: welcome card with the diagnostic", await js(`!!${q('.h-first [data-action="start-diagnostic"]')}`));
   await noSidewaysScroll(`${where} welcome`);
 
@@ -188,10 +189,22 @@ for (const width of [390, 1280]) {
   check("the grade is announced", /^(Correct|Incorrect)\./.test(await js(`document.getElementById("sr-live").textContent`)));
   check("focus moves to the way on", ["next", "submit"].includes(await js(`(document.activeElement && document.activeElement.dataset.action) || ""`)));
   check("options say which was right", await js(`!!${q('.option[data-state="correct"]')}`));
+  /* A smooth scroll: give it a moment. */
+  check("the explanation is on screen after answering",
+    await until(`${q(".feedback")}.getBoundingClientRect().top < innerHeight - 60`, "the explanation scrolled into view", 2000));
   await click('[data-action="quit"]');
   await until(q(DIALOG), "the Exit dialog");
   await answerDialog(true);
   await until(q(".h-tabs"), "home after Exit");
+
+  step = "theme";
+  const bar = () => js(`document.querySelector('meta[name="theme-color"]').content`);
+  const scheme = () => js(`document.documentElement.getAttribute("data-mantine-color-scheme")`);
+  for (let i = 0; i < 3; i++) {
+    const want = (await scheme()) === "dark" ? "#17191c" : "#f6f7f4";
+    check(`browser bar matches the ${await scheme()} theme`, (await bar()) === want, `bar is ${await bar()}`);
+    await click('[data-action="cycle-theme"]');
+  }
 
   step = "exam date dialog";
   await click('[data-tab="today"]');
@@ -208,6 +221,14 @@ for (const width of [390, 1280]) {
   if (await dialogOpen()) await answerDialog(true); // replaces the unfinished practice
   await until(q('[data-action="select"]'), "a mock question");
   check("a quiz has its own address", (await js("location.hash")) === "#/quiz");
+  const strikeW = await js(`${q(".strike-btn")}.getBoundingClientRect().width`);
+  check(width < 700 ? "phone: the strike button takes no room (press and hold instead)" : "desktop: each option has a strike button",
+    width < 700 ? strikeW <= 1 : strikeW > 20, `strike button is ${strikeW}px wide`);
+  await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true })), true`);
+  check("? lists the keyboard shortcuts", await until(`document.body.textContent.includes("Pick an answer")`, "the shortcut list on ?", 3000));
+  /* A real key press lands on the focused element (inside the dialog), never on document itself. */
+  await js(`(document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+  await until(`!document.body.textContent.includes("Pick an answer")`, "the shortcut list to close");
   await noSidewaysScroll(`${where} mock question`);
   await js("history.back(), true");
   await until(q(DIALOG), "the Exit dialog on Back");

@@ -1,10 +1,10 @@
-import "@mantine/core/styles.css";
+import "./styles.js";
 import "./app.css";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { theme, colorSchemeManager } from "./theme.js";
-import { App } from "./App.jsx";
+import { App, prefetchScreens } from "./App.jsx";
 import { Store, loadReferencedExams, FULL_BANK, L } from "./core/env.js";
 import { boot, emit } from "./core/controller.js";
 
@@ -22,6 +22,10 @@ createRoot(document.getElementById("root")).render(
 boot();
 if (window.performance && performance.mark) performance.mark("app-ready");
 loadReferencedExams(Store.snapshot()).then(() => emit());
+
+/* Once the page has settled, fetch the other screens in the background. */
+const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+idle(prefetchScreens);
 
 /* Sync is a module that reads window.CCARF_STORE (set by core/env.js), so it
  * is added once the store exists. Kept out of the bundle: it is the same

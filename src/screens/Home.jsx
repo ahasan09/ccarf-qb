@@ -1,7 +1,8 @@
 /* The home screen in four tabs: Today, Practice, Exams and Resources. A row
  * of tabs under the header on wide screens, a bar at the bottom on phones. */
+import { lazy, Suspense } from "react";
 import {
-  Alert, Box, Button, Container, Group, Indicator, Kbd, Text, Tooltip, UnstyledButton,
+  Alert, Box, Button, Center, Container, Loader, Group, Indicator, Kbd, Text, Tooltip, UnstyledButton,
   useMantineColorScheme,
 } from "@mantine/core";
 import {
@@ -9,12 +10,20 @@ import {
 } from "@tabler/icons-react";
 import { S, setTab, openSearch, dueCount, hardReload } from "../core/controller.js";
 import { FULL_BANK, L } from "../core/env.js";
-import { BrandMark } from "../components/common.jsx";
+import { BrandMark, ShortcutsLink } from "../components/common.jsx";
 import { AccountMenu } from "../components/AccountMenu.jsx";
 import { Today } from "./home/Today.jsx";
-import { PracticeTab } from "./home/Practice.jsx";
-import { ExamsTab } from "./home/Exams.jsx";
-import { ResourcesTab } from "./home/Resources.jsx";
+
+/* Today is in the main bundle; the other tabs load when first opened (and
+ * are prefetched once the page is idle, with the other screens). */
+export const TAB_LOADERS = {
+  practice: () => import("./home/Practice.jsx").then((m) => ({ default: m.PracticeTab })),
+  exams: () => import("./home/Exams.jsx").then((m) => ({ default: m.ExamsTab })),
+  resources: () => import("./home/Resources.jsx").then((m) => ({ default: m.ResourcesTab })),
+};
+const PracticeTab = lazy(TAB_LOADERS.practice);
+const ExamsTab = lazy(TAB_LOADERS.exams);
+const ResourcesTab = lazy(TAB_LOADERS.resources);
 
 const TABS = [
   ["today", "Today", IconHome],
@@ -116,12 +125,15 @@ export function Home() {
       <HomeHeader />
       <TabBar due={due} />
       <Box id="h-page" data-tab={S.tab} mt="lg">
-        {S.tab === "practice" ? <PracticeTab /> :
-          S.tab === "exams" ? <ExamsTab /> :
-            S.tab === "resources" ? <ResourcesTab /> : <Today />}
+        <Suspense fallback={<Center h={240}><Loader size="sm" aria-label="Loading" /></Center>}>
+          {S.tab === "practice" ? <PracticeTab /> :
+            S.tab === "exams" ? <ExamsTab /> :
+              S.tab === "resources" ? <ResourcesTab /> : <Today />}
+        </Suspense>
       </Box>
       <Text component="footer" size="xs" c="dimmed" ta="center" mt={48}>
         Practice material for personal study. Not affiliated with Anthropic or Pearson VUE.
+        <Text span inherit visibleFrom="sm"> · <ShortcutsLink>Keyboard shortcuts</ShortcutsLink></Text>
       </Text>
     </Container>
   );

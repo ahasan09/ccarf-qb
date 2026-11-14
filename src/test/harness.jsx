@@ -59,7 +59,8 @@ export async function launch(opts = {}) {
   vi.resetModules();
   const C = await import("../core/controller.js");
   const env = await import("../core/env.js");
-  const { App } = await import("../App.jsx");
+  const { App, prefetchScreens } = await import("../App.jsx");
+  await prefetchScreens(); // lazy screens ready before the first click
   const { MantineProvider } = await import("@mantine/core");
   const { theme } = await import("../theme.js");
   const { mergeThemeOverrides } = await import("@mantine/core");

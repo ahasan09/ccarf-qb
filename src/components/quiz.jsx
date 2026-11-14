@@ -117,6 +117,7 @@ const LETTERS = "ABCDEFGH";
 export function Option({ q, optIdx, position, picked, struck, feedback, correct, multi, note, readOnly }) {
   const s = S.session;
   const strikeOn = !readOnly && s && canStrike(s.mode);
+  const press = useLongPress(strikeOn && !feedback, () => { if (!S.busy) toggleStrike(optIdx); });
   const state = feedback || readOnly
     ? (correct ? "correct" : picked ? "wrong" : "plain")
     : picked ? "selected" : "plain";
@@ -151,12 +152,13 @@ export function Option({ q, optIdx, position, picked, struck, feedback, correct,
             role={multi ? "checkbox" : "radio"}
             aria-checked={picked}
             disabled={!!feedback}
-            onClick={() => !S.busy && selectOption(optIdx)}
+            onClick={() => { if (!press.consumeClick() && !S.busy) selectOption(optIdx); }}
             onContextMenu={(e) => {
               if (!strikeOn) return;
               e.preventDefault();
-              if (!S.busy) toggleStrike(optIdx);
+              if (!press.claim() && !S.busy) toggleStrike(optIdx);
             }}
+            {...press.handlers}
             style={{ flex: 1 }}
           >
             {body}
@@ -180,6 +182,63 @@ export function Option({ q, optIdx, position, picked, struck, feedback, correct,
   );
 }
 
+/* Press and hold an option (touch) to strike it through, as right-click
+ * does with a mouse. A press that moves (a scroll) is not a hold, and the
+ * click that ends a hold does not also pick the option. Android also fires
+ * contextmenu on a hold; claim() makes sure only one of the two strikes. */
+const HOLD_MS = 450;
+function useLongPress(enabled, onHold) {
+  const p = useRef({ timer: null, x: 0, y: 0, fired: false, at: 0 });
+  const clear = () => { clearTimeout(p.current.timer); p.current.timer = null; };
+  const fire = () => {
+    clear();
+    p.current.fired = true;
+    p.current.at = Date.now();
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* not allowed */ } }
+    onHold();
+  };
+  useEffect(() => clear, []);
+  return {
+    handlers: enabled ? {
+      onPointerDown: (e) => {
+        if (e.pointerType !== "touch") return;
+        clear();
+        p.current.fired = false;
+        p.current.x = e.clientX;
+        p.current.y = e.clientY;
+        p.current.timer = setTimeout(fire, HOLD_MS);
+      },
+      onPointerMove: (e) => {
+        if (p.current.timer && Math.hypot(e.clientX - p.current.x, e.clientY - p.current.y) > 10) clear();
+      },
+      onPointerUp: clear,
+      onPointerCancel: clear,
+      onPointerLeave: clear,
+    } : {},
+    /* True when the click is the end of a hold, and should be ignored. */
+    consumeClick: () => {
+      if (!p.current.fired) return false;
+      p.current.fired = false;
+      return true;
+    },
+    /* For contextmenu: true when a hold already struck (or is about to). */
+    claim: () => {
+      if (p.current.timer) { fire(); return true; }
+      return Date.now() - p.current.at < 800;
+    },
+  };
+}
+
+/* The strike-through hint, worded for a mouse or a touch screen. */
+export function StrikeHint() {
+  return (
+    <Text size="xs" c="dimmed" mt="xs">
+      <span className="hint-mouse">Right-click an option to strike it through; right-click again to undo.</span>
+      <span className="hint-touch">Press and hold an option to strike it through; hold again to undo.</span>
+    </Text>
+  );
+}
+
 export function Feedback({ right, children }) {
   return (
     <Alert className="feedback" color={right ? "teal" : "red"} variant="light" mt="md"
@@ -190,13 +249,25 @@ export function Feedback({ right, children }) {
 }
 
 /* Once graded the options are disabled, so the clicked one loses focus;
- * move it to the way on so keyboard users keep their place. */
+ * move it to the way on so keyboard users keep their place. And if the
+ * explanation landed below the fold (usual on a phone), bring it up to about
+ * a third of the way down, keeping the picked options in view above it. */
 export function useFocusNextWhenGraded(graded) {
   const ref = useRef(null);
   useEffect(() => {
-    if (graded && ref.current && document.activeElement && document.activeElement.closest &&
+    if (!graded) return;
+    if (ref.current && document.activeElement && document.activeElement.closest &&
         (document.activeElement === document.body || document.activeElement.closest(".option"))) {
       ref.current.focus({ preventScroll: true });
+    }
+    const fb = document.querySelector(".feedback");
+    if (!fb || !fb.getBoundingClientRect || !window.scrollBy) return;
+    const top = fb.getBoundingClientRect().top;
+    if (top > window.innerHeight - 160) {
+      const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      try {
+        window.scrollBy({ top: top - window.innerHeight * 0.35, behavior: reduce ? "auto" : "smooth" });
+      } catch (e) { /* jsdom */ }
     }
   }, [graded]);
   return ref;

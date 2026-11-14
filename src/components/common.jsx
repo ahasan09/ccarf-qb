@@ -1,10 +1,10 @@
 /* Small pieces every screen uses. Buttons carry data-action names (the same
  * names the old app used) so the browser test can find them. */
 import { forwardRef, useSyncExternalStore } from "react";
-import { Anchor, Badge, Button, Group, Progress, Text, Tooltip } from "@mantine/core";
+import { Anchor, Badge, Button, Group, Progress, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconExternalLink } from "@tabler/icons-react";
 import {
-  S, runSlow, subscribeTick, getTick, paceText,
+  S, runSlow, subscribeTick, getTick, paceText, setShortcutsOpen,
 } from "../core/controller.js";
 import {
   L, DOMAIN_NAMES, examById, REPORT_ISSUE_URL, resourceById, fmtTime,
@@ -152,8 +152,20 @@ export function KbdHint({ optionCount, canGoBack, canFlag }) {
     <Text size="xs" c="dimmed" visibleFrom="md" className="kbd-hint">
       <Kbd>1</Kbd>–<Kbd>{last}</Kbd> answer ·{" "}
       {canGoBack ? <><Kbd>←</Kbd>/<Kbd>→</Kbd> navigate</> : <><Kbd>→</Kbd> next</>}
-      {canFlag ? <> · <Kbd>F</Kbd> flag</> : null}
+      {canFlag ? <> · <Kbd>F</Kbd> flag</> : null} ·{" "}
+      <ShortcutsLink />
     </Text>
+  );
+}
+
+/* Opens the full shortcut list (also the ? key). */
+export function ShortcutsLink({ children }) {
+  return (
+    <UnstyledButton component="span" role="button" tabIndex={0} className="link" data-action="shortcuts"
+      onClick={() => setShortcutsOpen(true)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShortcutsOpen(true); } }}>
+      {children || <><Kbd>?</Kbd> all shortcuts</>}
+    </UnstyledButton>
   );
 }
 
