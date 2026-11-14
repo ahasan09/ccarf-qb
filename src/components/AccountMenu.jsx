@@ -36,13 +36,13 @@ function SignIn() {
       {S.authNotice ? <Alert color="red" role="alert" p="xs">{S.authNotice}</Alert> : null}
       <Text size="sm" c="dimmed">Sign in with your e-mail to back up progress and resume from any device.</Text>
       <form onSubmit={(e) => { e.preventDefault(); send(); }}>
-        <Group gap="xs" wrap="nowrap" align="flex-start">
+        <Group gap="xs" align="flex-start">
           <TextInput
             id="auth-email" type="email" autoComplete="email" placeholder="you@example.com"
-            value={email} onChange={(e) => setEmail(e.currentTarget.value)} style={{ flex: 1 }}
+            value={email} onChange={(e) => setEmail(e.currentTarget.value)} style={{ flex: "1 1 190px" }}
             aria-label="E-mail address"
           />
-          <Button type="submit" data-action="auth-send" loading={sending}>
+          <Button type="submit" data-action="auth-send" loading={sending} style={{ flex: "1 0 auto" }}>
             {S.pendingEmail ? "Resend" : emailCode ? "Email me a code" : "Email me a link"}
           </Button>
         </Group>
@@ -60,9 +60,9 @@ function SignIn() {
       ) : null}
       {S.pendingEmail && emailCode ? (
         <form onSubmit={(e) => { e.preventDefault(); verifySignIn(code); }}>
-          <Group gap="xs" wrap="nowrap">
+          <Group gap="xs">
             <TextInput id="auth-code" inputMode="numeric" autoComplete="one-time-code" placeholder="Code from the e-mail"
-              value={code} onChange={(e) => setCode(e.currentTarget.value)} style={{ flex: 1 }} aria-label="Code from the e-mail" />
+              value={code} onChange={(e) => setCode(e.currentTarget.value)} style={{ flex: "1 1 160px" }} aria-label="Code from the e-mail" />
             <Button type="submit" variant="light" data-action="auth-verify">Verify &amp; sign in</Button>
           </Group>
         </form>

@@ -114,7 +114,9 @@ function History({ history }) {
               );
             })}
           </Stack>
-          <Button size="xs" variant="subtle" color="red" mt="md" data-action="clear-history" onClick={clearHistory}>Clear history</Button>
+          <Group mt="md">
+            <Button size="xs" variant="subtle" color="red" data-action="clear-history" onClick={clearHistory}>Clear history</Button>
+          </Group>
         </>
       )}
     </Card>

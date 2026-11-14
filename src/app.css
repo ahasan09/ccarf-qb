@@ -371,6 +371,23 @@ button.option:focus-visible {
   color: var(--mantine-color-dimmed);
 }
 
+/* In a row, buttons, badges and icon buttons keep their size: on a narrow
+ * phone the text beside them wraps instead of the control being cut off
+ * ("Pract", "WR…", a timer reading "1:5…"). */
+.mantine-Group-root > .mantine-Button-root,
+.mantine-Group-root > .mantine-Badge-root,
+.mantine-Group-root > .mantine-ActionIcon-root,
+.mantine-Group-root > .mantine-Tooltip-root {
+  flex-shrink: 0;
+}
+
+/* Keyboard hints mean nothing on a touch screen without a keyboard. */
+@media (hover: none), (pointer: coarse) {
+  .kbd-only {
+    display: none !important;
+  }
+}
+
 #app[data-busy] {
   cursor: progress;
 }

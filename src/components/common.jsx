@@ -149,7 +149,7 @@ export function Kbd({ children }) {
 export function KbdHint({ optionCount, canGoBack, canFlag }) {
   const last = Math.min(optionCount, 5);
   return (
-    <Text size="xs" c="dimmed" visibleFrom="md" className="kbd-hint">
+    <Text size="xs" c="dimmed" visibleFrom="md" className="kbd-hint kbd-only">
       <Kbd>1</Kbd>–<Kbd>{last}</Kbd> answer ·{" "}
       {canGoBack ? <><Kbd>←</Kbd>/<Kbd>→</Kbd> navigate</> : <><Kbd>→</Kbd> next</>}
       {canFlag ? <> · <Kbd>F</Kbd> flag</> : null} ·{" "}

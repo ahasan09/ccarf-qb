@@ -133,7 +133,7 @@ export function Home() {
       </Box>
       <Text component="footer" size="xs" c="dimmed" ta="center" mt={48}>
         Practice material for personal study. Not affiliated with Anthropic or Pearson VUE.
-        <Text span inherit visibleFrom="sm"> · <ShortcutsLink>Keyboard shortcuts</ShortcutsLink></Text>
+        <Text span inherit visibleFrom="sm" className="kbd-only"> · <ShortcutsLink>Keyboard shortcuts</ShortcutsLink></Text>
       </Text>
     </Container>
   );
