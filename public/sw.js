@@ -3,7 +3,7 @@
  * so it is not listed here: the network-first handler below caches it the
  * first time the page loads it, which is enough to work offline after one
  * visit. */
-const VERSION = "v36";
+const VERSION = "v37";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",

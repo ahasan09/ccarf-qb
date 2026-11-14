@@ -145,18 +145,27 @@ Modes:
 
 - **Strike through** — in mock, imported, custom, retry and weak-drill
   sessions (and the scenario exam), right-click an option you have ruled out
-  to cross it out; right-click again to undo. Touch: tap ⊘. Not in plain
-  practice, where the answer shows on the first click.
+  to cross it out; right-click again to undo. On a touch screen, press and
+  hold the option instead (a moving press is a scroll, not a hold); a struck
+  option shows a ⊘ button to undo. Not in plain practice, where the answer
+  shows on the first click.
 
 Keyboard shortcuts during a session: `1`–`5` (or `A`–`E`) answer, `←`/`→`
 navigate, `F` flag, `Enter` next. The bottom bar of every question screen
 lists the ones that work there (practice runs only go forward, and plain
 practice has no flag); the list comes from `KbdHint` in
 `src/components/common.jsx` — keep it in step with `onKeyDown` in
-`src/core/controller.js`. Once a practice answer is graded, keyboard focus
-moves to Next.
+`src/core/controller.js`, and with the full list that `?` opens (also linked
+from that bar and the home footer: `src/components/ShortcutsDialog.jsx`).
+Once a practice answer is graded, keyboard focus moves to Next, and if the
+explanation is below the fold (usual on a phone) the page scrolls it into
+view.
 
-Theme: use the toggle in the header (Auto / Light / Dark).
+Theme: use the toggle in the header (Auto / Light / Dark). The browser's bar
+colour on phones follows the theme chosen here, not only the device setting.
+
+While the question bank downloads, `index.html` shows a small loading screen
+(plain HTML and CSS); React replaces it on first render.
 
 ## Scenario exam
 
@@ -371,6 +380,13 @@ run, check-ins fail quietly and nobody sees the card.
     setting, still stored under `ccarf.theme`
   - `app.css` — the few styles Mantine has no component for (answer options,
     navigator, tiles, the week strip, the phone tab bar)
+  - `styles.js` — imports only the Mantine stylesheets the app uses. **Using
+    a new Mantine component? Add its stylesheet there**, or it renders
+    unstyled
+  - Loading: Today ships in the main bundle; the other tabs and screens are
+    separate files loaded on first use and prefetched once the page is idle
+    (so the service worker has them for offline use). React, Mantine and the
+    icons are one `lib` file that only changes when a dependency does
 - The question files, `scenarios/`, `exams/`, `config.js`, `resources.js`,
   `js/logic.js`, `js/store.js` and `sync.js` stay plain classic scripts loaded
   by `index.html` before the app; `vite.config.js` copies them into `dist/`

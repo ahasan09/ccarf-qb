@@ -11,7 +11,7 @@ import { L, byId, Store, answeredCount } from "../core/env.js";
 import { ActionButton, KbdHint, QuestionMeta, ReportLink } from "../components/common.jsx";
 import {
   BottomBar, ExitButton, Feedback, FlagButton, Option, PrevButton, SaveButton, Tally, TopBar, WhereLine,
-  useFocusNextWhenGraded,
+  useFocusNextWhenGraded, StrikeHint,
 } from "../components/quiz.jsx";
 
 function Navigator() {
@@ -101,7 +101,7 @@ export function QuestionScreen() {
                 />
               ))}
             </Stack>
-            {strikeOn ? <Text size="xs" c="dimmed" mt="xs" visibleFrom="sm">Right-click an option to strike it through; right-click again to undo.</Text> : null}
+            {strikeOn ? <StrikeHint /> : null}
             {showFeedback ? (
               <>
                 <Feedback right={right}>

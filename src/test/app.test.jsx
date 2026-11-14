@@ -450,3 +450,82 @@ describe("routing", () => {
     expect(location.hash).toBe("#/quiz");
   });
 });
+
+/* jsdom has no PointerEvent, so build one React will read as a touch. */
+function touch(el, type, x = 5, y = 5) {
+  const ev = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+  Object.defineProperty(ev, "pointerType", { value: "touch" });
+  el.dispatchEvent(ev);
+}
+
+describe("polish", () => {
+  test("? opens the keyboard shortcut list, from home and mid-quiz; Escape closes it", async () => {
+    app = await launch();
+    await app.key("?");
+    expect(document.body.textContent).toContain("Keyboard shortcuts");
+    expect(app.C.S.shortcutsOpen).toBe(true);
+    await app.key("1"); // other shortcuts wait while it is open
+    app.C.setShortcutsOpen(false);
+    await app.flush();
+    await app.tab("exams");
+    await app.click("start-exam");
+    await app.key("?");
+    expect(app.C.S.shortcutsOpen).toBe(true);
+    expect(Object.values(sessionOf().answers).every((a) => a === null)).toBe(true);
+  });
+
+  test("the hint on a question screen links to the full list", async () => {
+    app = await launch();
+    await app.tab("exams");
+    await app.click("start-exam");
+    await app.click("shortcuts");
+    expect(app.C.S.shortcutsOpen).toBe(true);
+  });
+
+  test("the browser bar colour follows the theme chosen in the app", async () => {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = "#f6f7f4";
+    document.head.appendChild(meta);
+    app = await launch({ storage: { "ccarf.theme": "light" } });
+    expect(meta.content).toBe("#f6f7f4");
+    await app.click("cycle-theme"); // light → dark
+    expect(meta.content).toBe("#17191c");
+    meta.remove();
+  });
+
+  test("press and hold strikes an option on a touch screen, without picking it", async () => {
+    app = await launch();
+    await app.tab("exams");
+    await app.click("start-exam");
+    const id = sessionOf().questions[0].id;
+    const { fireEvent } = await import("@testing-library/react");
+    const opt = () => app.find("select", { opt: 2 });
+    touch(opt(), "pointerdown");
+    await new Promise((r) => setTimeout(r, 520));
+    touch(opt(), "pointerup");
+    fireEvent.contextMenu(opt()); // Android fires this on a hold too: must not undo
+    fireEvent.click(opt()); // the click that ends the hold
+    await app.flush();
+    expect(sessionOf().strikes[id]).toEqual([2]);
+    expect(sessionOf().answers[id]).toBeNull();
+  });
+
+  test("a short tap picks, and a press that moves (a scroll) does not strike", async () => {
+    app = await launch();
+    await app.tab("exams");
+    await app.click("start-exam");
+    const id = sessionOf().questions[0].id;
+    const { fireEvent } = await import("@testing-library/react");
+    const opt = () => app.find("select", { opt: 1 });
+    touch(opt(), "pointerdown");
+    touch(opt(), "pointermove", 5, 60);
+    await new Promise((r) => setTimeout(r, 520));
+    expect(sessionOf().strikes[id] || []).toEqual([]);
+    touch(opt(), "pointerdown");
+    touch(opt(), "pointerup");
+    fireEvent.click(opt());
+    await app.flush();
+    expect(sessionOf().answers[id]).toBe(1);
+  });
+});

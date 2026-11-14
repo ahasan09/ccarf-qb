@@ -10,7 +10,7 @@ import { L, byId, scenarioById, answeredCount } from "../core/env.js";
 import { ActionButton, KbdHint, ReportLink } from "../components/common.jsx";
 import {
   BottomBar, CommentButton, ExitButton, Feedback, FlagButton, Option, PrevButton, Tally, TopBar, WhereLine,
-  useFocusNextWhenGraded,
+  useFocusNextWhenGraded, StrikeHint,
 } from "../components/quiz.jsx";
 
 export function ScenarioPanel({ scn, open, onToggle }) {
@@ -101,7 +101,7 @@ export function ScenarioQuestion() {
                   <Text size="sm" c="dimmed">{comment}</Text>
                 </Group>
               ) : null}
-              <Text size="xs" c="dimmed" mt="sm" visibleFrom="sm">Right-click an option to strike it through; right-click again to undo.</Text>
+              <StrikeHint />
             </Card>
           </Grid.Col>
         </Grid>
