@@ -126,10 +126,16 @@ const currentTab = () => js(`(${q('[aria-current="page"]')} || { dataset: {} }).
 async function noSidewaysScroll(where) {
   const extra = await js("document.documentElement.scrollWidth - innerWidth");
   check(`${where}: no sideways scrolling`, extra <= 1, `page is ${extra}px wider than the screen`);
+  /* A button or badge squeezed until its text is cut ("Pract", "WR…"). */
+  const cut = await js(`[...document.querySelectorAll(".mantine-Button-label, .mantine-Badge-label")]
+    .filter((el) => el.getClientRects().length && el.scrollWidth > el.clientWidth + 1)
+    .map((el) => el.textContent.trim().slice(0, 30))`);
+  check(`${where}: no button or badge text cut short`, !cut.length, cut.join(", "));
 }
 async function open(width, progress) {
-  await send("Emulation.setDeviceMetricsOverride", { width, height: 860, deviceScaleFactor: 1, mobile: width < 700 });
-  await send("Emulation.setTouchEmulationEnabled", { enabled: width < 700, maxTouchPoints: width < 700 ? 5 : 1 });
+  const touchDevice = width < 1100; // phones and tablets
+  await send("Emulation.setDeviceMetricsOverride", { width, height: width < 700 ? 860 : width < 1100 ? 1180 : 860, deviceScaleFactor: 1, mobile: touchDevice });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: touchDevice, maxTouchPoints: touchDevice ? 5 : 1 });
   await send("Page.navigate", { url: BASE + "icon.svg" }); // same origin, to seed storage
   await until("document.readyState === 'complete'", "seed page");
   await js(`localStorage.clear(); ${progress ? `localStorage.setItem("ccarf.progress", ${JSON.stringify(JSON.stringify(progress))});` : ""} true`);
@@ -144,8 +150,8 @@ await send("Runtime.enable");
 const ids = ["d1-q82", "d1-q83", "d1-q84", "d1-q85", "d1-q86"];
 const RETURNING = { attempted: ids, correctEver: ids.slice(0, 3), saved: ["d1-q82"] };
 
-for (const width of [390, 1280]) {
-  const where = width < 700 ? "phone" : "desktop";
+for (const width of [390, 820, 1280]) {
+  const where = width < 700 ? "phone" : width < 1100 ? "tablet" : "desktop";
   console.log(`\n${where} (${width}px)`);
 
   step = "first visit";
@@ -228,7 +234,7 @@ for (const width of [390, 1280]) {
   const touchy = await js(`matchMedia("(hover: none), (pointer: coarse)").matches`);
   check(touchy ? `${where}: the strike button takes no room on a touch screen` : `${where}: each option has a strike button`,
     touchy ? strikeW <= 1 : strikeW > 20, `strike button is ${strikeW}px wide`);
-  if (width < 700) check("phone: touch styles apply", touchy);
+  if (width < 1100) check(`${where}: touch styles apply`, touchy);
   await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true })), true`);
   check("? lists the keyboard shortcuts", await until(`document.body.textContent.includes("Pick an answer")`, "the shortcut list on ?", 3000));
   /* A real key press lands on the focused element (inside the dialog), never on document itself. */

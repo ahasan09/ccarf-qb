@@ -432,10 +432,11 @@ run, check-ins fail quietly and nobody sees the card.
   version until a fix passes. To re-publish by hand: Actions → Test and
   deploy → Run workflow.
 - **`npm run e2e`** — builds, then runs the main flows in headless Chrome at
-  phone and desktop width: tabs, Back/Forward, search, the dialogs, a mock
-  exam, a scenario exam through results and review, score history and the
-  custom quiz. It fails on a page error, a broken step or a screen that
-  scrolls sideways on a phone. Node serves `dist/` and drives Chrome over
+  phone (390px), tablet (820px, touch) and desktop (1280px) width: tabs,
+  Back/Forward, search, the dialogs, a mock exam, a scenario exam through
+  results and review, score history and the custom quiz. It fails on a page
+  error, a broken step, a screen that scrolls sideways, or a button or
+  badge squeezed until its text is cut. Node serves `dist/` and drives Chrome over
   the DevTools protocol (set `CHROME_PATH` if Chrome is not found). CI runs
   it after `npm test`, before deploying.
 - **`npm run coverage`** — questions per exam-guide objective in the bank and

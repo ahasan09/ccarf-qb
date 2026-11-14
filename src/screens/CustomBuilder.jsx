@@ -46,11 +46,11 @@ export function CustomBuilder() {
                     />
                     <Button
                       size="compact-sm" variant="subtle" data-action="cq-open-subs" data-domain={d}
-                      aria-expanded={open && on} disabled={!on}
+                      aria-expanded={open && on} disabled={!on} aria-label={"Subdomains of D" + d}
                       onClick={() => setCustom({ openDomain: d })}
                       rightSection={<IconChevronDown size={14} style={{ transform: open && on ? "rotate(180deg)" : "none" }} />}
                     >
-                      Subdomains
+                      <Text span inherit visibleFrom="xs">Subdomains</Text>
                     </Button>
                   </Group>
                   <Collapse in={on && open}>

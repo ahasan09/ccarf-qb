@@ -86,7 +86,7 @@ export function TopBar({ children, right }) {
     <Paper component="header" className="q-top" radius={0} px={{ base: "sm", sm: "lg" }} py="xs">
       <Group justify="space-between" wrap="nowrap" gap="xs" maw={1200} mx="auto">
         <Box style={{ minWidth: 0 }}>{children}</Box>
-        <Group gap={4} wrap="nowrap"><Timer />{right}</Group>
+        <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}><Timer />{right}</Group>
       </Group>
     </Paper>
   );
