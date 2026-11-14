@@ -1,0 +1,349 @@
+/* App-specific styles on top of Mantine: the tab bar (bottom bar on phones),
+ * answer options, the question navigator, review tiles and the week strip.
+ * Colours come from Mantine's variables, so light and dark both work. */
+
+:root {
+  --app-bg: #f6f7f4;
+}
+[data-mantine-color-scheme="dark"] {
+  --app-bg: #17191c;
+}
+body {
+  background: var(--app-bg);
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.link {
+  color: var(--mantine-color-anchor);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.kbd {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--mantine-color-default);
+}
+
+/* ------------------------------------------------------------- tabs */
+.h-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-default);
+  border: 1px solid var(--mantine-color-default-border);
+  width: fit-content;
+}
+.h-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-dimmed);
+  font-weight: 600;
+  font-size: var(--mantine-font-size-sm);
+  transition: background 120ms, color 120ms;
+}
+.h-tab:hover {
+  background: var(--mantine-color-default-hover);
+  color: var(--mantine-color-text);
+}
+.h-tab[data-active] {
+  background: var(--mantine-primary-color-light);
+  color: var(--mantine-primary-color-light-color);
+}
+
+@media (max-width: 47.99em) {
+  .h-tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    width: auto;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    justify-content: space-around;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: var(--mantine-color-body);
+  }
+  .h-tab {
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 10px;
+    font-size: 11px;
+    flex: 1;
+  }
+}
+
+/* ------------------------------------------------- question screens */
+.q-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.q-main {
+  flex: 1;
+  width: 100%;
+}
+.q-top,
+.q-bottom {
+  position: sticky;
+  z-index: 50;
+  background: var(--mantine-color-body);
+}
+.q-top {
+  top: 0;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+.q-bottom {
+  bottom: 0;
+  border-top: 1px solid var(--mantine-color-default-border);
+  padding-bottom: calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom)) !important;
+}
+.q-where {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The scenario text stays beside the question on wide screens. */
+@media (min-width: 62em) {
+  .scn-aside {
+    position: sticky;
+    top: 72px;
+    max-height: calc(100vh - 150px);
+    overflow: auto;
+  }
+}
+
+.option {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--mantine-radius-md);
+  border: 1.5px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  transition: border-color 120ms, background 120ms;
+  line-height: 1.45;
+}
+button.option:not(:disabled):hover {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-color-default-hover);
+}
+button.option:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+.option:disabled {
+  cursor: default;
+}
+.opt-letter {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mantine-color-default-border);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mantine-color-dimmed);
+}
+.option[data-state="selected"] {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+}
+.option[data-state="selected"] .opt-letter {
+  background: var(--mantine-primary-color-filled);
+  border-color: var(--mantine-primary-color-filled);
+  color: var(--mantine-color-white);
+}
+.option[data-state="correct"] {
+  border-color: var(--mantine-color-teal-6);
+  background: var(--mantine-color-teal-light);
+}
+.option[data-state="correct"] .opt-letter {
+  background: var(--mantine-color-teal-6);
+  border-color: var(--mantine-color-teal-6);
+  color: var(--mantine-color-white);
+}
+.option[data-state="wrong"] {
+  border-color: var(--mantine-color-red-6);
+  background: var(--mantine-color-red-light);
+}
+.option[data-state="wrong"] .opt-letter {
+  background: var(--mantine-color-red-6);
+  border-color: var(--mantine-color-red-6);
+  color: var(--mantine-color-white);
+}
+.option[data-struck] .opt-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  opacity: 0.5;
+}
+.opt-note {
+  margin: 6px 0 2px 46px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--mantine-color-red-5);
+  background: var(--mantine-color-default-hover);
+  border-radius: 0 var(--mantine-radius-sm) var(--mantine-radius-sm) 0;
+}
+.opt-note[data-ok] {
+  border-left-color: var(--mantine-color-teal-6);
+}
+.feedback .opt-note {
+  margin-left: 0;
+}
+/* On touch screens the strike button always shows; with a mouse, only on
+ * hover or keyboard focus. */
+@media (hover: hover) and (pointer: fine) {
+  .strike-btn {
+    opacity: 0;
+  }
+  .opt-wrap:hover .strike-btn,
+  .strike-btn:focus-visible,
+  .strike-btn[aria-pressed="true"] {
+    opacity: 1;
+  }
+}
+
+/* --------------------------------------------- navigator and tiles */
+.navigator {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  scrollbar-width: thin;
+}
+.nav-cell,
+.tile {
+  flex: none;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border-radius: var(--mantine-radius-sm);
+  border: 1.5px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--mantine-color-dimmed);
+}
+.nav-cell[data-answered],
+.tile[data-answered] {
+  background: var(--mantine-primary-color-light);
+  border-color: transparent;
+  color: var(--mantine-primary-color-light-color);
+}
+.nav-cell[data-flagged],
+.tile[data-flagged] {
+  border-color: var(--mantine-color-orange-5);
+}
+.nav-cell[data-current] {
+  border-color: var(--mantine-primary-color-filled);
+  box-shadow: 0 0 0 2px var(--mantine-primary-color-light);
+  color: var(--mantine-color-text);
+}
+.tile {
+  width: 100%;
+  height: 42px;
+}
+.tile:hover,
+.nav-cell:hover {
+  border-color: var(--mantine-primary-color-filled);
+}
+
+/* --------------------------------------------------------- home bits */
+.h-exam {
+  display: block;
+  width: 100%;
+}
+.h-exam-card {
+  transition: border-color 120ms, transform 120ms, box-shadow 120ms;
+}
+.h-exam:hover .h-exam-card:not([data-disabled]) {
+  border-color: var(--mantine-primary-color-filled);
+  box-shadow: var(--mantine-shadow-sm);
+}
+.h-exam-card[data-primary] {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+}
+.h-exam-card[data-disabled] {
+  opacity: 0.5;
+}
+.h-dom-head {
+  border-radius: var(--mantine-radius-md);
+}
+.h-dom-head:hover {
+  background: var(--mantine-color-default-hover);
+}
+.history-cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* The week strip: seven days, shaded by how much was answered. */
+.h-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.h-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.h-day-box {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 52px;
+  aspect-ratio: 1;
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-default-hover);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  font-weight: 700;
+}
+.h-day.lvl1 .h-day-box { background: color-mix(in srgb, var(--mantine-primary-color-filled) 22%, transparent); }
+.h-day.lvl2 .h-day-box { background: color-mix(in srgb, var(--mantine-primary-color-filled) 45%, transparent); }
+.h-day.lvl3 .h-day-box { background: color-mix(in srgb, var(--mantine-primary-color-filled) 70%, transparent); color: #fff; }
+.h-day.lvl4 .h-day-box { background: var(--mantine-primary-color-filled); color: #fff; }
+.h-day.today .h-day-box { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 2px; }
+.h-day-name {
+  font-size: 11px;
+  color: var(--mantine-color-dimmed);
+}
+
+#app[data-busy] {
+  cursor: progress;
+}

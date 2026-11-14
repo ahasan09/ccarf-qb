@@ -1,12 +1,12 @@
 /* End-to-end check in a real browser: `npm run e2e`.
  *
- * The unit tests drive the app against a stub DOM, which cannot catch
- * real-browser differences (a button that only exists on another screen, a
- * layout that overflows a phone, a native <dialog>). This serves the app
- * with Node's own HTTP server, starts headless Chrome and drives it over
- * the DevTools protocol — no dependencies. It walks the main flows at
- * phone and desktop width and fails on a page error, a broken step, or a
- * screen that scrolls sideways on a phone.
+ * The unit tests drive the app in jsdom, which cannot catch real-browser
+ * differences (a button that only exists on another screen, a layout that
+ * overflows a phone). This serves the built app (dist/, from `npm run
+ * build`; `npm run e2e` builds first) with Node's own HTTP server, starts
+ * headless Chrome and drives it over the DevTools protocol. It walks the
+ * main flows at phone and desktop width and fails on a page error, a broken
+ * step, or a screen that scrolls sideways on a phone.
  *
  * Chrome is found at CHROME_PATH, or the usual macOS/Linux locations. */
 import { spawn } from "node:child_process";
@@ -17,11 +17,12 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
+if (!existsSync(join(root, "index.html"))) { console.error("No dist/ build found; run `npm run build` first."); process.exit(1); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ------------------------------------------------------------ server */
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
 const server = http.createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^\/+/, "") || "index.html";
   if (path.startsWith("..")) { res.writeHead(403); return res.end(); }
@@ -110,8 +111,17 @@ async function click(sel) {
   await sleep(80);
   return true;
 }
-const dialogOpen = () => js(`document.getElementById("app-dialog").open`);
-const answerDialog = (ok) => click(ok ? '#app-dialog button[type="submit"]' : "#app-dialog [data-dlg-cancel]");
+const DIALOG = "[data-dlg]";
+const dialogOpen = () => js(`!!${q(DIALOG)}`);
+const answerDialog = async (ok) => {
+  await click(ok ? '[data-dlg="ok"]' : '[data-dlg="cancel"]');
+  await until(`!${q(DIALOG)}`, "the dialog to close");
+};
+/* React tracks an input's value itself, so set it through the native setter
+ * before firing "input", as typing would. */
+const typeInto = (sel, text) => js(`(() => { const i = ${q(sel)};
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, ${JSON.stringify(text)});
+  i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
 const currentTab = () => js(`(${q('[aria-current="page"]')} || { dataset: {} }).dataset.tab`);
 async function noSidewaysScroll(where) {
   const extra = await js("document.documentElement.scrollWidth - innerWidth");
@@ -139,7 +149,7 @@ for (const width of [390, 1280]) {
 
   step = "first visit";
   await open(width, null);
-  check("first visit: the loading screen is replaced", !(await js(`!!${q(".boot")}`)));
+  check("first visit: the app renders", await js(`document.getElementById("root").childElementCount > 0`));
   check("first visit: welcome card with the diagnostic", await js(`!!${q('.h-first [data-action="start-diagnostic"]')}`));
   await noSidewaysScroll(`${where} welcome`);
 
@@ -163,7 +173,7 @@ for (const width of [390, 1280]) {
   step = "search";
   await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "/", bubbles: true })), true`);
   await until(q("#search-q"), "the search screen from /");
-  await js(`(() => { const i = ${q("#search-q")}; i.value = "hooks"; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
+  await typeInto("#search-q", "hooks");
   await until(q('[data-action="practice-search"]'), "search results");
   await noSidewaysScroll(`${where} search`);
   await js("history.back(), true");
@@ -177,14 +187,16 @@ for (const width of [390, 1280]) {
   await click('[data-action="select"]');
   check("the grade is announced", /^(Correct|Incorrect)\./.test(await js(`document.getElementById("sr-live").textContent`)));
   check("focus moves to the way on", ["next", "submit"].includes(await js(`(document.activeElement && document.activeElement.dataset.action) || ""`)));
-  check("options say which was right", await js(`!!${q(".option .tag")}`));
+  check("options say which was right", await js(`!!${q('.option[data-state="correct"]')}`));
   await click('[data-action="quit"]');
+  await until(q(DIALOG), "the Exit dialog");
   await answerDialog(true);
   await until(q(".h-tabs"), "home after Exit");
 
   step = "exam date dialog";
   await click('[data-tab="today"]');
   await click('[data-action="edit-exam-date"]');
+  await until(q(DIALOG), "the exam date dialog");
   check("the exam date opens an in-app dialog", await dialogOpen());
   check("with a date picker", (await js(`(${q("#dlg-input")} || {}).type`)) === "date");
   await answerDialog(false);
@@ -192,32 +204,34 @@ for (const width of [390, 1280]) {
   step = "mock exam";
   await click('[data-tab="exams"]');
   await click('[data-action="start-exam"]');
-  await until(q("#app-dialog[open]") + " || " + q('[data-action="select"]'), "the replace dialog or a mock question");
+  await until(q(DIALOG) + " || " + q('[data-action="select"]'), "the replace dialog or a mock question");
   if (await dialogOpen()) await answerDialog(true); // replaces the unfinished practice
   await until(q('[data-action="select"]'), "a mock question");
   check("a quiz has its own address", (await js("location.hash")) === "#/quiz");
   await noSidewaysScroll(`${where} mock question`);
   await js("history.back(), true");
-  await until(`document.getElementById("app-dialog").open`, "the Exit dialog on Back");
+  await until(q(DIALOG), "the Exit dialog on Back");
   await answerDialog(false);
   check("staying keeps the quiz", (await js("location.hash")) === "#/quiz" && (await js(`!!${q('[data-action="select"]')}`)));
   await click('[data-action="quit"]');
+  await until(q(DIALOG), "the Exit dialog");
   await answerDialog(true);
   await until(q(".h-tabs"), "home after Exit");
   check("Exit returns to the tab the quiz started from", (await currentTab()) === "exams");
   await click('[data-tab="today"]');
-  await until(q('.h-cta-main[data-action="resume"]'), "Continue on Today");
+  await until(q('[data-action="resume"]'), "Continue on Today");
 
   step = "scenario exam to results";
   await click('[data-tab="exams"]');
   await click('[data-action="start-scenario-exam"]');
-  await until(q("#app-dialog[open]") + " || " + q(".scn-screen"), "the replace dialog or the exam");
+  await until(q(DIALOG) + " || " + q(".scn-screen"), "the replace dialog or the exam");
   if (await dialogOpen()) await answerDialog(true); // replaces the unfinished mock
   await until(q(".scn-screen"), "the scenario exam");
   await noSidewaysScroll(`${where} scenario question`);
   await click('[data-action="select"]');
   await click('[data-action="review-all"]');
   await click('[data-action="submit"]');
+  await until(q(DIALOG), "the submit dialog");
   await answerDialog(true);
   await until(q(".weak-spots"), "results with weak spots");
   check("results offer the weak spots", await js(`!!${q('.weak-spot [data-action="drill-objective"]')}`));
@@ -227,9 +241,10 @@ for (const width of [390, 1280]) {
   await noSidewaysScroll(`${where} review`);
 
   step = "score history and custom quiz";
-  await js("renderHome(), true");
+  await click('[data-action="back-results"]');
+  await click('[data-action="home"]');
   await click('[data-tab="exams"]');
-  await until(q("#h-history .history-card, #h-history table"), "score history");
+  await until(q("#h-history table, #h-history .history-cards"), "score history");
   await noSidewaysScroll(`${where} score history`);
   await click('[data-tab="practice"]');
   await click('[data-action="custom-builder"]');

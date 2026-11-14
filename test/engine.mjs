@@ -10,16 +10,6 @@ import vm from "node:vm";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const LOGIC_SCRIPTS = ["js/logic.js", "js/store.js"];
-export const APP_SCRIPTS = [
-  ...LOGIC_SCRIPTS,
-  "js/app/state.js",
-  "js/app/dialog.js",
-  "js/app/home.js",
-  "js/app/sessions.js",
-  "js/app/question.js",
-  "js/app/results.js",
-  "js/app/events.js",
-];
 
 /* Runs each script, in order, in the given vm context. */
 export function runScripts(files, ctx) {

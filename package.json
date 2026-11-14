@@ -1,10 +1,31 @@
 {
   "name": "ccarf-qb",
   "private": true,
-  "description": "CCAR-F exam prep. No build and no dependencies: open index.html. These scripts only run the checks.",
+  "description": "CCAR-F exam prep. A React + Mantine app built with Vite; the question bank and logic stay plain scripts.",
   "scripts": {
-    "test": "node --test test/*.test.mjs && node test/validate-bank.mjs && node test/validate-scenarios.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/*.test.mjs && node test/validate-bank.mjs && node test/validate-scenarios.mjs && vitest run",
     "coverage": "node scripts/coverage.mjs",
-    "e2e": "node test/e2e.mjs"
+    "e2e": "vite build && node test/e2e.mjs"
+  },
+  "dependencies": {
+    "@mantine/core": "7.17.8",
+    "@mantine/hooks": "7.17.8",
+    "@tabler/icons-react": "3.31.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/react": "16.3.0",
+    "@vitejs/plugin-react": "4.5.2",
+    "jsdom": "26.1.0",
+    "postcss": "8.5.6",
+    "postcss-preset-mantine": "1.17.0",
+    "postcss-simple-vars": "7.0.1",
+    "vite": "6.3.5",
+    "vitest": "3.2.4"
   }
 }

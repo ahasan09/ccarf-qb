@@ -1,18 +1,15 @@
-/* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy. */
-const VERSION = "v34";
+/* CCAR-F Question Bank — offline cache. Bump VERSION on every deploy.
+ * The React bundle (assets/index-<hash>.js/.css) changes name on every build,
+ * so it is not listed here: the network-first handler below caches it the
+ * first time the page loads it, which is enough to work offline after one
+ * visit. */
+const VERSION = "v35";
 const CACHE = "ccarf-qb-" + VERSION;
 const CORE = [
   "./",
   "index.html",
   "js/logic.js",
   "js/store.js",
-  "js/app/state.js",
-  "js/app/dialog.js",
-  "js/app/home.js",
-  "js/app/sessions.js",
-  "js/app/question.js",
-  "js/app/results.js",
-  "js/app/events.js",
   "config.js",
   "resources.js",
   "sync.js",
